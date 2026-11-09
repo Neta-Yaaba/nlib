@@ -1,0 +1,15 @@
+{
+  "name": "@nlib/bridge",
+  "version": "1.0.0",
+  "description": "NLib Bridge - Universal RPC Communication Layer between JS, Native OS Containers, and Backend Servers",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "@nlib/core": "1.0.0"
+  },
+  "license": "MIT"
+}
+

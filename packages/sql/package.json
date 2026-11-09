@@ -1,0 +1,15 @@
+{
+  "name": "@nlib/sql",
+  "version": "1.0.0",
+  "description": "NLib SQL - Unified Autonomous Database Engine (sql.js for Web & Native SQLite for OS/Server)",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "@nlib/core": "1.0.0"
+  },
+  "license": "MIT"
+}
+

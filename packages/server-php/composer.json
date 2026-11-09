@@ -1,0 +1,22 @@
+{
+  "name": "nlib/server-php",
+  "description": "NLib PHP Server Package - Base Class, Native Bridge Handler & SQLite/PDO Engine",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "NLib\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "NLib\\Tests\\": "tests/"
+    }
+  },
+  "require": {
+    "php": ">=8.1",
+    "ext-json": "*",
+    "ext-pdo": "*"
+  }
+}
+

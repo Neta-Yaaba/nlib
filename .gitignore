@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build & Dist
+dist/
+build/
+out/
+*.o
+*.so
+*.dll
+*.exe
+*.apk
+*.aab
+*.hap
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs & Temp
+*.log
+*.sqlite
+*.db
+.env
+

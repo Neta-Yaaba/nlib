@@ -1,0 +1,39 @@
+{
+  "name": "nlib-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NLib - Universal Cross-Platform Framework (Headless Core, Pure JS UI Engine, SQLite/sql.js, Multi-Server & Native OS WebView Bridges)",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/bridge",
+    "packages/sql",
+    "packages/ui",
+    "packages/server-node"
+  ],
+  "scripts": {
+    "test": "node --test packages/*/tests/*.test.js",
+    "docs:build": "node website/tools/build-docs.js"
+  },
+  "keywords": [
+    "nlib",
+    "framework",
+    "cross-platform",
+    "javascript",
+    "php",
+    "sqlite",
+    "sql.js",
+    "webview",
+    "android",
+    "windows",
+    "ios",
+    "macos",
+    "linux",
+    "harmonyos"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
