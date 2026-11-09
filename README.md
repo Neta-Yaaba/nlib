@@ -1,31 +1,73 @@
 # NLib — Universal Cross-Platform Ecosystem
 
-**NLib** est une architecture logicielle universelle, modulaire et multi-plateforme conçue selon les normes internationales. Elle fonctionne aussi bien **sans interface graphique (mode headless / backend / CLI)** qu'avec un **moteur d'interface Web 100 % JavaScript (zéro balise HTML écrite à la main)**, propulsée par des bases de données locales (**SQLite / sql.js**), des serveurs interchangeables (**PHP 8+**, **Node.js**, etc.) et des conteneurs natifs (**Android**, **Windows**, **iOS**, **macOS**, **Linux**, **HarmonyOS**).
+**NLib** est une architecture logicielle universelle, modulaire et multi-plateforme conçue selon les normes internationales. Chaque environnement intègre nativement la **classe de base universelle**, la **base de données SQL** (`sql.js` / `SQLite`) et le **pont de communication (Bridge)**.
 
 ---
 
-## Architecture des Packages (100 % Indépendants)
+## Structure des Packages (`packages/`)
 
-Chaque package situé dans [`packages/`](./packages) est **totalement indépendant** et hérite de la philosophie de la classe de base universelle de `@nlib/core` :
+L'écosystème est organisé en **3 grands piliers** :
+1. **`js/`** : La base JavaScript (`frontend/` et `backend/`).
+2. **`server/`** : Les serveurs (`php/`, `node/`).
+3. **`os/`** : Les bibliothèques natives de chaque système d'exploitation, structurées selon les normes officielles de leurs IDE respectifs (Android Studio, DevEco Studio, Xcode SwiftPM, Visual Studio .NET, CMake/Meson GTK4) avec séparation `frontend/` (WebView) et `backend/` (Base, SQLite, APIs système).
 
-| Package | Langage | Rôle & Description |
-| :--- | :--- | :--- |
-| [`@nlib/core`](./packages/core) | JS (ES6+) | **Fondation sans interface** : Classe de base universelle, cycle de vie, événements, sérialisation. |
-| [`@nlib/bridge`](./packages/bridge) | JS (ES6+) | **Pont universel** : Communication JSON-RPC bidirectionnelle avec les OS natifs et les serveurs. |
-| [`@nlib/sql`](./packages/sql) | JS (ES6+) | **Base de données unifiée** : Fonctionne hors-ligne dans le navigateur (`sql.js`) et en natif (`SQLite`). |
-| [`@nlib/ui`](./packages/ui) | JS (ES6+) | **Moteur Frontend** : Création de balises en pur JS, moteur CSS orienté objet et gestion de fenêtres (`NWindow`). |
-| [`nlib/server-php`](./packages/server-php) | PHP 8.2+ | **Serveur PHP (PSR-4)** : Miroir de la classe de base côté serveur, gestionnaire RPC et connecteur PDO/SQLite. |
-| [`@nlib/server-node`](./packages/server-node) | JS (ES6+) | **Serveur JS** : Alternative serveur sans PHP (Node.js / Bun / Deno). |
-| [`nlib-android`](./packages/os-android) | Java | **Android Natif** : `WebView` + accès natif Android + SQLite local. |
-| [`nlib-windows`](./packages/os-windows) | C# / C++ | **Windows Natif** : `WebView2` + APIs système Windows + SQLite local. |
-| [`nlib-ios`](./packages/os-ios) | Swift | **iOS Natif** : `WKWebView` + APIs système iOS + SQLite local. |
-| [`nlib-macos`](./packages/os-macos) | Swift | **macOS Natif** : `WKWebView` + APIs système macOS + SQLite local. |
-| [`nlib-linux`](./packages/os-linux) | C / C++ | **Linux Natif** : `GTK4` + `WebKitGTK` + APIs système Linux + SQLite3. |
-| [`nlib-harmonyos`](./packages/os-harmonyos) | ArkTS | **HarmonyOS NEXT** : `ArkWeb` + APIs système OHOS + RelationStore SQLite. |
+```text
+packages/
+├── js/
+│   ├── frontend/                        (Interface 100 % JS : classe de base, balises DOM en JS, CSS objet, NWindow, SQL, Bridge)
+│   └── backend/                         (Logique JS sans interface : classe de base, traitements, SQL, Bridge)
+│
+├── server/
+│   ├── php/                             (Serveur PHP : classe de base, SQL PDO/SQLite, Bridge RPC)
+│   └── node/                            (Serveur Node : utilisé exactement comme PHP côté serveur, SQL, Bridge RPC)
+│
+└── os/
+    ├── android/                         (Module Android Library - Android Studio / Gradle)
+    │   └── src/main/
+    │       ├── assets/                  (Accueil du code js/frontend)
+    │       ├── res/                     (Ressources Android)
+    │       └── java/com/nlib/
+    │           ├── frontend/            (Classes Java WebView)
+    │           └── backend/             (Classes Java Base, SQLite, APIs Android)
+    │
+    ├── harmonyos/                       (Bibliothèque Statique HAR - DevEco Studio / ArkTS)
+    │   └── src/main/
+    │       ├── resources/rawfile/       (Accueil du code js/frontend)
+    │       └── ets/
+    │           ├── frontend/            (Classes ArkTS ArkWeb)
+    │           └── backend/             (Classes ArkTS Base, SQLite, APIs OHOS)
+    │
+    ├── ios/                             (Swift Package - Xcode / iOS)
+    │   ├── Sources/NLib/
+    │   │   ├── Resources/               (Accueil du code js/frontend)
+    │   │   ├── frontend/                (Classes Swift WKWebView)
+    │   │   └── backend/                 (Classes Swift Base, SQLite3, APIs iOS)
+    │   └── Tests/NLibTests/
+    │
+    ├── macos/                           (Swift Package - Xcode / macOS)
+    │   ├── Sources/NLib/
+    │   │   ├── Resources/               (Accueil du code js/frontend)
+    │   │   ├── frontend/                (Classes Swift WKWebView)
+    │   │   └── backend/                 (Classes Swift Base, SQLite3, APIs macOS)
+    │   └── Tests/NLibTests/
+    │
+    ├── windows/                         (Class Library .NET SDK - Visual Studio / C#)
+    │   ├── assets/                      (Accueil du code js/frontend)
+    │   ├── frontend/                    (Classes C# WebView2)
+    │   └── backend/                     (Classes C# Base, SQLite, APIs Windows)
+    │
+    └── linux/                           (Bibliothèque C/C++ GTK4 - CMake / Meson)
+        ├── data/                        (Ressources GTK4 & accueil du code js/frontend)
+        ├── include/nlib/
+        │   ├── frontend/                (Headers .h publics WebKitGTK/GTK4)
+        │   └── backend/                 (Headers .h publics Base, SQLite3, Linux)
+        └── src/
+            ├── frontend/                (Sources .c/.cpp WebKitGTK/GTK4)
+            └── backend/                 (Sources .c/.cpp Base, SQLite3, Linux)
+```
 
 ---
 
 ## Site Web de Documentation Complète
 
-Le dossier [`website/`](./website) contient le site web complet en HTML/CSS/JS documentant **chaque package, chaque classe, chaque méthode et chaque variable** de l'écosystème NLib.
-
+Le dossier [`website/`](./website) est dédié au site web documentant **chaque package, chaque classe, chaque méthode et chaque variable** de l'écosystème NLib.
