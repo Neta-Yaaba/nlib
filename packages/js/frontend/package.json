@@ -1,0 +1,8 @@
+{
+  "name": "@nlib/js-frontend",
+  "version": "1.0.0",
+  "description": "NLib JS Frontend - Moteur d'interface DOM 100% JS (Core, UI, NWindow, SQL, Bridge)",
+  "type": "module",
+  "license": "MIT"
+}
+

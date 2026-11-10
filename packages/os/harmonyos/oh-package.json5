@@ -1,0 +1,8 @@
+{
+  "name": "@nlib/harmonyos",
+  "version": "1.0.0",
+  "description": "NLib HarmonyOS Static Library (HAR)",
+  "main": "Index.ets",
+  "license": "MIT"
+}
+

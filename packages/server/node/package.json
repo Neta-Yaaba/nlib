@@ -1,0 +1,8 @@
+{
+  "name": "@nlib/server-node",
+  "version": "1.0.0",
+  "description": "NLib Server Node - Serveur JavaScript (Core, SQL, RPC)",
+  "type": "module",
+  "license": "MIT"
+}
+

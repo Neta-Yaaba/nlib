@@ -1,0 +1,8 @@
+{
+  "name": "@nlib/js-backend",
+  "version": "1.0.0",
+  "description": "NLib JS Backend - Fondation logique sans interface (Core, SQL, Bridge)",
+  "type": "module",
+  "license": "MIT"
+}
+
