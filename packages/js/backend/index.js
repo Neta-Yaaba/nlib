@@ -1,0 +1,45 @@
+/**
+ * @file index.js
+ * @package @nlib/js-backend
+ * @description Point d'entrée public du package `@nlib/js-backend` : ré-exporte toutes les classes
+ * de la fondation logique headless de NLib (core, utils, config, system, environment, worker, requests, database).
+ */
+
+// Core
+export { NObject } from './core/NObject.js';
+export { NEvent } from './core/NEvent.js';
+export { NException } from './core/NException.js';
+
+// Utils
+export { NUtil } from './utils/NUtil.js';
+export { NString } from './utils/NString.js';
+export { NNumber } from './utils/NNumber.js';
+export { NDateTime } from './utils/NDateTime.js';
+export { NAmount } from './utils/NAmount.js';
+export { NEmail } from './utils/NEmail.js';
+export { NPhoneNumber } from './utils/NPhoneNumber.js';
+export { NCryptography } from './utils/NCryptography.js';
+export { NUrl } from './utils/NUrl.js';
+export { NJson } from './utils/NJson.js';
+export { NPassword } from './utils/NPassword.js';
+export { NArray } from './utils/NArray.js';
+
+// Config, système & environnement
+export { NConfig } from './config/NConfig.js';
+export { NSystem } from './system/NSystem.js';
+export { NEnvironment } from './environment/NEnvironment.js';
+
+// Workers
+export { NWorker } from './worker/NWorker.js';
+export { NManagedWorker } from './worker/NManagedWorker.js';
+export { NWorkerManager } from './worker/NWorkerManager.js';
+
+// Requêtes réseau
+export { NNetwork } from './requests/NNetwork.js';
+
+// Stockage & bases de données
+export { NDatabase } from './database/NDatabase.js';
+export { NIndexedDB } from './database/NIndexedDB.js';
+export { NSql } from './database/NSql.js';
+export { NStorage } from './database/NStorage.js';
+

@@ -71,3 +71,55 @@ packages/
 ## Site Web de Documentation Complète
 
 Le dossier [`website/`](./website) est dédié au site web documentant **chaque package, chaque classe, chaque méthode et chaque variable** de l'écosystème NLib.
+
+---
+
+## Décision d'architecture : emplacement du CSS
+
+Le DOM et le style de NLib vivent **dans `packages/js/frontend`** (`@nlib/js-frontend`) : `dom/` pour les balises créées en JS, `style/` pour le **CSS objet** (objets JS appliqués au DOM). Il n'y a **pas** de package séparé `@nlib/ui` ou `js/ui`.
+
+Raisons :
+- Le frontend est déjà défini comme « interface 100 % JS : balises DOM en JS, CSS objet, NWindow » : le style est indissociable des composants DOM.
+- Le CSS objet n'a aucune dépendance propre ; un package dédié ajouterait du versionnement et de la publication sans bénéfice.
+- Le package `js/backend` reste strictement headless (aucun DOM, aucun style).
+- Les feuilles CSS du site de documentation restent isolées dans `website/assets/css/` et ne font pas partie de la bibliothèque.
+
+Si le volume du CSS grandit (thèmes, design tokens partagés), il pourra être extrait plus tard en `packages/js/ui` : le `pnpm-workspace.yaml` (`packages/js/*`) le prendra en compte automatiquement.
+
+---
+
+## Démarrage rapide
+
+Prérequis : Node.js >= 18 et pnpm >= 9.
+
+```bash
+pnpm install     # installe le workspace
+pnpm test        # lance les tests
+```
+
+Workspace pnpm (`pnpm-workspace.yaml`) :
+
+| Package | Chemin | Rôle |
+|---|---|---|
+| `@nlib/js-backend` | `packages/js/backend` | Fondation logique headless ([README](./packages/js/backend/README.md)) |
+| `@nlib/js-frontend` | `packages/js/frontend` | DOM et style en JS ([README](./packages/js/frontend/README.md)) |
+| `@nlib/server-node` | `packages/server/node` | Serveur Node |
+| `@nlib/website` | `website` | Site de documentation |
+
+```js
+import { NUtil } from '@nlib/js-backend';
+
+NUtil.db.store.set('theme', 'dark');          // stockage clé-valeur résilient
+await NUtil.db.sql.init();                    // SQLite (sql.js ou pont natif)
+const res = await NUtil.db.idb.getAll('x');   // IndexedDB : { ok, data, error, code }
+```
+
+## Avancement
+
+- Fait : `packages/js/backend` (core, utils, config, system, environment, worker, requests, database).
+- Squelette : `packages/js/frontend` (`dom/`, `style/`), `website/`.
+- À venir : classes du frontend, serveurs PHP et Node, conteneurs natifs.
+
+## Licence
+
+MIT

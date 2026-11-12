@@ -1,8 +1,14 @@
 {
   "name": "@nlib/js-frontend",
   "version": "1.0.0",
-  "description": "NLib JS Frontend - Moteur d'interface DOM 100% JS (Core, UI, NWindow, SQL, Bridge)",
+  "description": "NLib JS Frontend - Moteur d'interface DOM 100% JS (DOM, Style, NWindow, SQL, Bridge)",
   "type": "module",
+  "files": [
+    "dom",
+    "style"
+  ],
+  "dependencies": {
+    "@nlib/js-backend": "workspace:*"
+  },
   "license": "MIT"
 }
-

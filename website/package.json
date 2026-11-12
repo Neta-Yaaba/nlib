@@ -1,0 +1,9 @@
+{
+  "name": "@nlib/website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NLib Website - Documentation de chaque package, classe, méthode et variable de l'écosystème NLib",
+  "type": "module",
+  "license": "MIT"
+}
+

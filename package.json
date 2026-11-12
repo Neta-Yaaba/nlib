@@ -4,14 +4,27 @@
   "private": true,
   "description": "NLib - Universal Cross-Platform Ecosystem (JS Frontend & Backend, PHP & Node Servers, Native OS Containers with Built-in SQL)",
   "type": "module",
+  "packageManager": "pnpm@9.15.0",
   "workspaces": [
-    "packages/js/frontend",
-    "packages/js/backend",
-    "packages/server/node"
+    "packages/js/*",
+    "packages/server/node",
+    "website"
   ],
   "scripts": {
-    "test": "node --test packages/**/tests/*.test.js"
+    "test": "node --test packages/**/tests/*.test.js",
+    "test:all": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "lint": "pnpm -r --if-present lint",
+    "docs": "pnpm --filter @nlib/website --if-present build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neta-Yaaba/nlib.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Neta-Yaaba/nlib/issues"
+  },
+  "homepage": "https://github.com/Neta-Yaaba/nlib#readme",
   "keywords": [
     "nlib",
     "framework",
@@ -34,6 +47,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
   }
 }
