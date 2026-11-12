@@ -2,24 +2,25 @@
  * @file NObject.js
  * @package @nlib/js-backend
  * @description Classe de base universelle (sans interface / headless) de l'écosystème NLib.
- * Toutes les classes logiques du backend héritent de `NObject` pour bénéficier :
+ * Toutes les classes d'entités ou de composants logiques héritant de `NObject` bénéficient :
  * - du cycle de vie standardisé (`initialize`, `destroy`),
  * - de la gestion d'état réactif avec allocation mémoire à la demande (`hasState`, `getState`, `setState`),
- * - du moteur d'événements interne avec allocation mémoire à la demande (`hasListener`, `on`, `once`, `off`, `emit`),
+ * - du gestionnaire d'événements `NEvent` avec initialisation paresseuse via `this.event` (`#event`),
  * - et de la sérialisation / clonage (`toJSON`, `fromJSON`, `clone`).
  */
 
 import { NException } from './NException.js';
+import { NEvent } from './NEvent.js';
 
 /**
  * @class NObject
- * @description Classe mère de tous les objets logiques de NLib.
- * Conçue avec une empreinte mémoire minimale (*Lazy Initialization*) : `#state` et `#listeners`
- * restent à `null` tant qu'aucun état ou écouteur d'événement n'est réellement utilisé.
+ * @description Classe mère des objets logiques de NLib.
+ * Conçue avec une empreinte mémoire minimale (*Lazy Initialization*) : `#state` et `#event`
+ * restent à `null` tant qu'aucun état ou gestionnaire d'événement n'est réellement appelé.
  *
- * @example <caption>Exemple 1 : Utilisation directe avec état réactif et écoute d'événement</caption>
+ * @example <caption>Exemple 1 : Utilisation directe avec état réactif et écoute d'événement via obj.event</caption>
  * const compteur = new NObject({ state: { total: 0 } });
- * compteur.on('state:total', ({ value, oldValue }) => {
+ * compteur.event.on('state:total', ({ value, oldValue }) => {
  *     console.log(`Total passé de ${oldValue} à ${value}`);
  * });
  * compteur.setState('total', 10);
@@ -28,24 +29,24 @@ import { NException } from './NException.js';
  * class ServiceUtilisateur extends NObject {
  *     connecter(nom) {
  *         this.setState({ utilisateur: nom, connecte: true });
- *         this.emit('connexion', { nom });
+ *         this.event.emit('connexion', { nom });
  *     }
  * }
  * const service = ServiceUtilisateur.create();
- * service.on('connexion', ({ nom }) => console.log(`Bienvenue ${nom}`));
+ * service.event.on('connexion', ({ nom }) => console.log(`Bienvenue ${nom}`));
  * service.connecter('Neta');
  *
  * @example <caption>Exemple 3 : Initialisation différée, sérialisation JSON et clonage</caption>
- * const config = new NObject({ state: { mode: 'hors-ligne' }, autoInit: false });
- * config.initialize();
- * const sauvegarde = JSON.stringify(config);
- * const copie = config.clone();
- * config.destroy();
+ * const obj = new NObject({ state: { mode: 'hors-ligne' }, autoInit: false });
+ * obj.initialize();
+ * const sauvegarde = JSON.stringify(obj);
+ * const copie = obj.clone();
+ * obj.destroy();
  */
 export class NObject {
 
     // =========================================================================
-    // Propriétés privées (Variables internes)
+    // Propriétés privées (Variables internes à initialisation paresseuse)
     // =========================================================================
 
     /**
@@ -57,12 +58,12 @@ export class NObject {
     #state = null;
 
     /**
-     * Registre interne des écouteurs d'événements (nom d'événement -> ensemble de fonctions).
-     * Reste à `null` tant qu'aucun écouteur n'est abonné via `on()` (économie de mémoire).
-     * @type {Map<string, Set<Function>>|null}
+     * Instance interne de `NEvent` gérant les événements de cet objet.
+     * Reste à `null` et n'est instanciée que lors du premier appel à `this.event` (économie de mémoire).
+     * @type {NEvent|null}
      * @private
      */
-    #listeners = null;
+    #event = null;
 
     /**
      * Indique si la méthode `initialize()` a déjà été exécutée avec succès sur cette instance.
@@ -84,13 +85,14 @@ export class NObject {
 
     /**
      * Crée une nouvelle instance de `NObject`.
-     * N'alloue `#state` en mémoire que si `options.state` contient au moins une propriété.
+     * N'alloue `#state` en mémoire que si `options.state` contient au moins une propriété,
+     * et laisse `#event` à `null` jusqu'au premier accès à `this.event`.
      *
      * @param {Object} [options={}] - Options de configuration de l'instance.
      * @param {Object<string, any>} [options.state] - Valeurs initiales optionnelles de l'état interne (`#state`).
      * @param {boolean} [options.autoInit=true] - Si `true` (par défaut), appelle automatiquement `initialize()` à la construction.
      *
-     * @example <caption>Exemple 1 : Création légère (zéro Map allouée en mémoire)</caption>
+     * @example <caption>Exemple 1 : Création légère (zéro Map ni NEvent alloués en mémoire)</caption>
      * const obj = new NObject();
      * console.log(obj.isInitialized); // true
      *
@@ -119,6 +121,29 @@ export class NObject {
     // =========================================================================
     // Getters (Accesseurs en lecture)
     // =========================================================================
+
+    /**
+     * Retourne l'instance `NEvent` associée à cet objet.
+     * La variable privée `#event` est initialisée uniquement lors du tout premier appel à ce getter.
+     *
+     * @returns {NEvent} Gestionnaire d'événements de l'instance.
+     *
+     * @example <caption>Exemple 1 : Écouter et émettre un événement</caption>
+     * const obj = new NObject();
+     * obj.event.on('message', (txt) => console.log('Reçu :', txt));
+     * obj.event.emit('message', 'Bonjour');
+     *
+     * @example <caption>Exemple 2 : Écouter un changement d'état</caption>
+     * const obj = new NObject({ state: { score: 0 } });
+     * obj.event.on('state:score', ({ value }) => console.log('Nouveau score :', value));
+     * obj.setState('score', 42);
+     */
+    get event() {
+        if (!this.#event) {
+            this.#event = new NEvent(this);
+        }
+        return this.#event;
+    }
 
     /**
      * Retourne le nom exact de la classe de l'instance (ex: `"NObject"` ou le nom de la sous-classe).
@@ -201,7 +226,7 @@ export class NObject {
 
     /**
      * Initialise l'instance après vérification par `#validate()`.
-     * Émet l'événement `'initialize'` avec `{ target: this }`.
+     * Si `#event` a été initialisé, émet l'événement `'initialize'` avec `{ target: this }`.
      * Si l'instance est déjà initialisée ou détruite, la méthode ne fait rien.
      *
      * @throws {NException} Si la validation interne `#validate()` échoue (`code: 'ERR_INIT_VALIDATION'`).
@@ -209,7 +234,7 @@ export class NObject {
      *
      * @example <caption>Exemple 1 : Initialisation manuelle avec écoute de l'événement 'initialize'</caption>
      * const obj = new NObject({ autoInit: false });
-     * obj.on('initialize', () => console.log('Objet initialisé !'));
+     * obj.event.on('initialize', () => console.log('Objet initialisé !'));
      * obj.initialize();
      *
      * @example <caption>Exemple 2 : Chaînage fluide après initialize()</caption>
@@ -228,13 +253,15 @@ export class NObject {
             ).throw();
         }
         this.#initialized = true;
-        this.emit('initialize', { target: this });
+        if (this.#event) {
+            this.#event.emit('initialize', { target: this });
+        }
         return this;
     }
 
     /**
-     * Détruit proprement l'instance et libère toutes ses références en mémoire (`#state = null` et `#listeners = null`).
-     * Émet l'événement `'beforeDestroy'` juste avant le nettoyage.
+     * Détruit proprement l'instance et libère toutes ses références en mémoire (`#state = null` et `#event = null`).
+     * Si `#event` a été initialisé, émet l'événement `'beforeDestroy'` juste avant le nettoyage.
      *
      * @returns {void}
      *
@@ -245,7 +272,7 @@ export class NObject {
      *
      * @example <caption>Exemple 2 : Exécuter une sauvegarde juste avant la destruction</caption>
      * const obj = new NObject({ state: { donnees: 42 } });
-     * obj.on('beforeDestroy', ({ target }) => {
+     * obj.event.on('beforeDestroy', ({ target }) => {
      *     console.log('Sauvegarde avant fermeture :', target.state);
      * });
      * obj.destroy();
@@ -254,14 +281,14 @@ export class NObject {
         if (this.#destroyed) {
             return;
         }
-        this.emit('beforeDestroy', { target: this });
+        if (this.#event) {
+            this.#event.emit('beforeDestroy', { target: this });
+            this.#event.clear();
+            this.#event = null;
+        }
         if (this.#state) {
             this.#state.clear();
             this.#state = null;
-        }
-        if (this.#listeners) {
-            this.#listeners.clear();
-            this.#listeners = null;
         }
         this.#destroyed = true;
     }
@@ -316,7 +343,7 @@ export class NObject {
     /**
      * Modifie une ou plusieurs variables de l'état interne `#state`.
      * Initialise automatiquement `this.#state = new Map()` lors du tout premier besoin.
-     * Pour chaque clé dont la valeur change réellement, émet :
+     * Si `#event` est actif, émet pour chaque clé dont la valeur change réellement :
      * - `'state:<key>'` avec `{ key, value, oldValue, target: this }`
      * - `'stateChange'` avec `{ key, value, oldValue, target: this }`
      *
@@ -357,180 +384,11 @@ export class NObject {
             const oldValue = this.#state.get(k);
             if (oldValue !== v) {
                 this.#state.set(k, v);
-                this.emit(`state:${k}`, { key: k, value: v, oldValue, target: this });
-                this.emit('stateChange', { key: k, value: v, oldValue, target: this });
+                if (this.#event) {
+                    this.#event.emit(`state:${k}`, { key: k, value: v, oldValue, target: this });
+                    this.#event.emit('stateChange', { key: k, value: v, oldValue, target: this });
+                }
             }
-        }
-        return this;
-    }
-
-    // =========================================================================
-    // Méthodes publiques — Événements (Events)
-    // =========================================================================
-
-    /**
-     * Vérifie s'il existe déjà au moins un écouteur pour un événement donné,
-     * ou si une fonction de rappel spécifique (`callback`) y est déjà abonnée.
-     * N'alloue aucune mémoire si `#listeners` est encore à `null`.
-     *
-     * @param {string} event - Nom de l'événement à vérifier.
-     * @param {Function} [callback] - Fonction précise à rechercher (optionnel).
-     * @returns {boolean} `true` si l'événement (ou le couple événement + callback) est écouté, sinon `false`.
-     *
-     * @example <caption>Exemple 1 : Vérifier si un événement possède au moins un écouteur</caption>
-     * const obj = new NObject();
-     * console.log(obj.hasListener('message')); // false
-     * obj.on('message', () => {});
-     * console.log(obj.hasListener('message')); // true
-     *
-     * @example <caption>Exemple 2 : Vérifier si une fonction précise écoute déjà l'événement</caption>
-     * const obj = new NObject();
-     * const monHandler = () => console.log('Reçu');
-     * obj.on('message', monHandler);
-     * console.log(obj.hasListener('message', monHandler)); // true
-     * console.log(obj.hasListener('message', () => {}));   // false
-     */
-    hasListener(event, callback) {
-        if (!this.#listeners || !this.#listeners.has(event)) {
-            return false;
-        }
-        const set = this.#listeners.get(event);
-        if (!callback) {
-            return set.size > 0;
-        }
-        return set.has(callback);
-    }
-
-    /**
-     * Abonne une fonction de rappel (`callback`) à un événement nommé.
-     * Initialise automatiquement `this.#listeners = new Map()` lors du tout premier abonnement.
-     *
-     * @param {string} event - Nom de l'événement à écouter (ex: `'initialize'`, `'stateChange'`, `'state:score'`).
-     * @param {Function} callback - Fonction exécutée lorsque l'événement est émis.
-     * @returns {this} L'instance courante pour permettre le chaînage.
-     *
-     * @example <caption>Exemple 1 : Écouter un événement personnalisé</caption>
-     * const obj = new NObject();
-     * obj.on('message', (texte) => console.log('Reçu :', texte));
-     * obj.emit('message', 'Bonjour NLib');
-     *
-     * @example <caption>Exemple 2 : Écouter le changement d'une variable d'état précise</caption>
-     * const obj = new NObject({ state: { niveau: 1 } });
-     * obj.on('state:niveau', ({ value, oldValue }) => {
-     *     console.log(`Niveau : ${oldValue} -> ${value}`);
-     * });
-     * obj.setState('niveau', 2);
-     */
-    on(event, callback) {
-        if (this.#destroyed || typeof callback !== 'function') {
-            return this;
-        }
-        if (!this.#listeners) {
-            this.#listeners = new Map();
-        }
-        if (!this.#listeners.has(event)) {
-            this.#listeners.set(event, new Set());
-        }
-        this.#listeners.get(event).add(callback);
-        return this;
-    }
-
-    /**
-     * Abonne une fonction de rappel (`callback`) qui ne sera exécutée qu'une seule fois
-     * lors de la prochaine émission de l'événement, puis automatiquement désabonnée.
-     *
-     * @param {string} event - Nom de l'événement à écouter une seule fois.
-     * @param {Function} callback - Fonction exécutée lors de la première émission.
-     * @returns {this} L'instance courante pour permettre le chaînage.
-     *
-     * @example <caption>Exemple 1 : Réagir uniquement au premier événement</caption>
-     * const obj = new NObject();
-     * obj.once('pret', () => console.log('Exécuté une seule fois'));
-     * obj.emit('pret'); // Affiche 'Exécuté une seule fois'
-     * obj.emit('pret'); // Ne fait plus rien
-     *
-     * @example <caption>Exemple 2 : Capturer uniquement la première modification d'état</caption>
-     * const obj = new NObject({ state: { tentatives: 0 } });
-     * obj.once('stateChange', ({ key, value }) => {
-     *     console.log(`Première modification détectée sur ${key} = ${value}`);
-     * });
-     * obj.setState('tentatives', 1);
-     * obj.setState('tentatives', 2);
-     */
-    once(event, callback) {
-        if (typeof callback !== 'function') {
-            return this;
-        }
-        const wrapper = (payload) => {
-            this.off(event, wrapper);
-            callback.call(this, payload);
-        };
-        return this.on(event, wrapper);
-    }
-
-    /**
-     * Désabonne une fonction de rappel spécifique (ou tous les écouteurs si `callback` est omis) pour un événement donné.
-     * Si plus aucun écouteur n'existe sur l'objet, libère automatiquement `this.#listeners = null`.
-     *
-     * @param {string} event - Nom de l'événement.
-     * @param {Function} [callback] - Fonction spécifique à retirer. Si omis, supprime tous les écouteurs de cet événement.
-     * @returns {this} L'instance courante pour permettre le chaînage.
-     *
-     * @example <caption>Exemple 1 : Retirer un écouteur spécifique</caption>
-     * const obj = new NObject();
-     * const monEcouteur = () => console.log('Alarme !');
-     * obj.on('alarme', monEcouteur);
-     * obj.off('alarme', monEcouteur);
-     *
-     * @example <caption>Exemple 2 : Supprimer tous les écouteurs d'un événement</caption>
-     * const obj = new NObject();
-     * obj.on('log', () => console.log('Log 1'));
-     * obj.on('log', () => console.log('Log 2'));
-     * obj.off('log'); // Retire tous les écouteurs de 'log'
-     */
-    off(event, callback) {
-        if (!this.#listeners || !this.#listeners.has(event)) {
-            return this;
-        }
-        if (!callback) {
-            this.#listeners.delete(event);
-        } else {
-            const set = this.#listeners.get(event);
-            set.delete(callback);
-            if (set.size === 0) {
-                this.#listeners.delete(event);
-            }
-        }
-        if (this.#listeners.size === 0) {
-            this.#listeners = null;
-        }
-        return this;
-    }
-
-    /**
-     * Émet un événement et déclenche de manière synchrone tous les écouteurs enregistrés sur cet événement.
-     * N'effectue aucune allocation si aucun écouteur n'est enregistré (`#listeners === null`).
-     *
-     * @param {string} event - Nom de l'événement à émettre.
-     * @param {any} [data=null] - Données transmises en argument à chaque écouteur.
-     * @returns {this} L'instance courante pour permettre le chaînage.
-     *
-     * @example <caption>Exemple 1 : Émettre un événement simple sans données</caption>
-     * const obj = new NObject();
-     * obj.on('ping', () => console.log('pong'));
-     * obj.emit('ping');
-     *
-     * @example <caption>Exemple 2 : Émettre un événement avec un objet de données</caption>
-     * const obj = new NObject();
-     * obj.on('erreur', ({ code, message }) => console.error(`Erreur ${code} : ${message}`));
-     * obj.emit('erreur', { code: 500, message: 'Serveur indisponible' });
-     */
-    emit(event, data = null) {
-        if (this.#destroyed || !this.#listeners || !this.#listeners.has(event)) {
-            return this;
-        }
-        for (const callback of Array.from(this.#listeners.get(event))) {
-            callback.call(this, data);
         }
         return this;
     }
