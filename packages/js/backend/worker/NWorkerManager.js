@@ -11,48 +11,9 @@
  */
 
 import { NWorker } from './NWorker.js';
+import { NManagedWorker } from './NManagedWorker.js';
 import { NException } from '../core/NException.js';
 import { NUtil } from '../utils/NUtil.js';
-
-/**
- * @class NManagedWorker
- * @extends NWorker
- * @description Sous-classe interne de `NWorker` utilisée par `NWorkerManager` pour relayer les requêtes inverses
- * du Worker (`onRequest`) vers les gestionnaires d'actions du manager (notamment `'requestApp'`).
- *
- * @private
- */
-class NManagedWorker extends NWorker {
-    /**
-     * Référence vers le gestionnaire parent.
-     * @type {NWorkerManager}
-     */
-    #manager = null;
-
-    /**
-     * Crée une instance de worker géré.
-     * @param {Object} options - Options transmises à NWorker.
-     * @param {NWorkerManager} manager - Instance de NWorkerManager.
-     */
-    constructor(options, manager) {
-        super(options);
-        this.#manager = manager;
-    }
-
-    /**
-     * Traite les requêtes inverses envoyées par le Worker vers le thread principal.
-     * @param {string} action - Nom de l'action demandée par le Worker.
-     * @param {Object} params - Paramètres transmis.
-     * @param {Function|null} onUpdate - Callback de progression.
-     * @returns {Promise<any>}
-     */
-    async onRequest(action, params, onUpdate) {
-        if (this.#manager && this.#manager.hasAction(action)) {
-            return this.#manager.executeAction(action, params, onUpdate);
-        }
-        return super.onRequest(action, params, onUpdate);
-    }
-}
 
 /**
  * @class NWorkerManager

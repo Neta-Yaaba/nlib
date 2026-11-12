@@ -25,6 +25,8 @@ import { NEnvironment } from '../environment/NEnvironment.js';
 import { NConfig } from '../config/NConfig.js';
 import { NSystem } from '../system/NSystem.js';
 import { NWorkerManager } from '../worker/NWorkerManager.js';
+import { NNetwork } from '../requests/NNetwork.js';
+import { NDatabase } from '../database/NDatabase.js';
 
 /**
  * @class NUtil
@@ -99,6 +101,12 @@ export class NUtil {
 
     /** @type {NWorkerManager|null} */
     static #worker = null;
+
+    /** @type {NNetwork|null} */
+    static #network = null;
+
+    /** @type {NDatabase|null} */
+    static #database = null;
 
     // =========================================================================
     // Accesseurs statiques (Getters avec initialisation paresseuse au 1er appel)
@@ -403,6 +411,80 @@ export class NUtil {
             this.#worker = new NWorkerManager();
         }
         return this.#worker;
+    }
+
+    /**
+     * Retourne l'instance partagée de `NNetwork` (instanciée uniquement lors du premier accès).
+     *
+     * @returns {NNetwork} Instance de `NNetwork`.
+     *
+     * @example <caption>Exemple 1 : Requête GET simple avec NUtil.network</caption>
+     * const res = await NUtil.network.get('https://api.example.com/items');
+     * console.log(res.data);
+     *
+     * @example <caption>Exemple 2 : Téléchargement avec chunks de 1 Mo max</caption>
+     * const file = await NUtil.network.downloadFile('https://example.com/archive.zip', {
+     *     onProgress: ({ percent }) => console.log(`Téléchargement : ${percent}%`)
+     * });
+     */
+    static get network() {
+        if (!this.#network) {
+            this.#network = new NNetwork();
+        }
+        return this.#network;
+    }
+
+    /**
+     * Alias court vers `NUtil.network`.
+     *
+     * @returns {NNetwork} Instance de `NNetwork`.
+     *
+     * @example <caption>Exemple 1 : Requête POST via alias net</caption>
+     * const res = await NUtil.net.post('/api/save', { status: 'ok' });
+     *
+     * @example <caption>Exemple 2 : Téléversement par chunk</caption>
+     * await NUtil.net.uploadFile('/api/upload', myFile);
+     */
+    static get net() {
+        return this.network;
+    }
+
+    /**
+     * Retourne l'instance partagée par défaut de `NDatabase` (instanciée uniquement lors du premier accès).
+     * Regroupe de manière centralisée les sous-moteurs `sql`, `idb` (`indexed`) et `store` (`storage`).
+     *
+     * @returns {NDatabase} Instance de `NDatabase`.
+     *
+     * @example <caption>Exemple 1 : Utiliser les sous-moteurs via NUtil.database</caption>
+     * await NUtil.database.sql.insert('users', { name: 'Alice' });
+     * await NUtil.database.idb.add('logs', { action: 'start' });
+     * NUtil.database.store.set('theme', 'dark');
+     *
+     * @example <caption>Exemple 2 : Initialisation coordonnée</caption>
+     * await NUtil.database.init();
+     */
+    static get database() {
+        if (!this.#database) {
+            this.#database = new NDatabase();
+        }
+        return this.#database;
+    }
+
+    /**
+     * Alias court vers `NUtil.database`.
+     * Donne un accès direct aux trois sous-moteurs : `NUtil.db.sql`, `NUtil.db.idb`, `NUtil.db.store`.
+     *
+     * @returns {NDatabase} Instance de `NDatabase`.
+     *
+     * @example <caption>Exemple 1 : Requête SQL via NUtil.db.sql</caption>
+     * const user = await NUtil.db.sql.selectOne('SELECT * FROM users WHERE id = ?', [1]);
+     *
+     * @example <caption>Exemple 2 : Stockage clé-valeur via NUtil.db.store et IndexedDB via NUtil.db.idb</caption>
+     * NUtil.db.store.set('lang', 'fr');
+     * await NUtil.db.idb.put('cart', { item: 'pain' });
+     */
+    static get db() {
+        return this.database;
     }
 
     // =========================================================================
