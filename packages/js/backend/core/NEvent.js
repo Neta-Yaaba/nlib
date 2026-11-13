@@ -4,9 +4,14 @@
  * @description Gestionnaire d'événements autonome avec allocation mémoire à la demande (*Lazy Initialization*)
  * dans l'écosystème NLib.
  *
- * Utilisé notamment par `NObject` via sa propriété paresseuse `obj.event`, ou directement
- * comme bus d'événements indépendant (`new NEvent()`).
+ * Conçu selon la philosophie Zero Throw / Zero Reject :
+ * - Aucune exception n'est levée lors des émissions ou abonnements,
+ * - Les erreurs survenues dans les fonctions de rappel (listeners) sont capturées et journalisées via `NUtil.log.error`
+ *   sans interrompre les autres écouteurs,
+ * - `waitFor()` résout toujours de façon sûre (valeur ou `null` en cas d'expiration/erreur, jamais de rejet).
  */
+
+import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NEvent
@@ -100,8 +105,43 @@ export class NEvent {
         return !this.#listeners || this.#listeners.size === 0;
     }
 
+    /**
+     * Retourne l'objet cible utilisé comme contexte `this` dans les fonctions de rappel.
+     *
+     * @returns {any} Contexte cible ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lecture du contexte cible défini</caption>
+     * const proprietaire = { service: 'Auth' };
+     * const evt = new NEvent(proprietaire);
+     * console.log(evt.target.service); // 'Auth'
+     *
+     * @example <caption>Exemple 2 : Lecture sur instance autonome sans cible</caption>
+     * const evt = new NEvent();
+     * console.log(evt.target); // null
+     */
+    get target() {
+        return this.#target;
+    }
+
+    /**
+     * Accès direct à la classe utilitaire transversale `NUtil`.
+     *
+     * @returns {typeof NUtil} Classe utilitaire `NUtil`.
+     *
+     * @example <caption>Exemple 1 : Journaliser un message d'information</caption>
+     * const evt = new NEvent();
+     * evt.util.log.info('Bus d\'événements initialisé');
+     *
+     * @example <caption>Exemple 2 : Accéder aux modules utilitaires</caption>
+     * const evt = new NEvent();
+     * console.log(evt.util.str.slug('Mon Titre'));
+     */
+    get util() {
+        return NUtil;
+    }
+
     // =========================================================================
-    // Méthodes publiques — Abonnement, Désabonnement & Émission
+    // Méthodes publiques — Consultation & Décompte
     // =========================================================================
 
     /**
@@ -127,7 +167,7 @@ export class NEvent {
      * console.log(evt.has('message', () => {})); // false
      */
     has(event, callback) {
-        if (!this.#listeners || !this.#listeners.has(event)) {
+        if (typeof event !== 'string' || !this.#listeners || !this.#listeners.has(event)) {
             return false;
         }
         const set = this.#listeners.get(event);
@@ -198,7 +238,7 @@ export class NEvent {
      * evt.on('open', () => {}).on('close', () => {});
      * console.log(evt.eventNames()); // ['open', 'close']
      *
-     * @example <caption>Exemple 2 : Aucun événement</caption>
+     * @example <caption>Exemple 2 : Aucun événement enregistré</caption>
      * const evt = new NEvent();
      * console.log(evt.eventNames()); // []
      */
@@ -206,13 +246,18 @@ export class NEvent {
         return this.#listeners ? Array.from(this.#listeners.keys()) : [];
     }
 
+    // =========================================================================
+    // Méthodes publiques — Abonnement, Désabonnement & Émission
+    // =========================================================================
+
     /**
      * Abonne une fonction de rappel (`callback`) à un événement nommé.
      * Initialise automatiquement `this.#listeners = new Map()` lors du tout premier abonnement.
+     * Si l'événement ou le rappel est invalide, consigne un avertissement et retourne `this` sans lever d'exception.
      *
      * @param {string} event - Nom de l'événement à écouter.
      * @param {Function} callback - Fonction exécutée lorsque l'événement est émis.
-     * @returns {this} L'instance courante pour permettre le chaînage.
+     * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Écouter un événement personnalisé</caption>
      * const evt = new NEvent();
@@ -224,7 +269,19 @@ export class NEvent {
      * evt.on('start', () => {}).on('stop', () => {});
      */
     on(event, callback) {
-        if (typeof event !== 'string' || event.length === 0 || typeof callback !== 'function') {
+        if (typeof event !== 'string' || event.trim().length === 0) {
+            NUtil.log.warn('NEvent.on: Nom d\'événement invalide fourni.', {
+                code: 'WARN_EVENT_INVALID',
+                event
+            });
+            return this;
+        }
+        if (typeof callback !== 'function') {
+            NUtil.log.warn(`NEvent.on: Écouteur de type fonction attendu pour "${event}".`, {
+                code: 'WARN_LISTENER_NOT_FUNCTION',
+                event,
+                callback
+            });
             return this;
         }
         if (!this.#listeners) {
@@ -243,7 +300,7 @@ export class NEvent {
      *
      * @param {string} event - Nom de l'événement à écouter une seule fois.
      * @param {Function} callback - Fonction exécutée lors de la première émission.
-     * @returns {this} L'instance courante pour permettre le chaînage.
+     * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Réagir uniquement au premier événement</caption>
      * const evt = new NEvent();
@@ -258,12 +315,34 @@ export class NEvent {
      * console.log(evt.isEmpty); // true
      */
     once(event, callback) {
+        if (typeof event !== 'string' || event.trim().length === 0) {
+            NUtil.log.warn('NEvent.once: Nom d\'événement invalide fourni.', {
+                code: 'WARN_EVENT_INVALID',
+                event
+            });
+            return this;
+        }
         if (typeof callback !== 'function') {
+            NUtil.log.warn(`NEvent.once: Écouteur de type fonction attendu pour "${event}".`, {
+                code: 'WARN_LISTENER_NOT_FUNCTION',
+                event,
+                callback
+            });
             return this;
         }
         const wrapper = (payload) => {
             this.off(event, wrapper);
-            callback.call(this.#target ?? this, payload);
+            try {
+                callback.call(this.#target ?? this, payload);
+            } catch (error) {
+                NUtil.log.error(`NEvent: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
+                    code: 'ERR_EVENT_ONCE_LISTENER',
+                    event,
+                    error,
+                    stack: error?.stack,
+                    target: this.#target ?? this
+                });
+            }
         };
         return this.on(event, wrapper);
     }
@@ -290,7 +369,7 @@ export class NEvent {
      * console.log(evt.has('log')); // false
      */
     off(event, callback) {
-        if (!this.#listeners || !this.#listeners.has(event)) {
+        if (typeof event !== 'string' || !this.#listeners || !this.#listeners.has(event)) {
             return this;
         }
         if (!callback) {
@@ -311,6 +390,8 @@ export class NEvent {
     /**
      * Émet un événement et déclenche de manière synchrone tous les écouteurs enregistrés sur cet événement.
      * N'effectue aucune allocation si aucun écouteur n'est enregistré (`#listeners === null`).
+     * Chaque écouteur est encapsulé dans un bloc sécurisé : si une fonction de rappel lève une erreur,
+     * celle-ci est journalisée sans interrompre les autres écouteurs ni le code appelant (Zero Throw).
      *
      * @param {string} event - Nom de l'événement à émettre.
      * @param {any} [data=null] - Données transmises en argument à chaque écouteur.
@@ -323,25 +404,39 @@ export class NEvent {
      *
      * @example <caption>Exemple 2 : Émettre un événement avec un objet de données</caption>
      * const evt = new NEvent();
-     * evt.on('erreur', ({ code, message }) => console.error(`Erreur ${code} : ${message}`));
+     * evt.on('erreur', ({ code, message }) => NUtil.log.error(`Erreur ${code} : ${message}`));
      * evt.emit('erreur', { code: 500, message: 'Serveur indisponible' });
      */
     emit(event, data = null) {
-        if (!this.#listeners || !this.#listeners.has(event)) {
+        if (typeof event !== 'string' || !this.#listeners || !this.#listeners.has(event)) {
             return this;
         }
         const ctx = this.#target ?? this;
-        for (const callback of Array.from(this.#listeners.get(event))) {
-            callback.call(ctx, data);
+        const listenersList = Array.from(this.#listeners.get(event));
+        for (const callback of listenersList) {
+            try {
+                callback.call(ctx, data);
+            } catch (error) {
+                NUtil.log.error(`NEvent: Erreur lors de l'exécution d'un écouteur pour l'événement "${event}".`, {
+                    code: 'ERR_EVENT_LISTENER',
+                    event,
+                    error,
+                    stack: error?.stack,
+                    target: ctx
+                });
+            }
         }
         return this;
     }
 
     /**
      * Attend de manière asynchrone (`Promise`) la prochaine émission d'un événement.
+     * Respecte rigoureusement la politique Zero Reject : ne rejette jamais la promesse.
+     * En cas de délai expiré ou de nom d'événement invalide, résout avec `null`.
      *
      * @param {string} event - Nom de l'événement attendu.
-     * @returns {Promise<any>} Promesse résolue avec les données de l'événement.
+     * @param {number} [timeoutMs=0] - Délai d'expiration optionnel en millisecondes (0 = sans limite).
+     * @returns {Promise<any>} Promesse résolue avec les données de l'événement ou `null` en cas d'expiration/erreur.
      *
      * @example <caption>Exemple 1 : Attendre un événement avec await</caption>
      * const evt = new NEvent();
@@ -349,21 +444,47 @@ export class NEvent {
      * const res = await evt.waitFor('done');
      * console.log(res.ok); // true
      *
-     * @example <caption>Exemple 2 : Se désabonne automatiquement dès réception</caption>
+     * @example <caption>Exemple 2 : Attente avec délai maximal d'expiration (timeout)</caption>
      * const evt = new NEvent();
-     * queueMicrotask(() => evt.emit('ready', 42));
-     * console.log(await evt.waitFor('ready')); // 42
+     * const resultat = await evt.waitFor('introuvable', 50);
+     * console.log(resultat); // null (délai dépassé sans lever d'erreur)
      */
-    waitFor(event) {
+    waitFor(event, timeoutMs = 0) {
+        if (typeof event !== 'string' || event.trim().length === 0) {
+            NUtil.log.warn('NEvent.waitFor: Nom d\'événement invalide.', {
+                code: 'WARN_EVENT_INVALID',
+                event
+            });
+            return Promise.resolve(null);
+        }
         return new Promise((resolve) => {
-            this.once(event, (data) => resolve(data));
+            let timer = null;
+            const handler = (data) => {
+                if (timer) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+                resolve(data);
+            };
+            this.once(event, handler);
+            if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+                timer = setTimeout(() => {
+                    this.off(event, handler);
+                    NUtil.log.warn(`NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
+                        code: 'WARN_EVENT_TIMEOUT',
+                        event,
+                        timeoutMs
+                    });
+                    resolve(null);
+                }, timeoutMs);
+            }
         });
     }
 
     /**
      * Supprime tous les écouteurs de tous les événements et libère la mémoire (`#listeners = null`).
      *
-     * @returns {this} L'instance courante.
+     * @returns {this} L'instance courante pour permettre le chaînage.
      *
      * @example <caption>Exemple 1 : Nettoyer tous les écouteurs</caption>
      * const evt = new NEvent();
@@ -381,7 +502,29 @@ export class NEvent {
         }
         return this;
     }
+
+    // =========================================================================
+    // Méthodes statiques
+    // =========================================================================
+
+    /**
+     * Méthode de fabrique (Factory) permettant d'instancier `NEvent` sans utiliser `new`.
+     *
+     * @param {any} [target=null] - Objet cible optionnel rattaché à l'instance.
+     * @returns {NEvent} Nouvelle instance créée.
+     *
+     * @example <caption>Exemple 1 : Création autonome via NEvent.create()</caption>
+     * const bus = NEvent.create();
+     * bus.emit('initialise');
+     *
+     * @example <caption>Exemple 2 : Création avec contexte cible rattaché</caption>
+     * const ctx = { nom: 'ModulePrincipal' };
+     * const bus = NEvent.create(ctx);
+     * console.log(bus.target.nom); // 'ModulePrincipal'
+     */
+    static create(target = null) {
+        return new NEvent(target);
+    }
 }
 
 export default NEvent;
-

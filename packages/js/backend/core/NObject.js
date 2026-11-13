@@ -9,8 +9,8 @@
  * - et de la sérialisation / clonage (`toJSON`, `fromJSON`, `clone`).
  */
 
-import { NException } from './NException.js';
 import { NEvent } from './NEvent.js';
+import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NObject
@@ -106,14 +106,25 @@ export class NObject {
      * obj.initialize();
      */
     constructor(options = {}) {
-        if (options.state && typeof options.state === 'object') {
-            const entries = Object.entries(options.state);
-            if (entries.length > 0) {
-                this.#state = new Map(entries);
+        const opts = (options && typeof options === 'object') ? options : {};
+        if (opts.state && typeof opts.state === 'object') {
+            try {
+                const entries = Object.entries(opts.state);
+                if (entries.length > 0) {
+                    this.#state = new Map(entries);
+                }
+            } catch (error) {
+                this.util.log.error(`NObject: Erreur lors de l'initialisation de l'état dans le constructeur de ${this.className}.`, {
+                    code: 'ERR_INIT_STATE',
+                    error,
+                    stack: error?.stack,
+                    state: opts.state,
+                    target: this
+                });
             }
         }
 
-        if (options.autoInit !== false) {
+        if (opts.autoInit !== false) {
             this.initialize();
         }
     }
@@ -183,6 +194,30 @@ export class NObject {
         return this.#state ? Object.fromEntries(this.#state) : {};
     }
 
+    // =========================================================================
+    // Getters — Façade Utilitaire NUtil
+    // =========================================================================
+
+    /**
+     * Accès direct à la classe utilitaire transversale NUtil.
+     * Permet d'accéder à l'ensemble des modules utilitaires (log, str, num, date, crypto, etc.).
+     *
+     * @returns {typeof NUtil} Classe utilitaire NUtil.
+     *
+     * @example <caption>Exemple 1 : Journaliser un message ou une erreur via this.util.log</caption>
+     * const obj = new NObject();
+     * obj.util.log.info('Opération réussie');
+     * obj.util.log.error('Échec de traitement', { code: 'ERR_TRAITEMENT' });
+     *
+     * @example <caption>Exemple 2 : Manipulation de chaînes ou dates via this.util</caption>
+     * const obj = new NObject();
+     * console.log(obj.util.str.camelCase('nom_utilisateur'));
+     * console.log(obj.util.date.nowDate());
+     */
+    get util() {
+        return NUtil;
+    }
+
     /**
      * Indique si l'instance est initialisée.
      *
@@ -228,9 +263,9 @@ export class NObject {
      * Initialise l'instance après vérification par `#validate()`.
      * Si `#event` a été initialisé, émet l'événement `'initialize'` avec `{ target: this }`.
      * Si l'instance est déjà initialisée ou détruite, la méthode ne fait rien.
+     * En cas d'échec de validation, consigne l'erreur dans `NLog` et retourne l'instance sans lever d'exception.
      *
-     * @throws {NException} Si la validation interne `#validate()` échoue (`code: 'ERR_INIT_VALIDATION'`).
-     * @returns {this} L'instance courante pour permettre le chaînage.
+     * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Initialisation manuelle avec écoute de l'événement 'initialize'</caption>
      * const obj = new NObject({ autoInit: false });
@@ -246,15 +281,26 @@ export class NObject {
         if (this.#initialized || this.#destroyed) {
             return this;
         }
-        if (!this.#validate()) {
-            NException.create(
-                `NObject: Échec de validation lors de l'initialisation de ${this.className}.`,
-                { code: 'ERR_INIT_VALIDATION' }
-            ).throw();
-        }
-        this.#initialized = true;
-        if (this.#event) {
-            this.#event.emit('initialize', { target: this });
+        try {
+            if (!this.#validate()) {
+                this.util.log.error(`NObject: Échec de validation lors de l'initialisation de ${this.className}.`, {
+                    code: 'ERR_INIT_VALIDATION',
+                    className: this.className,
+                    target: this
+                });
+                return this;
+            }
+            this.#initialized = true;
+            if (this.#event) {
+                this.#event.emit('initialize', { target: this });
+            }
+        } catch (error) {
+            this.util.log.error(`NObject: Erreur inattendue lors de l'initialisation de ${this.className}.`, {
+                code: 'ERR_INITIALIZE_FAILED',
+                error,
+                stack: error?.stack,
+                target: this
+            });
         }
         return this;
     }
@@ -281,16 +327,26 @@ export class NObject {
         if (this.#destroyed) {
             return;
         }
-        if (this.#event) {
-            this.#event.emit('beforeDestroy', { target: this });
-            this.#event.clear();
-            this.#event = null;
+        try {
+            if (this.#event) {
+                this.#event.emit('beforeDestroy', { target: this });
+                this.#event.clear();
+                this.#event = null;
+            }
+            if (this.#state) {
+                this.#state.clear();
+                this.#state = null;
+            }
+        } catch (error) {
+            this.util.log.error(`NObject: Erreur lors de la destruction de ${this.className}.`, {
+                code: 'ERR_DESTROY_FAILED',
+                error,
+                stack: error?.stack,
+                target: this
+            });
+        } finally {
+            this.#destroyed = true;
         }
-        if (this.#state) {
-            this.#state.clear();
-            this.#state = null;
-        }
-        this.#destroyed = true;
     }
 
     // =========================================================================
@@ -314,7 +370,10 @@ export class NObject {
      * console.log(obj.hasState('jeton')); // true (la clé existe même si sa valeur vaut null)
      */
     hasState(key) {
-        return Boolean(this.#state && this.#state.has(key));
+        if (!this.#state || key === null || key === undefined) {
+            return false;
+        }
+        return this.#state.has(String(key));
     }
 
     /**
@@ -334,10 +393,14 @@ export class NObject {
      * console.log(obj.getState('hote', '127.0.0.1')); // '127.0.0.1'
      */
     getState(key, defaultValue = undefined) {
-        if (!this.#state || !this.#state.has(key)) {
+        if (!this.#state || key === null || key === undefined) {
             return defaultValue;
         }
-        return this.#state.get(key);
+        const keyStr = String(key);
+        if (!this.#state.has(keyStr)) {
+            return defaultValue;
+        }
+        return this.#state.get(keyStr);
     }
 
     /**
@@ -368,27 +431,43 @@ export class NObject {
         if (this.#destroyed) {
             return this;
         }
-        const entries = (typeof keyOrObject === 'object' && keyOrObject !== null)
-            ? Object.entries(keyOrObject)
-            : [[keyOrObject, value]];
-
-        if (entries.length === 0) {
+        if (keyOrObject === null || keyOrObject === undefined) {
             return this;
         }
+        try {
+            const entries = (typeof keyOrObject === 'object' && keyOrObject !== null)
+                ? Object.entries(keyOrObject)
+                : [[keyOrObject, value]];
 
-        if (!this.#state) {
-            this.#state = new Map();
-        }
+            if (entries.length === 0) {
+                return this;
+            }
 
-        for (const [k, v] of entries) {
-            const oldValue = this.#state.get(k);
-            if (oldValue !== v) {
-                this.#state.set(k, v);
-                if (this.#event) {
-                    this.#event.emit(`state:${k}`, { key: k, value: v, oldValue, target: this });
-                    this.#event.emit('stateChange', { key: k, value: v, oldValue, target: this });
+            if (!this.#state) {
+                this.#state = new Map();
+            }
+
+            for (const [k, v] of entries) {
+                if (k === null || k === undefined) {
+                    continue;
+                }
+                const keyStr = String(k);
+                const oldValue = this.#state.get(keyStr);
+                if (oldValue !== v) {
+                    this.#state.set(keyStr, v);
+                    if (this.#event) {
+                        this.#event.emit(`state:${keyStr}`, { key: keyStr, value: v, oldValue, target: this });
+                        this.#event.emit('stateChange', { key: keyStr, value: v, oldValue, target: this });
+                    }
                 }
             }
+        } catch (error) {
+            this.util.log.error(`NObject: Erreur lors de la modification de l'état sur ${this.className}.`, {
+                code: 'ERR_SET_STATE_FAILED',
+                error,
+                stack: error?.stack,
+                target: this
+            });
         }
         return this;
     }
@@ -412,10 +491,23 @@ export class NObject {
      * console.log(jsonTexte);
      */
     toJSON() {
-        return {
-            className: this.className,
-            state: this.state
-        };
+        try {
+            return {
+                className: this.className,
+                state: this.state
+            };
+        } catch (error) {
+            this.util.log.error(`NObject: Erreur lors de la sérialisation toJSON sur ${this.className}.`, {
+                code: 'ERR_TO_JSON_FAILED',
+                error,
+                stack: error?.stack,
+                target: this
+            });
+            return {
+                className: this.className,
+                state: {}
+            };
+        }
     }
 
     /**
@@ -437,8 +529,26 @@ export class NObject {
      * console.log(cible.getState('jeton')); // 'abc123'
      */
     fromJSON(data = {}) {
-        if (data.state && typeof data.state === 'object') {
-            this.setState(data.state);
+        if (!data || typeof data !== 'object') {
+            this.util.log.warn(`NObject: Données invalides fournies à fromJSON sur ${this.className}.`, {
+                code: 'WARN_FROM_JSON_INVALID',
+                data,
+                target: this
+            });
+            return this;
+        }
+        try {
+            if (data.state && typeof data.state === 'object') {
+                this.setState(data.state);
+            }
+        } catch (error) {
+            this.util.log.error(`NObject: Erreur lors de la désérialisation fromJSON sur ${this.className}.`, {
+                code: 'ERR_FROM_JSON_FAILED',
+                error,
+                stack: error?.stack,
+                data,
+                target: this
+            });
         }
         return this;
     }
@@ -466,11 +576,21 @@ export class NObject {
         if (!this.#state) {
             return new Cls();
         }
-        return new Cls({
-            state: typeof structuredClone === 'function'
-                ? structuredClone(this.state)
-                : JSON.parse(JSON.stringify(this.state))
-        });
+        try {
+            return new Cls({
+                state: typeof structuredClone === 'function'
+                    ? structuredClone(this.state)
+                    : JSON.parse(JSON.stringify(this.state))
+            });
+        } catch (error) {
+            this.util.log.error(`NObject: Échec du clonage de l'instance ${this.className}.`, {
+                code: 'ERR_CLONE_FAILED',
+                error,
+                stack: error?.stack,
+                target: this
+            });
+            return new Cls({ state: { ...this.state } });
+        }
     }
 
     /**
@@ -499,7 +619,7 @@ export class NObject {
      * Méthode de fabrique (Factory) permettant d'instancier la classe (ou une sous-classe) sans utiliser `new`.
      *
      * @param {Object} [options={}] - Options passées au constructeur.
-     * @returns {NObject} Nouvelle instance créée.
+     * @returns {NObject|null} Nouvelle instance créée ou `null` en cas d'erreur.
      *
      * @example <caption>Exemple 1 : Création directe via NObject.create()</caption>
      * const obj = NObject.create({ state: { pret: true } });
@@ -510,7 +630,17 @@ export class NObject {
      * console.log(srv instanceof Service); // true
      */
     static create(options = {}) {
-        return new this(options);
+        try {
+            return new this(options);
+        } catch (error) {
+            NUtil.log.error(`NObject: Échec de l'instanciation via la fabrique create() pour ${this.name}.`, {
+                code: 'ERR_CREATE_FAILED',
+                error,
+                stack: error?.stack,
+                options
+            });
+            return null;
+        }
     }
 
     /**
@@ -528,7 +658,11 @@ export class NObject {
      * console.log(NObject.isNObject(null));     // false
      */
     static isNObject(value) {
-        return value instanceof NObject;
+        try {
+            return value instanceof NObject;
+        } catch {
+            return false;
+        }
     }
 
     // =========================================================================
@@ -543,7 +677,7 @@ export class NObject {
      *
      * @example <caption>Exemple 1 : Appel interne lors de initialize()</caption>
      * // Exécuté automatiquement par this.initialize() :
-     * // if (!this.#validate()) throw new Error(...);
+     * // if (!this.#validate()) this.util.log.error(...);
      *
      * @example <caption>Exemple 2 : Comportement par défaut</caption>
      * // Retourne toujours true lorsque l'objet est dans un état cohérent.

@@ -14,6 +14,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NPassword
  * @description Utilitaire de gestion, validation, génération et hachage de mots de passe sans état interne.
@@ -527,25 +529,34 @@ export class NPassword {
             globalThis.crypto.subtle &&
             typeof globalThis.crypto.subtle.importKey === 'function'
         ) {
-            const baseKey = await globalThis.crypto.subtle.importKey(
-                'raw',
-                pwdBytes,
-                { name: 'PBKDF2' },
-                false,
-                ['deriveBits']
-            );
-            const derivedBuffer = await globalThis.crypto.subtle.deriveBits(
-                {
-                    name: 'PBKDF2',
-                    salt: saltBytes,
-                    iterations,
-                    hash: 'SHA-256'
-                },
-                baseKey,
-                256
-            );
-            derivedBytes = new Uint8Array(derivedBuffer);
-        } else {
+            try {
+                const baseKey = await globalThis.crypto.subtle.importKey(
+                    'raw',
+                    pwdBytes,
+                    { name: 'PBKDF2' },
+                    false,
+                    ['deriveBits']
+                );
+                const derivedBuffer = await globalThis.crypto.subtle.deriveBits(
+                    {
+                        name: 'PBKDF2',
+                        salt: saltBytes,
+                        iterations,
+                        hash: 'SHA-256'
+                    },
+                    baseKey,
+                    256
+                );
+                derivedBytes = new Uint8Array(derivedBuffer);
+            } catch (err) {
+                NUtil.log.warn('NPassword.hash: Échec WebCrypto PBKDF2, bascule sur le moteur de repli pur JS.', {
+                    code: 'WARN_PBKDF2_FALLBACK',
+                    cause: err
+                });
+            }
+        }
+
+        if (!derivedBytes) {
             // Alternative PBKDF2-HMAC-SHA256 en pur JS (1 bloc de 32 octets = 256 bits)
             const saltAndIndex = new Uint8Array(saltBytes.length + 4);
             saltAndIndex.set(saltBytes, 0);

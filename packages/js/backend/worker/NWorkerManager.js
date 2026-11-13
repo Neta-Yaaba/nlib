@@ -12,7 +12,6 @@
 
 import { NWorker } from './NWorker.js';
 import { NManagedWorker } from './NManagedWorker.js';
-import { NException } from '../core/NException.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -64,19 +63,22 @@ export class NWorkerManager {
     // =========================================================================
 
     /**
-     * Crée le gestionnaire et enregistre l'action par défaut `'requestApp'`
-     * (redirigée vers `NUtil.env.requestApp(params)` sur le thread principal).
+     * Crée le gestionnaire et enregistre l'action par défaut `'invokeNative'`
+     * (redirigée vers `NUtil.sys.invokeNative(params)` sur le thread principal).
      *
      * @example <caption>Exemple 1 : Instance partagée (recommandé)</caption>
      * const manager = NUtil.worker;
      *
      * @example <caption>Exemple 2 : Instance indépendante</caption>
      * const manager = new NWorkerManager();
-     * console.log(manager.hasAction('requestApp')); // true
+     * console.log(manager.hasAction('invokeNative')); // true
      */
     constructor() {
+        this.registerAction('invokeNative', async (params) => {
+            return NUtil.sys.invokeNative(params);
+        });
         this.registerAction('requestApp', async (params) => {
-            return NUtil.env.requestApp(params);
+            return NUtil.sys.invokeNative(params);
         });
     }
 
@@ -245,12 +247,29 @@ export class NWorkerManager {
     async executeAction(action, params = {}, onUpdate = null) {
         const handler = this.#actions?.get(action);
         if (typeof handler !== 'function') {
+            NUtil.log.warn(`NWorkerManager: Action "${action}" non enregistrée.`);
             return {
+                success: false,
+                code: 'ACTION_NOT_FOUND',
                 error: 'ACTION_NOT_FOUND',
                 message: `Action "${action}" non enregistrée dans le WorkerManager.`
             };
         }
-        return handler(params, onUpdate);
+        try {
+            const res = await handler(params, onUpdate);
+            return res;
+        } catch (err) {
+            NUtil.log.error(`NWorkerManager: Erreur lors de l'exécution de l'action "${action}".`, {
+                code: 'ACTION_EXECUTION_ERROR',
+                cause: err
+            });
+            return {
+                success: false,
+                code: 'ACTION_EXECUTION_ERROR',
+                error: 'ACTION_EXECUTION_ERROR',
+                message: err?.message ?? String(err)
+            };
+        }
     }
 
     // =========================================================================
@@ -280,8 +299,7 @@ export class NWorkerManager {
      *
      * @param {string} name - Nom unique.
      * @param {NWorker} worker - Instance à enregistrer.
-     * @returns {NWorker} Worker enregistré.
-     * @throws {NException} Si `worker` n'est pas une instance de `NWorker` (`WORKER_INVALID`).
+     * @returns {NWorker|null} Worker enregistré ou `null` en cas d'argument invalide.
      *
      * @example <caption>Exemple 1 : Enregistrer une sous-classe personnalisée de NWorker</caption>
      * class MyWorker extends NWorker {}
@@ -292,7 +310,12 @@ export class NWorkerManager {
      */
     add(name, worker) {
         if (!(worker instanceof NWorker)) {
-            throw new NException('NWorkerManager.add : instance NWorker attendue.', { code: 'WORKER_INVALID' });
+            NUtil.log.error('NWorkerManager.add : instance NWorker attendue.', {
+                code: 'WORKER_INVALID',
+                name,
+                target: worker
+            });
+            return null;
         }
         if (this.has(name)) {
             this.terminate(name);
@@ -413,21 +436,25 @@ export class NWorkerManager {
      * @param {string} action - Nom de l'action à exécuter dans le worker.
      * @param {Object} [params={}] - Paramètres d'entrée.
      * @param {Function|null} [onUpdate=null] - Callback de progression.
-     * @returns {Promise<{ id?: string, action: string, params: any, result: any, error?: any }>}
+     * @param {number|null} [timeout=null] - Délai d'attente maximum en millisecondes (30000ms par défaut).
+     * @returns {Promise<{ id?: string, action: string, params: any, result: any, error?: any, success?: boolean, code?: string }>}
      *
      * @example <caption>Exemple 1 : Requête vers un worker</caption>
      * const res = await NUtil.worker.request('sql', 'query', { sql: 'SELECT * FROM users' });
      * console.log(res.result);
      *
-     * @example <caption>Exemple 2 : Requête avec notification de progression</caption>
+     * @example <caption>Exemple 2 : Requête avec notification de progression et délai</caption>
      * const res = await NUtil.worker.request('download', 'fetch', { url: '...' }, (step) => {
      *     console.log('Avancement :', step.result);
-     * });
+     * }, 15000);
      */
-    async request(name, action, params = {}, onUpdate = null) {
+    async request(name, action, params = {}, onUpdate = null, timeout = null) {
         const worker = this.get(name);
         if (!worker) {
+            NUtil.log.warn(`NWorkerManager.request: Aucun worker ou pool nommé "${name}".`);
             return {
+                success: false,
+                code: 'WORKER_NOT_FOUND',
                 action,
                 params,
                 result: {
@@ -436,7 +463,7 @@ export class NWorkerManager {
                 }
             };
         }
-        return worker.request(action, params, onUpdate);
+        return worker.request(action, params, onUpdate, timeout);
     }
 
     // =========================================================================

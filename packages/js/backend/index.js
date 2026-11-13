@@ -8,7 +8,9 @@
 // Core
 export { NObject } from './core/NObject.js';
 export { NEvent } from './core/NEvent.js';
-export { NException } from './core/NException.js';
+
+// Log & Journalisation
+export { NLog } from './log/NLog.js';
 
 // Utils
 export { NUtil } from './utils/NUtil.js';
@@ -34,8 +36,10 @@ export { NWorker } from './worker/NWorker.js';
 export { NManagedWorker } from './worker/NManagedWorker.js';
 export { NWorkerManager } from './worker/NWorkerManager.js';
 
-// Requêtes réseau
+// Requêtes réseau & tables
 export { NNetwork } from './requests/NNetwork.js';
+export { NTableRequest } from './requests/NTableRequest.js';
+export { NRequestManager } from './requests/NRequestManager.js';
 
 // Stockage & bases de données
 export { NDatabase } from './database/NDatabase.js';

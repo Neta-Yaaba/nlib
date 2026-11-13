@@ -13,6 +13,7 @@
     "core",
     "database",
     "environment",
+    "log",
     "requests",
     "system",
     "utils",

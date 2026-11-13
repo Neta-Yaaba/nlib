@@ -2,7 +2,9 @@
  * @file NNetwork.js
  * @package @nlib/js-backend
  * @description Module réseau universel pour l'écosystème NLib. Prend en charge les requêtes HTTP/HTTPS
- * avec sélection de moteur (`fetch` ou `XMLHttpRequest`), la récupération de métadonnées de fichiers (HEAD),
+ * avec sélection de moteur (`fetch`, `XMLHttpRequest` ou requêtes natives de l'OS via pont WebView / application
+ * pour contourner les restrictions CORS), le chiffrement asymétrique et hybride bout-en-bout (RSA + AES)
+ * avec négociation automatique des clés (`requestAuthentication`), la récupération de métadonnées de fichiers (HEAD),
  * le téléchargement unitaire ou multiple (direct ou par tranches/chunks de 1 Mo max avec suivi de progression),
  * et le téléversement (upload) unitaire ou multiple (direct ou par chunks de 1 Mo max en FormData ou binaire avec headers).
  *
@@ -10,35 +12,28 @@
  * et intégration via `NUtil.network`.
  */
 
-import { NException } from '../core/NException.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NNetwork
  * @description Gestionnaire universel de requêtes réseau, transferts et flux de fichiers (upload/download)
- * découpés automatiquement en tranches de 1 Mo maximum.
+ * découpés automatiquement en tranches de 1 Mo maximum, requêtes chiffrées de bout-en-bout (RSA-OAEP + AES),
+ * et support des moteurs fetch, XHR et natif OS (WebView/App).
  *
  * @example <caption>Exemple 1 : Requête HTTP simple via fetch ou XHR</caption>
  * const net = new NNetwork({ driver: 'fetch', timeout: 10000 });
  * const res = await net.get('https://api.example.com/data', { responseType: 'json' });
  * console.log(res.status, res.data);
  *
- * @example <caption>Exemple 2 : Téléchargement d'un fichier avec découpage par chunks de 1 Mo</caption>
- * const fileResult = await NUtil.network.downloadFile('https://example.com/large-archive.zip', {
- *     onProgress: ({ percent, chunkIndex, totalChunks, loaded, total }) => {
- *         console.log(`Téléchargement : ${percent.toFixed(1)}% (chunk ${chunkIndex + 1}/${totalChunks})`);
- *     }
- * });
- * console.log('Nom déduit :', fileResult.name, 'Taille :', fileResult.size, 'Blob :', fileResult.blob);
+ * @example <caption>Exemple 2 : Requête avec chiffrement asymétrique de bout-en-bout</caption>
+ * const net = new NNetwork({ baseUrl: 'https://api.example.com' });
+ * const res = await net.post('/secure/save', { secret: 'Confidential' }, { encrypt: true });
+ * console.log('Réponse déchiffrée automatiquement :', res.data);
  *
- * @example <caption>Exemple 3 : Téléversement (upload) de plusieurs fichiers par chunks</caption>
- * const files = [myFile1, myFile2]; // Objets File du navigateur ou Blobs
- * const results = await NUtil.network.uploadFiles('https://api.example.com/upload-chunk', files, {
- *     chunkMode: 'formData', // ou 'binary'
- *     onFileProgress: ({ fileIndex, totalFiles, percent, currentFile }) => {
- *         console.log(`Fichier ${fileIndex + 1}/${totalFiles} (${currentFile.name}) : ${percent}%`);
- *     }
- * });
+ * @example <caption>Exemple 3 : Requête native OS pour contourner les restrictions CORS dans une application</caption>
+ * const netNative = new NNetwork({ driver: 'native' });
+ * const resNative = await netNative.post('https://external-api.com/auth', { apiKey: 'secret' });
+ * console.log(resNative.ok, resNative.data);
  */
 export class NNetwork {
 
@@ -54,8 +49,8 @@ export class NNetwork {
     static DEFAULT_CHUNK_SIZE = 1024 * 1024; // 1 Mo
 
     /**
-     * Pilote réseau par défaut ('auto', 'fetch', 'xhr').
-     * @type {'auto'|'fetch'|'xhr'}
+     * Pilote réseau par défaut ('auto', 'fetch', 'xhr', 'native').
+     * @type {'auto'|'fetch'|'xhr'|'native'}
      * @private
      */
     #driver = 'auto';
@@ -81,6 +76,62 @@ export class NNetwork {
      */
     #baseUrl = null;
 
+    /**
+     * Paire de clés cryptographiques RSA du client (CryptoKey + PEM).
+     * @type {{ publicKey: CryptoKey, privateKey: CryptoKey, publicPem: string, privatePem: string }|null}
+     * @private
+     */
+    #clientKeyPair = null;
+
+    /**
+     * Clé privée RSA du client pour le déchiffrement des réponses serveur.
+     * @type {CryptoKey|null}
+     * @private
+     */
+    #clientPrivateKey = null;
+
+    /**
+     * Clé publique RSA du client pour l'authentification et l'échange initial.
+     * @type {CryptoKey|null}
+     * @private
+     */
+    #clientPublicKey = null;
+
+    /**
+     * Clé publique RSA du client au format PEM.
+     * @type {string|null}
+     * @private
+     */
+    #clientPublicKeyPem = null;
+
+    /**
+     * Clé publique RSA du serveur pour le chiffrement des requêtes.
+     * @type {CryptoKey|null}
+     * @private
+     */
+    #serverPublicKey = null;
+
+    /**
+     * Clé publique RSA du serveur au format PEM.
+     * @type {string|null}
+     * @private
+     */
+    #serverPublicKeyPem = null;
+
+    /**
+     * Indique si un échange d'authentification cryptographique est actuellement en cours.
+     * @type {boolean}
+     * @private
+     */
+    #isAuthenticating = false;
+
+    /**
+     * File d'attente des promesses en attente de la fin de l'authentification.
+     * @type {Array<{ resolve: Function, reject: Function }>}
+     * @private
+     */
+    #authWaiters = [];
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -90,20 +141,24 @@ export class NNetwork {
      *
      * @constructor
      * @param {Object} [options={}] - Options de configuration du réseau.
-     * @param {'auto'|'fetch'|'xhr'} [options.driver='auto'] - Moteur de communication à utiliser.
+     * @param {'auto'|'fetch'|'xhr'|'native'} [options.driver='auto'] - Moteur de communication à utiliser.
      * @param {string} [options.baseUrl] - URL de base optionnelle.
      * @param {number} [options.timeout=0] - Délai maximum en millisecondes.
      * @param {Object<string, string>} [options.headers={}] - En-têtes HTTP par défaut.
+     * @param {string} [options.serverPublicKey] - Clé publique PEM du serveur optionnelle.
      *
-     * @example <caption>Exemple 1 : Instanciation avec options par défaut</caption>
+     * @example <caption>Exemple 1 : Instanciation avec options par défaut (mode auto)</caption>
      * const net = new NNetwork();
      *
      * @example <caption>Exemple 2 : Instanciation avec driver forcé en XMLHttpRequest et timeout</caption>
      * const netXhr = new NNetwork({ driver: 'xhr', timeout: 15000, baseUrl: 'https://api.example.com' });
+     *
+     * @example <caption>Exemple 3 : Instanciation avec clé publique serveur pré-configurée</caption>
+     * const netSec = new NNetwork({ serverPublicKey: '-----BEGIN PUBLIC KEY-----\n...' });
      */
     constructor(options = {}) {
         if (options && typeof options === 'object') {
-            if (options.driver === 'fetch' || options.driver === 'xhr' || options.driver === 'auto') {
+            if (options.driver === 'fetch' || options.driver === 'xhr' || options.driver === 'native' || options.driver === 'auto') {
                 this.#driver = options.driver;
             }
             if (typeof options.timeout === 'number' && options.timeout >= 0) {
@@ -115,6 +170,9 @@ export class NNetwork {
             if (options.headers && typeof options.headers === 'object') {
                 this.#defaultHeaders = { ...options.headers };
             }
+            if (typeof options.serverPublicKey === 'string' && options.serverPublicKey.trim()) {
+                this.#serverPublicKeyPem = options.serverPublicKey.trim();
+            }
         }
     }
 
@@ -124,30 +182,30 @@ export class NNetwork {
 
     /**
      * Retourne le pilote réseau actif.
-     * @type {'auto'|'fetch'|'xhr'}
+     * @type {'auto'|'fetch'|'xhr'|'native'}
      *
      * @example <caption>Exemple 1 : Consulter le pilote actif</caption>
      * console.log(net.driver); // 'auto'
      *
      * @example <caption>Exemple 2 : Vérification conditionnelle</caption>
-     * if (net.driver === 'xhr') { console.log('Mode XHR actif'); }
+     * if (net.driver === 'native') { console.log('Mode natif actif'); }
      */
     get driver() {
         return this.#driver;
     }
 
     /**
-     * Définit le pilote réseau actif ('auto', 'fetch' ou 'xhr').
-     * @param {'auto'|'fetch'|'xhr'} value - Nouveau pilote.
+     * Définit le pilote réseau actif ('auto', 'fetch', 'xhr' ou 'native').
+     * @param {'auto'|'fetch'|'xhr'|'native'} value - Nouveau pilote.
      *
-     * @example <caption>Exemple 1 : Forcer l'utilisation de fetch</caption>
-     * net.driver = 'fetch';
+     * @example <caption>Exemple 1 : Forcer l'utilisation du pilote natif de l'OS</caption>
+     * net.driver = 'native';
      *
      * @example <caption>Exemple 2 : Repasser en mode automatique</caption>
      * net.driver = 'auto';
      */
     set driver(value) {
-        if (value === 'auto' || value === 'fetch' || value === 'xhr') {
+        if (value === 'auto' || value === 'fetch' || value === 'xhr' || value === 'native') {
             this.#driver = value;
         }
     }
@@ -201,6 +259,8 @@ export class NNetwork {
 
     /**
      * Exécute une requête HTTP avec options complètes.
+     * Prend en charge le chiffrement asymétrique et hybride bout-en-bout (`options.encrypt = true`),
+     * la sélection du moteur (`fetch`, `xhr`, `native`), les annulations (`signal`), et les progressions.
      *
      * @async
      * @method request
@@ -210,10 +270,14 @@ export class NNetwork {
      * @param {Object<string, string>} [options.headers={}] - En-têtes HTTP.
      * @param {any} [options.body] - Corps de la requête.
      * @param {Object} [options.params] - Paramètres d'URL (Query strings).
-     * @param {'auto'|'fetch'|'xhr'} [options.driver] - Moteur spécifique à cette requête.
+     * @param {'auto'|'fetch'|'xhr'|'native'} [options.driver] - Moteur spécifique à cette requête.
      * @param {'json'|'text'|'blob'|'arrayBuffer'|'raw'} [options.responseType='json'] - Format de réponse attendu.
      * @param {number} [options.timeout] - Timeout en millisecondes pour cette requête.
      * @param {AbortSignal} [options.signal] - Signal d'annulation standard.
+     * @param {boolean} [options.encrypt=false] - Chiffre le corps et déchiffre automatiquement la réponse avec RSA/AES.
+     * @param {boolean} [options.encrypted=false] - Alias de `options.encrypt`.
+     * @param {string} [options.authUrl] - URL d'authentification cryptographique si différente.
+     * @param {string|CryptoKey} [options.serverPublicKey] - Clé publique PEM du serveur pour cette requête.
      * @param {Function} [options.onUploadProgress] - Callback de progression d'upload `{ loaded, total, percent }`.
      * @param {Function} [options.onDownloadProgress] - Callback de progression de download `{ loaded, total, percent }`.
      * @returns {Promise<{ status: number, statusText: string, headers: Object<string, string>, data: any, ok: boolean }>}
@@ -226,43 +290,114 @@ export class NNetwork {
      * });
      * console.log(res.status, res.data);
      *
-     * @example <caption>Exemple 2 : Requête GET avec paramètres d'URL et suivi d'avancement</caption>
-     * const res = await NUtil.network.request('/items', {
-     *     params: { page: 1, limit: 20 },
-     *     driver: 'xhr',
-     *     onDownloadProgress: ({ percent }) => console.log(`Reçu : ${percent}%`)
+     * @example <caption>Exemple 2 : Requête chiffrée de bout-en-bout (encrypt: true)</caption>
+     * const res = await NUtil.network.request('https://api.example.com/api', {
+     *     method: 'POST',
+     *     body: { action: 'SAVE_PROFILE', data: { pin: '1234' } },
+     *     encrypt: true
+     * });
+     * console.log('Réponse déchiffrée :', res.data);
+     *
+     * @example <caption>Exemple 3 : Requête avec pilote natif OS pour contourner le CORS</caption>
+     * const res = await NUtil.network.request('https://api.external.com/profile', {
+     *     driver: 'native',
+     *     responseType: 'json'
      * });
      */
     async request(url, options = {}) {
         const fullUrl = this.#buildUrl(url, options.params);
         const method = (options.method || 'GET').toUpperCase();
         const chosenDriver = this.#resolveDriver(options.driver, options);
-        const headers = { ...(this.#defaultHeaders || {}), ...(options.headers || {}) };
         const timeout = typeof options.timeout === 'number' ? options.timeout : this.#defaultTimeout;
         const responseType = options.responseType || 'json';
 
-        if (chosenDriver === 'xhr') {
-            return this.#requestWithXhr(fullUrl, {
+        const isEncrypted = Boolean(options.encrypt ?? options.encrypted);
+        let requestBody = options.body;
+        const requestHeaders = { ...(this.#defaultHeaders || {}), ...(options.headers || {}) };
+
+        if (options.signal?.aborted) {
+            NUtil.log.warn('NNetwork.request: Requête annulée avant envoi par AbortSignal.', { url: fullUrl });
+            return {
+                status: 0,
+                statusText: 'Aborted',
+                headers: {},
+                data: null,
+                ok: false,
+                error: 'Requête annulée avant envoi.',
+                code: 'REQUEST_ABORTED'
+            };
+        }
+
+        // 1. Chiffrement préalable du corps si options.encrypt ou options.encrypted est vrai
+        if (isEncrypted) {
+            const ready = await this.#ensureEncryptionReady(options.authUrl || fullUrl, options.serverPublicKey);
+            if (!ready) {
+                return {
+                    status: 0,
+                    statusText: 'Authentication Failed',
+                    headers: {},
+                    data: null,
+                    ok: false,
+                    error: 'Échec de l\'authentification cryptographique avec le serveur.',
+                    code: 'CRYPTO_AUTH_FAILED'
+                };
+            }
+
+            if (requestBody !== undefined && requestBody !== null && method !== 'GET' && method !== 'HEAD') {
+                const encryptedEnvelope = await NUtil.crypto.encrypt(requestBody, this.#serverPublicKey);
+
+                if (typeof FormData !== 'undefined' && requestBody instanceof FormData) {
+                    const fd = new FormData();
+                    fd.append('ENCRYPTED', typeof encryptedEnvelope === 'object' ? JSON.stringify(encryptedEnvelope) : String(encryptedEnvelope));
+                    requestBody = fd;
+                } else {
+                    requestBody = encryptedEnvelope;
+                    requestHeaders['X-Encrypted'] = '1';
+                }
+            }
+        }
+
+        let response;
+        if (chosenDriver === 'native') {
+            response = await this.#requestWithNative(fullUrl, {
                 method,
-                headers,
-                body: options.body,
+                headers: requestHeaders,
+                body: requestBody,
                 responseType,
                 timeout,
                 signal: options.signal,
                 onUploadProgress: options.onUploadProgress,
                 onDownloadProgress: options.onDownloadProgress
             });
+        } else if (chosenDriver === 'xhr') {
+            response = await this.#requestWithXhr(fullUrl, {
+                method,
+                headers: requestHeaders,
+                body: requestBody,
+                responseType,
+                timeout,
+                signal: options.signal,
+                onUploadProgress: options.onUploadProgress,
+                onDownloadProgress: options.onDownloadProgress
+            });
+        } else {
+            response = await this.#requestWithFetch(fullUrl, {
+                method,
+                headers: requestHeaders,
+                body: requestBody,
+                responseType,
+                timeout,
+                signal: options.signal,
+                onDownloadProgress: options.onDownloadProgress
+            });
         }
 
-        return this.#requestWithFetch(fullUrl, {
-            method,
-            headers,
-            body: options.body,
-            responseType,
-            timeout,
-            signal: options.signal,
-            onDownloadProgress: options.onDownloadProgress
-        });
+        // 2. Déchiffrement automatique de la réponse si la requête était chiffrée
+        if (isEncrypted && response && response.data !== null && response.data !== undefined) {
+            response.data = await this.#decryptResponseData(response.data);
+        }
+
+        return response;
     }
 
     /**
@@ -396,6 +531,213 @@ export class NNetwork {
     }
 
     // =========================================================================
+    // Méthodes d'Authentification & Gestion Cryptographique
+    // =========================================================================
+
+    /**
+     * Effectue la négociation d'authentification asymétrique avec le serveur distant :
+     * 1. Vérifie si la clé publique du serveur est déjà présente en mémoire ou dans le stockage persistant.
+     * 2. Génère ou charge la paire de clés RSA du client (`kp_client`).
+     * 3. Transmet la clé publique du client au serveur (`client_public_key`) via le champ 'AUTHENTIFICATION'.
+     * 4. Déchiffre la réponse du serveur avec la clé privée du client pour extraire `server_public_key`.
+     * 5. Mémorise et sauvegarde la clé publique du serveur pour les requêtes chiffrées suivantes.
+     *
+     * @async
+     * @method requestAuthentication
+     * @param {string} [url=null] - URL de négociation d'authentification (par défaut baseUrl + '/').
+     * @returns {Promise<Object|boolean>} Données de négociation déchiffrées ou `false` en cas d'échec.
+     *
+     * @example <caption>Exemple 1 : Négocier l'authentification cryptographique avec le serveur</caption>
+     * const auth = await net.requestAuthentication();
+     * console.log('Authentifié avec succès :', Boolean(auth));
+     *
+     * @example <caption>Exemple 2 : Négociation vers un endpoint personnalisé</caption>
+     * const auth = await net.requestAuthentication('https://api.example.com/auth');
+     * if (auth) { console.log('Clé serveur reçue :', auth.server_public_key); }
+     */
+    async requestAuthentication(url = null) {
+        if (await this.#ensureServerPublicKey()) {
+            return true;
+        }
+
+        if (this.#isAuthenticating) {
+            return await new Promise((resolve, reject) => {
+                this.#authWaiters.push({ resolve, reject });
+            });
+        }
+
+        this.#isAuthenticating = true;
+
+        try {
+            // 1. Initialiser la paire de clés client RSA
+            await this.#ensureClientKeyPair();
+
+            const clientPublicKeyPem = this.#clientPublicKeyPem;
+            const authRequest = { client_public_key: clientPublicKeyPem };
+            const targetUrl = url || (this.#baseUrl ? `${this.#baseUrl}/` : '/');
+
+            // 2. Préparation du payload sous la clé 'AUTHENTIFICATION'
+            let authBody;
+            if (typeof FormData !== 'undefined') {
+                authBody = new FormData();
+                authBody.append('AUTHENTIFICATION', JSON.stringify(authRequest));
+            } else {
+                authBody = { AUTHENTIFICATION: JSON.stringify(authRequest) };
+            }
+
+            // 3. Appel réseau en POST
+            const result = await this.request(targetUrl, {
+                method: 'POST',
+                body: authBody,
+                responseType: 'text',
+                encrypt: false // Ne pas sur-chiffrer la négociation d'échange de clés
+            });
+
+            if (result && result.data) {
+                const decryptedString = await NUtil.crypto.decrypt(result.data, this.#clientPrivateKey);
+                if (decryptedString) {
+                    let val = null;
+                    try {
+                        val = JSON.parse(decryptedString);
+                    } catch {
+                        val = decryptedString;
+                    }
+
+                    const serverKeyPem = typeof val === 'object' && val !== null
+                        ? (val.server_public_key || val.serverPublicKey)
+                        : null;
+
+                    if (serverKeyPem && typeof serverKeyPem === 'string') {
+                        await this.setServerPublicKey(serverKeyPem);
+                        this.#isAuthenticating = false;
+                        const waiters = this.#authWaiters.splice(0);
+                        waiters.forEach(({ resolve }) => resolve(val));
+                        return val;
+                    }
+                }
+            }
+
+            this.#isAuthenticating = false;
+            const waiters = this.#authWaiters.splice(0);
+            waiters.forEach(({ resolve }) => resolve(false));
+            NUtil.log.warn('NNetwork.requestAuthentication : échec lors du déchiffrement ou clé serveur absente.');
+            return false;
+        } catch (err) {
+            this.#isAuthenticating = false;
+            const waiters = this.#authWaiters.splice(0);
+            waiters.forEach(({ resolve }) => resolve(false));
+            NUtil.log.error('NNetwork.requestAuthentication : erreur lors de l\'authentification.', { error: err?.message || String(err) });
+            return false;
+        }
+    }
+
+    /**
+     * Assigne la clé publique du serveur (au format PEM ou CryptoKey).
+     *
+     * @async
+     * @method setServerPublicKey
+     * @param {string|CryptoKey} publicKey - Clé publique PEM ou CryptoKey du serveur.
+     * @returns {Promise<boolean>} `true` si la clé a été importée avec succès, `false` sinon.
+     *
+     * @example <caption>Exemple 1 : Assigner une clé publique PEM reçue hors-bande</caption>
+     * await net.setServerPublicKey('-----BEGIN PUBLIC KEY-----\n...');
+     *
+     * @example <caption>Exemple 2 : Définition préalable avant requêtes chiffrées</caption>
+     * const ok = await net.setServerPublicKey(serverPem);
+     * if (ok) { console.log('Clé serveur active'); }
+     */
+    async setServerPublicKey(publicKey) {
+        if (!publicKey) return false;
+        if (typeof publicKey === 'string') {
+            this.#serverPublicKeyPem = publicKey.trim();
+            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(this.#serverPublicKeyPem);
+            await this.#idbPut('server_public_key', this.#serverPublicKeyPem);
+            return Boolean(this.#serverPublicKey);
+        }
+        this.#serverPublicKey = publicKey;
+        return true;
+    }
+
+    /**
+     * Indique si la clé publique du serveur est configurée et prête pour le chiffrement.
+     *
+     * @method hasServerPublicKey
+     * @returns {boolean} `true` si la clé est présente.
+     *
+     * @example <caption>Exemple 1 : Vérifier la présence de la clé serveur</caption>
+     * if (!net.hasServerPublicKey()) { await net.requestAuthentication(); }
+     *
+     * @example <caption>Exemple 2 : Conditionnement</caption>
+     * console.log('Prêt pour chiffrer :', net.hasServerPublicKey());
+     */
+    hasServerPublicKey() {
+        return Boolean(this.#serverPublicKey);
+    }
+
+    /**
+     * Retourne la clé publique du serveur au format PEM ou null si non définie.
+     *
+     * @method getServerPublicKey
+     * @returns {string|null} Clé publique PEM du serveur.
+     *
+     * @example <caption>Exemple 1 : Consulter la clé serveur active</caption>
+     * console.log(net.getServerPublicKey());
+     *
+     * @example <caption>Exemple 2 : Sauvegarde ou diagnostic</caption>
+     * const keyPem = net.getServerPublicKey();
+     * if (keyPem) { console.log('Longueur de la clé :', keyPem.length); }
+     */
+    getServerPublicKey() {
+        return this.#serverPublicKeyPem;
+    }
+
+    /**
+     * Retourne la paire de clés client RSA au format PEM et CryptoKey.
+     *
+     * @async
+     * @method getClientKeyPair
+     * @returns {Promise<{ publicKey: CryptoKey, privateKey: CryptoKey, publicPem: string, privatePem: string }|null>}
+     *
+     * @example <caption>Exemple 1 : Récupérer la paire de clés client</caption>
+     * const kp = await net.getClientKeyPair();
+     * console.log(kp.publicPem);
+     *
+     * @example <caption>Exemple 2 : Export de la clé publique client</caption>
+     * const { publicPem } = await net.getClientKeyPair();
+     * console.log(publicPem.startsWith('-----BEGIN PUBLIC KEY-----'));
+     */
+    async getClientKeyPair() {
+        await this.#ensureClientKeyPair();
+        return this.#clientKeyPair;
+    }
+
+    /**
+     * Réinitialise la session cryptographique en mémoire et dans le stockage local persistant.
+     *
+     * @method clearCryptoSession
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Réinitialiser la session crypto après déconnexion</caption>
+     * net.clearCryptoSession();
+     *
+     * @example <caption>Exemple 2 : Forcer une nouvelle négociation de clés</caption>
+     * net.clearCryptoSession();
+     * await net.requestAuthentication();
+     */
+    async clearCryptoSession() {
+        this.#serverPublicKey = null;
+        this.#serverPublicKeyPem = null;
+        this.#clientKeyPair = null;
+        this.#clientPrivateKey = null;
+        this.#clientPublicKey = null;
+        this.#clientPublicKeyPem = null;
+        this.#isAuthenticating = false;
+        this.#authWaiters = [];
+        await this.#idbDelete('server_public_key');
+        await this.#idbDelete('kp_client');
+    }
+
+    // =========================================================================
     // Métadonnées de Fichiers (Informations)
     // =========================================================================
 
@@ -467,10 +809,11 @@ export class NNetwork {
      */
     async getFilesInfo(urls, options = {}) {
         if (!Array.isArray(urls)) {
-            throw new NException('NNetwork.getFilesInfo : le paramètre urls doit être un tableau.', {
+            NUtil.log.error('NNetwork.getFilesInfo : le paramètre urls doit être un tableau.', {
                 code: 'INVALID_PARAMETER',
-                context: { urls }
+                urls
             });
+            return [];
         }
 
         const concurrency = Math.max(1, typeof options.concurrency === 'number' ? options.concurrency : 4);
@@ -605,10 +948,11 @@ export class NNetwork {
      */
     async downloadFiles(urls, options = {}) {
         if (!Array.isArray(urls)) {
-            throw new NException('NNetwork.downloadFiles : urls doit être un tableau.', {
+            NUtil.log.error('NNetwork.downloadFiles : urls doit être un tableau.', {
                 code: 'INVALID_PARAMETER',
-                context: { urls }
+                urls
             });
+            return [];
         }
 
         const concurrency = Math.max(1, typeof options.concurrency === 'number' ? options.concurrency : 2);
@@ -725,10 +1069,19 @@ export class NNetwork {
      */
     async uploadFile(url, file, options = {}) {
         if (!file || typeof file.size !== 'number') {
-            throw new NException('NNetwork.uploadFile : le paramètre file doit être un Blob ou un File valide.', {
+            NUtil.log.error('NNetwork.uploadFile : le paramètre file doit être un Blob ou un File valide.', {
                 code: 'INVALID_FILE',
-                context: { file }
+                file
             });
+            return {
+                ok: false,
+                status: 0,
+                statusText: 'Invalid File',
+                headers: {},
+                data: null,
+                error: 'Le paramètre file doit être un Blob ou un File valide.',
+                code: 'INVALID_FILE'
+            };
         }
 
         const fileSize = file.size;
@@ -795,10 +1148,11 @@ export class NNetwork {
      */
     async uploadFiles(url, files, options = {}) {
         if (!Array.isArray(files)) {
-            throw new NException('NNetwork.uploadFiles : le paramètre files doit être un tableau.', {
+            NUtil.log.error('NNetwork.uploadFiles : le paramètre files doit être un tableau.', {
                 code: 'INVALID_PARAMETER',
-                context: { files }
+                files
             });
+            return [];
         }
 
         const concurrency = Math.max(1, typeof options.concurrency === 'number' ? options.concurrency : 1);
@@ -865,35 +1219,155 @@ export class NNetwork {
     }
 
     // =========================================================================
-    // Méthodes Privées : Implémentations Fetch & XHR
+    // Méthodes Privées : Implémentations Native, Fetch & XHR
     // =========================================================================
 
     /**
-     * Résout le moteur de requête effectif en tenant compte du mode 'auto'.
+     * Résout le moteur de requête effectif en tenant compte du mode 'auto' et de l'environnement actif.
      * @private
      */
     #resolveDriver(driverOption, options) {
         const candidate = driverOption || this.#driver;
-        if (candidate === 'fetch' || candidate === 'xhr') {
+        if (candidate === 'native' || candidate === 'fetch' || candidate === 'xhr') {
             return candidate;
         }
 
-        // Si progression d'upload demandée et XHR disponible, privilégier XHR
+        // Mode 'auto' :
+        // 1. Si nous sommes dans une application / conteneur WebView (NUtil.env.isWebView),
+        // privilégier le moteur natif de l'OS pour contourner les blocages CORS (Cross-Origin Resource Sharing).
+        if (Boolean(NUtil?.env?.isWebView)) {
+            return 'native';
+        }
+
+        // 2. Si un suivi de progression d'upload est demandé et que XHR est disponible, privilégier XHR
         if (typeof options.onUploadProgress === 'function' && typeof XMLHttpRequest !== 'undefined') {
             return 'xhr';
         }
 
+        // 3. Privilégier Fetch dans les environnements standards modernes
         if (typeof fetch === 'function') {
             return 'fetch';
         }
 
+        // 4. Fallback XMLHttpRequest
         if (typeof XMLHttpRequest !== 'undefined') {
             return 'xhr';
         }
 
-        throw new NException('NNetwork : aucun moteur de requête HTTP (fetch ou XMLHttpRequest) disponible.', {
+        NUtil.log.error('NNetwork : aucun moteur de requête HTTP (native, fetch ou XMLHttpRequest) disponible.', {
             code: 'NO_HTTP_DRIVER'
         });
+        return 'fetch';
+    }
+
+    /**
+     * Exécute une requête réseau via le pont applicatif natif de l'OS (Android, iOS, Windows, macOS, etc.)
+     * permettant de contourner les restrictions CORS (Cross-Origin) et d'utiliser la pile réseau du système.
+     * @private
+     */
+    async #requestWithNative(url, options) {
+        const { method, headers, body, responseType, timeout, signal } = options;
+
+        if (signal?.aborted) {
+            NUtil.log.warn('NNetwork (native) : requête annulée avant envoi.', { url, method });
+            return {
+                status: 0,
+                statusText: 'Aborted',
+                headers: {},
+                data: null,
+                ok: false,
+                error: 'Requête annulée avant envoi.',
+                code: 'REQUEST_ABORTED'
+            };
+        }
+
+        // Préparation du corps de la requête
+        let formattedBody = body;
+        let isJsonBody = false;
+
+        if (body !== undefined && body !== null && method !== 'GET' && method !== 'HEAD') {
+            if (this.#isRawBody(body)) {
+                formattedBody = body;
+            } else if (typeof body === 'object') {
+                isJsonBody = true;
+                formattedBody = JSON.stringify(body);
+            } else {
+                formattedBody = String(body);
+            }
+        }
+
+        const reqHeaders = { ...headers };
+        if (isJsonBody && !reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
+            reqHeaders['Content-Type'] = 'application/json';
+        }
+
+        try {
+            const nativeRes = await NUtil.sys.invokeNative({
+                type: ['network', 'request'],
+                params: {
+                    url,
+                    method,
+                    headers: reqHeaders,
+                    body: formattedBody,
+                    responseType,
+                    timeout: timeout > 0 ? timeout : undefined
+                }
+            });
+
+            if (nativeRes && nativeRes.error && nativeRes.status === undefined) {
+                NUtil.log.error(nativeRes.message || `NNetwork (native) : échec de la requête native vers "${url}".`, {
+                    code: nativeRes.error || 'NATIVE_REQUEST_FAILED',
+                    url,
+                    method,
+                    nativeRes
+                });
+                return {
+                    status: 0,
+                    statusText: 'Native Error',
+                    headers: {},
+                    data: null,
+                    ok: false,
+                    error: nativeRes.message || 'Échec de la requête native.',
+                    code: nativeRes.error || 'NATIVE_REQUEST_FAILED'
+                };
+            }
+
+            const status = typeof nativeRes?.status === 'number' ? nativeRes.status : (nativeRes?.ok ? 200 : 500);
+            const statusText = nativeRes?.statusText || (status >= 200 && status < 300 ? 'OK' : 'Error');
+            const ok = nativeRes?.ok ?? (status >= 200 && status < 300);
+            const resHeaders = nativeRes?.headers && typeof nativeRes.headers === 'object' ? nativeRes.headers : {};
+
+            let data = nativeRes?.data !== undefined ? nativeRes.data : null;
+            if (responseType !== 'raw' && method !== 'HEAD') {
+                if (responseType === 'json' && typeof data === 'string' && data.trim()) {
+                    try {
+                        data = JSON.parse(data);
+                    } catch {
+                        // Conserver la chaîne brute si le format JSON n'est pas valide
+                    }
+                }
+            } else {
+                data = null;
+            }
+
+            return { status, statusText, headers: resHeaders, data, ok };
+        } catch (err) {
+            NUtil.log.error(`NNetwork (native) : échec de la requête vers "${url}".`, {
+                code: 'REQUEST_FAILED',
+                url,
+                method,
+                error: err?.message || String(err)
+            });
+            return {
+                status: 0,
+                statusText: 'Request Failed',
+                headers: {},
+                data: null,
+                ok: false,
+                error: err?.message || String(err),
+                code: 'REQUEST_FAILED'
+            };
+        }
     }
 
     /**
@@ -963,10 +1437,24 @@ export class NNetwork {
             return { status, statusText, headers: parsedHeaders, data, ok };
         } catch (err) {
             if (timer) clearTimeout(timer);
-            throw new NException(`NNetwork (fetch) : échec de la requête vers "${url}".`, {
-                code: 'REQUEST_FAILED',
-                context: { url, method, error: err?.message || String(err) }
+            const isAborted = Boolean(activeSignal?.aborted);
+            const isTimeout = err?.message?.includes('Timeout');
+            const code = isAborted ? (isTimeout ? 'FETCH_TIMEOUT' : 'REQUEST_ABORTED') : 'REQUEST_FAILED';
+            NUtil.log.error(`NNetwork (fetch) : échec de la requête vers "${url}".`, {
+                code,
+                url,
+                method,
+                error: err?.message || String(err)
             });
+            return {
+                status: isTimeout ? 408 : 0,
+                statusText: isAborted ? 'Aborted' : 'Fetch Error',
+                headers: {},
+                data: null,
+                ok: false,
+                error: err?.message || String(err),
+                code
+            };
         }
     }
 
@@ -1043,7 +1531,16 @@ export class NNetwork {
             if (signal) {
                 if (signal.aborted) {
                     xhr.abort();
-                    return reject(new NException('Requête annulée avant envoi.', { code: 'REQUEST_ABORTED' }));
+                    NUtil.log.warn('NNetwork (xhr) : requête annulée avant envoi.', { url, method });
+                    return resolve({
+                        status: 0,
+                        statusText: 'Aborted',
+                        headers: {},
+                        data: null,
+                        ok: false,
+                        error: 'Requête annulée avant envoi.',
+                        code: 'REQUEST_ABORTED'
+                    });
                 }
                 signal.addEventListener('abort', () => xhr.abort());
             }
@@ -1073,24 +1570,42 @@ export class NNetwork {
             };
 
             xhr.onerror = () => {
-                reject(new NException(`NNetwork (xhr) : échec réseau sur "${url}".`, {
-                    code: 'XHR_NETWORK_ERROR',
-                    context: { url, method }
-                }));
+                NUtil.log.error(`NNetwork (xhr) : échec réseau sur "${url}".`, { url, method });
+                resolve({
+                    status: 0,
+                    statusText: 'Network Error',
+                    headers: {},
+                    data: null,
+                    ok: false,
+                    error: `NNetwork (xhr) : échec réseau sur "${url}".`,
+                    code: 'XHR_NETWORK_ERROR'
+                });
             };
 
             xhr.ontimeout = () => {
-                reject(new NException(`NNetwork (xhr) : timeout de ${timeout}ms dépassé pour "${url}".`, {
-                    code: 'XHR_TIMEOUT',
-                    context: { url, timeout }
-                }));
+                NUtil.log.error(`NNetwork (xhr) : timeout de ${timeout}ms dépassé pour "${url}".`, { url, timeout });
+                resolve({
+                    status: 408,
+                    statusText: 'Request Timeout',
+                    headers: {},
+                    data: null,
+                    ok: false,
+                    error: `NNetwork (xhr) : timeout de ${timeout}ms dépassé pour "${url}".`,
+                    code: 'XHR_TIMEOUT'
+                });
             };
 
             xhr.onabort = () => {
-                reject(new NException(`NNetwork (xhr) : requête annulée pour "${url}".`, {
-                    code: 'XHR_ABORTED',
-                    context: { url }
-                }));
+                NUtil.log.warn(`NNetwork (xhr) : requête annulée pour "${url}".`, { url });
+                resolve({
+                    status: 0,
+                    statusText: 'Aborted',
+                    headers: {},
+                    data: null,
+                    ok: false,
+                    error: `NNetwork (xhr) : requête annulée pour "${url}".`,
+                    code: 'XHR_ABORTED'
+                });
             };
 
             xhr.send(formattedBody);
@@ -1113,7 +1628,18 @@ export class NNetwork {
 
         for (let i = 0; i < totalChunks; i++) {
             if (signal?.aborted) {
-                throw new NException('Téléchargement par chunks interrompu.', { code: 'DOWNLOAD_ABORTED' });
+                NUtil.log.warn('NNetwork.#downloadByChunks : téléchargement par chunks interrompu par AbortSignal.', { url });
+                return {
+                    blob: null,
+                    arrayBuffer: null,
+                    name: info.name,
+                    size: totalLoaded,
+                    type: info.type,
+                    isChunked: true,
+                    chunksCount: totalChunks,
+                    error: 'Téléchargement par chunks interrompu.',
+                    code: 'DOWNLOAD_ABORTED'
+                };
             }
 
             const start = i * chunkSize;
@@ -1148,6 +1674,26 @@ export class NNetwork {
                     }
                 }
             });
+
+            if (!chunkRes.ok) {
+                NUtil.log.error('NNetwork.#downloadByChunks : échec du téléchargement d\'un chunk.', {
+                    url,
+                    chunkIndex: i,
+                    status: chunkRes.status,
+                    error: chunkRes.error
+                });
+                return {
+                    blob: null,
+                    arrayBuffer: null,
+                    name: info.name,
+                    size: totalLoaded,
+                    type: info.type,
+                    isChunked: true,
+                    chunksCount: totalChunks,
+                    error: chunkRes.error || `Échec sur le chunk ${i + 1}/${totalChunks}`,
+                    code: chunkRes.code || 'CHUNK_DOWNLOAD_FAILED'
+                };
+            }
 
             const blobPart = chunkRes.data;
             chunkBlobs.push(blobPart);
@@ -1208,6 +1754,25 @@ export class NNetwork {
             }
         });
 
+        if (!res.ok) {
+            NUtil.log.error('NNetwork.#downloadMonobloc : échec du téléchargement.', {
+                url,
+                status: res.status,
+                error: res.error
+            });
+            return {
+                blob: null,
+                arrayBuffer: null,
+                name: info.name,
+                size: 0,
+                type: info.type,
+                isChunked: false,
+                chunksCount: 1,
+                error: res.error || 'Échec du téléchargement.',
+                code: res.code || 'DOWNLOAD_FAILED'
+            };
+        }
+
         const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: info.type });
         const arrayBuffer = await blob.arrayBuffer();
 
@@ -1241,7 +1806,17 @@ export class NNetwork {
 
         for (let i = 0; i < totalChunks; i++) {
             if (signal?.aborted) {
-                throw new NException('Téléversement par chunks interrompu.', { code: 'UPLOAD_ABORTED' });
+                NUtil.log.warn('NNetwork.#uploadByChunks : téléversement par chunks interrompu par AbortSignal.', { url });
+                return {
+                    ok: false,
+                    status: 0,
+                    data: null,
+                    uploadId,
+                    isChunked: true,
+                    totalChunks,
+                    error: 'Téléversement par chunks interrompu.',
+                    code: 'UPLOAD_ABORTED'
+                };
             }
 
             const start = i * chunkSize;
@@ -1308,6 +1883,25 @@ export class NNetwork {
                     }
                 }
             });
+
+            if (!res.ok) {
+                NUtil.log.error('NNetwork.#uploadByChunks : échec du téléversement d\'un chunk.', {
+                    url,
+                    chunkIndex: i,
+                    status: res.status,
+                    error: res.error
+                });
+                return {
+                    ok: false,
+                    status: res.status,
+                    data: res.data,
+                    uploadId,
+                    isChunked: true,
+                    totalChunks,
+                    error: res.error || `Échec sur le chunk ${i + 1}/${totalChunks}`,
+                    code: res.code || 'CHUNK_UPLOAD_FAILED'
+                };
+            }
 
             lastServerResponse = res;
             totalUploadedBytes += currentChunkSize;
@@ -1594,6 +2188,209 @@ export class NNetwork {
         } catch {
             return null;
         }
+    }
+
+    // =========================================================================
+    // Méthodes Privées : Gestion des Clés & Déchiffrement Cryptographique
+    // =========================================================================
+
+    /**
+     * S'assure que la clé publique du serveur et la paire client sont prêtes avant une requête chiffrée.
+     * Si la clé publique du serveur n'est pas encore connue, déclenche automatiquement `requestAuthentication()`.
+     * @private
+     */
+    async #ensureEncryptionReady(authUrl, serverPublicKeyParam) {
+        if (serverPublicKeyParam) {
+            await this.setServerPublicKey(serverPublicKeyParam);
+        }
+
+        await this.#ensureClientKeyPair();
+
+        const hasKey = await this.#ensureServerPublicKey();
+        if (!hasKey) {
+            const authOk = await this.requestAuthentication(authUrl);
+            if (!authOk) {
+                NUtil.log.error('NNetwork : échec de l\'authentification et de l\'échange de clés asymétriques avec le serveur.', {
+                    code: 'CRYPTO_AUTH_FAILED',
+                    authUrl
+                });
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Charge ou génère la paire de clés client RSA avec persistance partagée via IndexedDB 'ntable' ({ id, data }).
+     * Permet le partage direct des clés entre le thread principal (DOM) et les Web Workers.
+     * @private
+     */
+    async #ensureClientKeyPair() {
+        if (this.#clientKeyPair && this.#clientPrivateKey && this.#clientPublicKey) {
+            return this.#clientKeyPair;
+        }
+
+        // 1. Tenter de récupérer les clés persistées dans le store partagé IndexedDB
+        const savedKp = await this.#idbGet('kp_client');
+
+        if (savedKp && savedKp.publicKey && savedKp.privateKey) {
+            try {
+                const pubKey = await NUtil.crypto.importPublicKeyFromPem(savedKp.publicKey);
+                const privKey = await NUtil.crypto.importPrivateKeyFromPem(savedKp.privateKey);
+                if (pubKey && privKey) {
+                    this.#clientPublicKey = pubKey;
+                    this.#clientPrivateKey = privKey;
+                    this.#clientPublicKeyPem = savedKp.publicKey;
+                    this.#clientKeyPair = {
+                        publicKey: pubKey,
+                        privateKey: privKey,
+                        publicPem: savedKp.publicKey,
+                        privatePem: savedKp.privateKey
+                    };
+                    return this.#clientKeyPair;
+                }
+            } catch {
+                // Clés corrompues ou invalides, régénération ci-dessous
+            }
+        }
+
+        // 2. Générer une nouvelle paire de clés RSA via NCryptography
+        const newKp = await NUtil.crypto.generateKeyPair();
+        if (newKp && newKp.publicKey && newKp.privateKey) {
+            const pubPem = await NUtil.crypto.exportPublicKeyToPem(newKp.publicKey);
+            const privPem = await NUtil.crypto.exportPrivateKeyToPem(newKp.privateKey);
+
+            this.#clientPublicKey = newKp.publicKey;
+            this.#clientPrivateKey = newKp.privateKey;
+            this.#clientPublicKeyPem = pubPem;
+            this.#clientKeyPair = {
+                publicKey: newKp.publicKey,
+                privateKey: newKp.privateKey,
+                publicPem: pubPem,
+                privatePem: privPem
+            };
+
+            await this.#idbPut('kp_client', { publicKey: pubPem, privateKey: privPem });
+
+            return this.#clientKeyPair;
+        }
+
+        return null;
+    }
+
+    /**
+     * Tente de charger la clé publique du serveur depuis la mémoire ou le stockage persistant IndexedDB.
+     * @private
+     */
+    async #ensureServerPublicKey() {
+        if (this.#serverPublicKey) {
+            return this.#serverPublicKey;
+        }
+
+        if (this.#serverPublicKeyPem) {
+            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(this.#serverPublicKeyPem);
+            return this.#serverPublicKey;
+        }
+
+        const savedServer = await this.#idbGet('server_public_key');
+        const savedPem = typeof savedServer === 'string' ? savedServer : (savedServer?.key || savedServer?.value || null);
+
+        if (savedPem && typeof savedPem === 'string') {
+            this.#serverPublicKeyPem = savedPem;
+            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(savedPem);
+            return this.#serverPublicKey;
+        }
+
+        return null;
+    }
+
+    /**
+     * Lit un enregistrement depuis le magasin partagé IndexedDB 'ntable' ({ id, data }).
+     * @private
+     */
+    async #idbGet(key) {
+        try {
+            const idb = NUtil.db?.indexed || NUtil.db?.idb;
+            if (idb) {
+                const storeNames = idb.storeNames;
+                const storeName = storeNames.includes('ntable') ? 'ntable' : (storeNames.includes('default') ? 'default' : (storeNames[0] || 'ntable'));
+                const res = await idb.get(storeName, key);
+                if (res && res.ok && res.data !== undefined) {
+                    return res.data?.data !== undefined ? res.data.data : res.data;
+                }
+            }
+        } catch (err) {
+            NUtil.log.warn(`NNetwork (idb) : échec de lecture pour "${key}".`, { error: err?.message || String(err) });
+        }
+        return null;
+    }
+
+    /**
+     * Enregistre un enregistrement dans le magasin partagé IndexedDB 'ntable' ({ id, data }).
+     * @private
+     */
+    async #idbPut(key, value) {
+        try {
+            const idb = NUtil.db?.indexed || NUtil.db?.idb;
+            if (idb) {
+                const storeNames = idb.storeNames;
+                const storeName = storeNames.includes('ntable') ? 'ntable' : (storeNames.includes('default') ? 'default' : (storeNames[0] || 'ntable'));
+                const payload = { id: key, data: value };
+                const res = await idb.put(storeName, payload, key);
+                return Boolean(res?.ok);
+            }
+        } catch (err) {
+            NUtil.log.warn(`NNetwork (idb) : échec d'enregistrement pour "${key}".`, { error: err?.message || String(err) });
+        }
+        return false;
+    }
+
+    /**
+     * Supprime un enregistrement dans IndexedDB.
+     * @private
+     */
+    async #idbDelete(key) {
+        try {
+            const idb = NUtil.db?.indexed || NUtil.db?.idb;
+            if (idb) {
+                const storeNames = idb.storeNames;
+                const storeName = storeNames.includes('ntable') ? 'ntable' : (storeNames.includes('default') ? 'default' : (storeNames[0] || 'ntable'));
+                const res = await idb.delete(storeName, key);
+                return Boolean(res?.ok);
+            }
+        } catch (err) {
+            NUtil.log.warn(`NNetwork (idb) : échec de suppression pour "${key}".`, { error: err?.message || String(err) });
+        }
+        return false;
+    }
+
+    /**
+     * Tente de déchiffrer les données reçues d'une réponse chiffrée avec la clé privée du client.
+     * @private
+     */
+    async #decryptResponseData(data) {
+        if (!this.#clientPrivateKey) {
+            await this.#ensureClientKeyPair();
+        }
+
+        if (!this.#clientPrivateKey) {
+            return data;
+        }
+
+        try {
+            const decryptedString = await NUtil.crypto.decrypt(data, this.#clientPrivateKey);
+            if (decryptedString) {
+                try {
+                    return JSON.parse(decryptedString);
+                } catch {
+                    return decryptedString;
+                }
+            }
+        } catch (err) {
+            NUtil.log.warn('NNetwork : avertissement lors du déchiffrement de la réponse.', { error: err?.message || String(err) });
+        }
+
+        return data;
     }
 }
 

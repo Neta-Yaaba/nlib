@@ -1,25 +1,20 @@
 /**
  * @file NSql.js
  * @package @nlib/js-backend
- * @description Moteur de base de données SQL universel pour NLib.
+ * @description Moteur de base de données relationnelle SQLite universel et multiplateforme pour NLib.
  * Gère une base SQLite locale en mémoire ou persistante via `sql.js` (WebAssembly)
- * ou délègue automatiquement les requêtes au pont natif de l'application (`NUtil.env.isWebView` / `requestApp`)
- * lorsqu'exécuté dans un conteneur natif ou WebView.
+ * ou délègue automatiquement les requêtes au pont natif de l'application (`NUtil.env.isWebView` / `invokeNative`)
+ * lorsqu'exécuté dans un conteneur natif ou une WebView.
  *
- * Prend en charge :
- * - Paramètres nommés (`:key`) et positionnels (`?`)
- * - Requêtes préparées sécurisées
- * - Méthodes de sélection riches : `select()`, `selectOne()`, `selectAll()`, `selectAsList()`, `countRows()`
- * - Helpers CRUD dynamiques : `insert()`, `update()`, `delete()`
- * - Schéma et métadonnées : `getTableFields()`, `getPrimaryKey()`, `getNextId()`, `generatePrimaryKeyValue()`, `getDbStruct()`
- * - Initialisation déclarative par structure (`dbStructure`), données binaires (`Uint8Array`) ou Base64 (`dbBase64Data`)
- * - Export complet de la base en Uint8Array ou Base64, vidage (`clear()`) et suppression (`deleteDb()`).
- *
- * Conforme aux standards NLib : classe autonome sans variable globale hors classe,
- * avec retours standardisés `{ ok, data, error, code }` ou valeurs typées, et documentation JSDoc exhaustive.
+ * Principes architecturaux et fiabilisation :
+ * - Zero Throw / Zero Reject : aucune exception non interceptée n'est propagée, toutes les erreurs sont journalisées via `NUtil.log`.
+ * - Gestion mémoire étanche : libération systématique des statements préparés (`stmt.free()`) dans des blocs `try ... finally`.
+ * - Verrouillage anti-concurrence : chargement du module WebAssembly et initialisation protégés contre les appels simultanés.
+ * - Normalisation lexicale des paramètres : analyseur SQL contextuel (ignore chaînes, commentaires et identifiants).
+ * - Transactions robustes : support des transactions atomiques et imbriquées via `SAVEPOINT` avec rollback garanti.
+ * - Multiplateforme : fonctionne de façon transparente en navigateur, Web Worker, WebView native et Node.js.
  */
 
-import { NException } from '../core/NException.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -33,7 +28,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NSql
- * @description Gestionnaire universel de base de données SQLite (sql.js / natif).
+ * @description Gestionnaire universel de base de données SQLite (sql.js WebAssembly / Pont applicatif natif).
  *
  * @example <caption>Exemple 1 : Initialiser une base SQLite avec une structure déclarative</caption>
  * const sql = new NSql();
@@ -43,21 +38,24 @@ import { NUtil } from '../utils/NUtil.js';
  *     }
  * });
  * const insertRes = await sql.insert('users', { name: 'Alice', email: 'alice@test.com' });
- * console.log('Nouvel ID inséré :', insertRes.data);
+ * console.log('Nouvel ID inséré :', insertRes);
  *
  * @example <caption>Exemple 2 : Requêtes paramétrées sécurisées (nommées ou positionnelles)</caption>
  * const user = await sql.selectOne('SELECT * FROM users WHERE id = :id', { id: 1 });
  * console.log('Utilisateur trouvé :', user?.name);
  *
- * @example <caption>Exemple 3 : Export de la base binaire et vidage</caption>
- * const base64Data = await sql.exportBase64();
- * console.log('Base exportée (base64) :', base64Data.length);
- * await sql.clear(); // Vide toutes les tables
+ * @example <caption>Exemple 3 : Transaction atomique sécurisée</caption>
+ * const txRes = await sql.transaction(async (tx) => {
+ *     await tx.insert('users', { name: 'Bob', email: 'bob@test.com' });
+ *     await tx.insert('users', { name: 'Charlie', email: 'charlie@test.com' });
+ *     return true;
+ * });
+ * console.log('Transaction réussie :', txRes.ok);
  */
 export class NSql {
 
     // =========================================================================
-    // Propriétés statiques privées
+    // Propriétés statiques privées (Cache et verrous globaux du module WASM)
     // =========================================================================
 
     /**
@@ -68,7 +66,7 @@ export class NSql {
     static #sqlJsModule = null;
 
     /**
-     * Promesse de chargement de sql.js en cours pour éviter les appels concurrents.
+     * Promesse de chargement de sql.js en cours pour éviter les chargements simultanés redondants.
      * @type {Promise<any>|null}
      * @private
      */
@@ -93,7 +91,7 @@ export class NSql {
     #name = 'main';
 
     /**
-     * Indique si l'instance a été initialisée.
+     * Indique si l'instance a été initialisée et est prête pour les requêtes.
      * @type {boolean}
      * @private
      */
@@ -105,6 +103,20 @@ export class NSql {
      * @private
      */
     #wasmPath = null;
+
+    /**
+     * Verrou de promesse d'initialisation pour empêcher les initialisations concurrentes d'une même instance.
+     * @type {Promise<boolean>|null}
+     * @private
+     */
+    #initPromise = null;
+
+    /**
+     * Profondeur d'imbrication des transactions courantes pour la gestion des SAVEPOINTs.
+     * @type {number}
+     * @private
+     */
+    #transactionDepth = 0;
 
     // =========================================================================
     // Constructeur
@@ -146,7 +158,7 @@ export class NSql {
      * @example <caption>Exemple 1 : Lire le nom de la base</caption>
      * console.log(sql.name); // 'main'
      *
-     * @example <caption>Exemple 2 : Utilisation dans un message de log</caption>
+     * @example <caption>Exemple 2 : Utilisation dans un message de journalisation</caption>
      * console.log(`Base active : ${sql.name}`);
      */
     get name() {
@@ -181,14 +193,28 @@ export class NSql {
         return this.#db;
     }
 
+    /**
+     * Accès direct à la classe utilitaire transversale `NUtil`.
+     * @type {typeof NUtil}
+     *
+     * @example <caption>Exemple 1 : Accès au logger via sql.util.log</caption>
+     * sql.util.log.info('Opération SQL terminée');
+     *
+     * @example <caption>Exemple 2 : Utilitaires de conversion</caption>
+     * console.log(sql.util.str.camelCase('table_name'));
+     */
+    get util() {
+        return NUtil;
+    }
+
     // =========================================================================
     // Initialisation & Cycle de Vie
     // =========================================================================
 
     /**
      * Initialise la base de données SQL.
-     * Détecte si l'exécution se fait dans une application hôte native (WebView / App)
-     * ou initialise le moteur SQLite WebAssembly `sql.js`.
+     * Protégée contre les appels simultanés (concurrence sécurisée par promesse partagée).
+     * Libère proprement toute base déjà existante avant d'en instancier une nouvelle afin d'éviter les fuites mémoire.
      *
      * Options acceptées :
      * - `dbStructure` : Schéma sous forme d'objet `{ table: 'CREATE TABLE ...' }`
@@ -215,58 +241,102 @@ export class NSql {
      * });
      */
     async init(options = {}) {
-        const opts = options && typeof options === 'object' ? options : {};
-
-        // 1. Détection environnement Application / WebView native
-        if (this.#isNativeApp()) {
-            try {
-                const res = await this.#requestNative('init', opts);
-                this.#isInitialized = res?.ok ?? Boolean(res);
-                return this.#isInitialized;
-            } catch (err) {
-                console.warn('NSql : échec initialisation SQLite native.', err);
-                return false;
-            }
+        if (this.#initPromise) {
+            return this.#initPromise;
         }
 
-        // 2. Initialisation WebAssembly sql.js
+        this.#initPromise = (async () => {
+            const opts = options && typeof options === 'object' ? options : {};
+
+            // 1. Détection environnement Application / WebView native
+            if (this.#isNativeApp()) {
+                try {
+                    const res = await this.#requestNative('init', opts);
+                    this.#isInitialized = res?.ok ?? Boolean(res);
+                    return this.#isInitialized;
+                } catch (err) {
+                    NUtil.log.error('NSql.init : Échec de l\'initialisation SQLite native.', {
+                        code: 'ERR_SQL_NATIVE_INIT',
+                        error: err,
+                        stack: err?.stack,
+                        database: this.#name
+                    });
+                    this.#isInitialized = false;
+                    return false;
+                }
+            }
+
+            // 2. Initialisation WebAssembly sql.js
+            try {
+                const SQL = await this.#ensureSqlJsModule(opts.wasmPath || this.#wasmPath);
+                if (!SQL) {
+                    NUtil.log.error('NSql.init : Module sql.js non disponible pour l\'initialisation.', {
+                        code: 'ERR_SQL_JS_UNAVAILABLE',
+                        database: this.#name
+                    });
+                    this.#isInitialized = false;
+                    return false;
+                }
+
+                // Fermeture préalable de toute base existante pour éviter les fuites de mémoire WASM
+                if (this.#db) {
+                    this.close();
+                }
+
+                let initialBinaryData = null;
+                if (opts.dbUint8ArrayData instanceof Uint8Array) {
+                    initialBinaryData = opts.dbUint8ArrayData;
+                } else if (typeof opts.dbBase64Data === 'string' && opts.dbBase64Data.trim()) {
+                    initialBinaryData = this.#base64ToUint8(opts.dbBase64Data);
+                }
+
+                if (initialBinaryData && initialBinaryData.length > 0) {
+                    this.#db = new SQL.Database(initialBinaryData);
+                } else {
+                    this.#db = new SQL.Database();
+                }
+
+                // Exécution du script de données initial ou de la structure
+                if (typeof opts.dbBaseData === 'string' && opts.dbBaseData.trim()) {
+                    this.#db.run(opts.dbBaseData);
+                } else if (!initialBinaryData && opts.dbStructure && typeof opts.dbStructure === 'object') {
+                    await this.createTables(opts.dbStructure);
+                }
+
+                this.#isInitialized = true;
+                return true;
+            } catch (err) {
+                NUtil.log.error('NSql.init : Échec de l\'initialisation du moteur sql.js.', {
+                    code: 'ERR_SQL_INIT_FAILED',
+                    error: err,
+                    stack: err?.stack,
+                    database: this.#name
+                });
+                if (this.#db) {
+                    try {
+                        this.#db.close();
+                    } catch {
+                        // ignore
+                    }
+                    this.#db = null;
+                }
+                this.#isInitialized = false;
+                return false;
+            }
+        })();
+
         try {
-            const SQL = await this.#ensureSqlJsModule(opts.wasmPath || this.#wasmPath);
-
-            let initialBinaryData = null;
-            if (opts.dbUint8ArrayData instanceof Uint8Array) {
-                initialBinaryData = opts.dbUint8ArrayData;
-            } else if (typeof opts.dbBase64Data === 'string' && opts.dbBase64Data.trim()) {
-                initialBinaryData = this.#base64ToUint8(opts.dbBase64Data);
-            }
-
-            if (initialBinaryData) {
-                this.#db = new SQL.Database(initialBinaryData);
-            } else {
-                this.#db = new SQL.Database();
-            }
-
-            // Exécution du script de données initial ou de la structure
-            if (typeof opts.dbBaseData === 'string' && opts.dbBaseData.trim()) {
-                this.#db.run(opts.dbBaseData);
-            } else if (!initialBinaryData && opts.dbStructure && typeof opts.dbStructure === 'object') {
-                await this.createTables(opts.dbStructure);
-            }
-
-            this.#isInitialized = true;
-            return true;
-        } catch (err) {
-            console.warn('NSql : échec initialisation sql.js.', err);
-            this.#isInitialized = false;
-            return false;
+            return await this.#initPromise;
+        } finally {
+            this.#initPromise = null;
         }
     }
 
     /**
-     * Ferme la connexion à la base de données et libère les ressources WebAssembly.
+     * Ferme la connexion à la base de données et libère toutes les ressources WebAssembly allouées.
      *
      * @method close
-     * @returns {boolean}
+     * @returns {boolean} `true` si la base est fermée.
      *
      * @example <caption>Exemple 1 : Fermer la base SQLite</caption>
      * sql.close();
@@ -279,12 +349,17 @@ export class NSql {
         if (this.#db) {
             try {
                 this.#db.close();
-            } catch {
-                // Ignore
+            } catch (err) {
+                NUtil.log.warn('NSql.close : Avertissement lors de la fermeture de la base.', {
+                    code: 'WARN_SQL_CLOSE',
+                    error: err,
+                    database: this.#name
+                });
             }
             this.#db = null;
         }
         this.#isInitialized = false;
+        this.#transactionDepth = 0;
         return true;
     }
 
@@ -322,7 +397,13 @@ export class NSql {
             this.#db.run(sqlCreateTable);
             return true;
         } catch (err) {
-            console.warn(`NSql.createTable : échec création de la table "${tableName}".`, err);
+            NUtil.log.error(`NSql.createTable : Échec de la création de la table "${tableName}".`, {
+                code: 'ERR_SQL_CREATE_TABLE',
+                tableName,
+                sql: sqlCreateTable,
+                error: err,
+                stack: err?.stack
+            });
             return false;
         }
     }
@@ -360,12 +441,13 @@ export class NSql {
 
     /**
      * Exécute une requête SQL d'action (INSERT, UPDATE, DELETE, DDL) sans attendre de résultats.
+     * Libération garantie du statement préparé dans un bloc `finally`.
      *
      * @async
      * @method query
      * @param {string} sql - Requête SQL à exécuter.
      * @param {Array|Object} [params=[]] - Paramètres nommés (`{ key: val }`) ou positionnels (`[val1, val2]`).
-     * @returns {Promise<boolean>}
+     * @returns {Promise<boolean>} `true` si la requête s'est exécutée avec succès, `false` sinon.
      *
      * @example <caption>Exemple 1 : Créer un index via query()</caption>
      * await sql.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);');
@@ -381,22 +463,142 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return false;
 
+        let stmt = null;
         try {
             const { cleanSql, cleanParams } = this.#normalizeParams(sql, params);
-            const stmt = this.#db.prepare(cleanSql);
+            stmt = this.#db.prepare(cleanSql);
             stmt.bind(cleanParams);
             stmt.step();
-            stmt.free();
             return true;
         } catch (err) {
-            console.warn('NSql.query : échec exécution requête.', err);
+            NUtil.log.error('NSql.query : Échec d\'exécution de la requête.', {
+                code: 'ERR_SQL_QUERY',
+                sql,
+                params,
+                error: err,
+                stack: err?.stack
+            });
             return false;
+        } finally {
+            if (stmt) {
+                try {
+                    stmt.free();
+                } catch {
+                    // Ignore les erreurs de libération
+                }
+            }
+        }
+    }
+
+    /**
+     * Exécute une requête SQL générale et retourne une réponse normalisée `{ ok, data, error, code }`.
+     * Fournit un accès universel avec gestion des lignes modifiées et des résultats.
+     *
+     * @async
+     * @method execute
+     * @param {string} sql - Requête SQL à exécuter.
+     * @param {Array|Object} [params=[]] - Paramètres de la requête.
+     * @returns {Promise<NSqlResponse>} Réponse standardisée contenant les résultats et métadonnées.
+     *
+     * @example <caption>Exemple 1 : Exécuter un SELECT via execute()</caption>
+     * const res = await sql.execute('SELECT * FROM users WHERE active = :act', { act: 1 });
+     * if (res.ok) { console.log('Lignes :', res.data.rows); }
+     *
+     * @example <caption>Exemple 2 : Exécuter un UPDATE avec vérification des lignes modifiées</caption>
+     * const res = await sql.execute('UPDATE users SET role = ? WHERE id = ?', ['admin', 1]);
+     * console.log('Modifiées :', res.data?.rowsModified);
+     */
+    async execute(sql, params = []) {
+        if (!sql || typeof sql !== 'string') {
+            return {
+                ok: false,
+                data: null,
+                error: 'Requête SQL invalide ou manquante.',
+                code: 'ERR_SQL_INVALID_INPUT'
+            };
+        }
+
+        if (this.#isNativeApp()) {
+            const res = await this.#requestNative('execute', { query: sql, params });
+            if (res && typeof res === 'object' && 'ok' in res) {
+                return res;
+            }
+            return { ok: Boolean(res), data: res ?? null, error: null, code: null };
+        }
+
+        if (!this.#ensureDbReady()) {
+            return {
+                ok: false,
+                data: null,
+                error: 'Base de données non initialisée.',
+                code: 'ERR_SQL_NOT_INITIALIZED'
+            };
+        }
+
+        let stmt = null;
+        try {
+            const { cleanSql, cleanParams } = this.#normalizeParams(sql, params);
+            stmt = this.#db.prepare(cleanSql);
+            stmt.bind(cleanParams);
+
+            const rows = [];
+            while (stmt.step()) {
+                rows.push(stmt.getAsObject());
+            }
+
+            const rowsModified = typeof this.#db.getRowsModified === 'function'
+                ? this.#db.getRowsModified()
+                : 0;
+
+            let lastInsertRowId = null;
+            try {
+                const lastIdRes = this.#db.exec('SELECT last_insert_rowid() AS lastId');
+                if (lastIdRes && lastIdRes.length > 0 && lastIdRes[0].values?.length > 0) {
+                    lastInsertRowId = lastIdRes[0].values[0][0];
+                }
+            } catch {
+                // Ignore
+            }
+
+            return {
+                ok: true,
+                data: {
+                    rows,
+                    rowsModified,
+                    lastInsertRowId
+                },
+                error: null,
+                code: null
+            };
+        } catch (err) {
+            NUtil.log.error('NSql.execute : Échec lors de l\'exécution de la requête SQL.', {
+                code: 'ERR_SQL_EXECUTE',
+                sql,
+                params,
+                error: err,
+                stack: err?.stack
+            });
+            return {
+                ok: false,
+                data: null,
+                error: err?.message || String(err),
+                code: 'ERR_SQL_EXECUTE'
+            };
+        } finally {
+            if (stmt) {
+                try {
+                    stmt.free();
+                } catch {
+                    // Ignore
+                }
+            }
         }
     }
 
     /**
      * Exécute une requête `SELECT` et retourne l'ensemble des lignes correspondantes
      * sous la forme d'un tableau d'objets `[ { col: val }, ... ]`.
+     * Libération systématique du statement garanti dans un bloc `finally`.
      *
      * @async
      * @method select
@@ -420,20 +622,34 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return [];
 
+        let stmt = null;
         try {
             const { cleanSql, cleanParams } = this.#normalizeParams(sql, params);
-            const stmt = this.#db.prepare(cleanSql);
+            stmt = this.#db.prepare(cleanSql);
             stmt.bind(cleanParams);
 
             const results = [];
             while (stmt.step()) {
                 results.push(stmt.getAsObject());
             }
-            stmt.free();
             return results;
         } catch (err) {
-            console.warn('NSql.select : échec de sélection.', err);
+            NUtil.log.error('NSql.select : Échec lors de la sélection SQL.', {
+                code: 'ERR_SQL_SELECT',
+                sql,
+                params,
+                error: err,
+                stack: err?.stack
+            });
             return [];
+        } finally {
+            if (stmt) {
+                try {
+                    stmt.free();
+                } catch {
+                    // Ignore
+                }
+            }
         }
     }
 
@@ -445,7 +661,7 @@ export class NSql {
      * @method selectOne
      * @param {string} sql - Requête SQL de sélection.
      * @param {Array|Object} [params=[]] - Paramètres de la requête.
-     * @returns {Promise<Object|null>}
+     * @returns {Promise<Object|null>} Ligne sélectionnée ou `null`.
      *
      * @example <caption>Exemple 1 : Trouver un utilisateur par ID</caption>
      * const user = await sql.selectOne('SELECT * FROM users WHERE id = ?', [1]);
@@ -471,7 +687,7 @@ export class NSql {
      * @async
      * @method selectAll
      * @param {string} tableName - Nom de la table.
-     * @returns {Promise<Array<Object>>}
+     * @returns {Promise<Array<Object>>} Ensemble des lignes de la table.
      *
      * @example <caption>Exemple 1 : Récupérer tout le catalogue produit</caption>
      * const products = await sql.selectAll('products');
@@ -538,7 +754,7 @@ export class NSql {
      * @async
      * @method countRows
      * @param {string} tableName - Nom de la table.
-     * @returns {Promise<number>}
+     * @returns {Promise<number>} Nombre de lignes de la table.
      *
      * @example <caption>Exemple 1 : Compter le nombre de clients</caption>
      * const total = await sql.countRows('customers');
@@ -567,6 +783,7 @@ export class NSql {
     /**
      * Insère un enregistrement dans une table à partir d'un objet clé/valeur.
      * Retourne l'identifiant de la ligne insérée (`last_insert_rowid`) ou `false` en cas d'échec.
+     * Libération systématique du statement garanti dans un bloc `finally`.
      *
      * @async
      * @method insert
@@ -591,18 +808,18 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return false;
 
+        let stmt = null;
         try {
             const fields = Object.keys(data);
-            const values = Object.values(data);
+            const values = Object.values(data).map((v) => this.#formatParamValue(v));
             const placeholders = fields.map(() => '?').join(', ');
             const escapedFields = fields.map((f) => `\`${this.#escapeIdentifier(f)}\``).join(', ');
             const safeTable = this.#escapeIdentifier(tableName);
 
             const sql = `INSERT INTO \`${safeTable}\` (${escapedFields}) VALUES (${placeholders})`;
-            const stmt = this.#db.prepare(sql);
+            stmt = this.#db.prepare(sql);
             stmt.bind(values);
             stmt.step();
-            stmt.free();
 
             // Récupération de l'identifiant généré
             const lastIdRes = this.#db.exec('SELECT last_insert_rowid() AS lastId');
@@ -611,14 +828,29 @@ export class NSql {
             }
             return true;
         } catch (err) {
-            console.warn(`NSql.insert : échec d'insertion dans "${tableName}".`, err);
+            NUtil.log.error(`NSql.insert : Échec d'insertion dans "${tableName}".`, {
+                code: 'ERR_SQL_INSERT',
+                tableName,
+                data,
+                error: err,
+                stack: err?.stack
+            });
             return false;
+        } finally {
+            if (stmt) {
+                try {
+                    stmt.free();
+                } catch {
+                    // Ignore
+                }
+            }
         }
     }
 
     /**
      * Met à jour des enregistrements dans une table selon une condition.
      * Retourne le nombre de lignes modifiées.
+     * Libération systématique du statement garanti dans un bloc `finally`.
      *
      * @async
      * @method update
@@ -645,30 +877,47 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return 0;
 
+        let stmt = null;
         try {
             const fields = Object.keys(data);
-            const values = Object.values(data);
+            const values = Object.values(data).map((v) => this.#formatParamValue(v));
             const setClause = fields.map((f) => `\`${this.#escapeIdentifier(f)}\` = ?`).join(', ');
             const safeTable = this.#escapeIdentifier(tableName);
 
             const { cleanSql: cleanCond, cleanParams: condParams } = this.#normalizeParams(condition, params);
             const fullSql = `UPDATE \`${safeTable}\` SET ${setClause} WHERE ${cleanCond}`;
 
-            const stmt = this.#db.prepare(fullSql);
+            stmt = this.#db.prepare(fullSql);
             stmt.bind([...values, ...condParams]);
             stmt.step();
-            stmt.free();
 
-            return this.#db.getRowsModified();
+            return typeof this.#db.getRowsModified === 'function' ? this.#db.getRowsModified() : 0;
         } catch (err) {
-            console.warn(`NSql.update : échec de mise à jour de "${tableName}".`, err);
+            NUtil.log.error(`NSql.update : Échec de mise à jour de "${tableName}".`, {
+                code: 'ERR_SQL_UPDATE',
+                tableName,
+                data,
+                condition,
+                params,
+                error: err,
+                stack: err?.stack
+            });
             return 0;
+        } finally {
+            if (stmt) {
+                try {
+                    stmt.free();
+                } catch {
+                    // Ignore
+                }
+            }
         }
     }
 
     /**
      * Supprime des enregistrements dans une table selon une condition.
      * Retourne le nombre de lignes supprimées.
+     * Libération systématique du statement garanti dans un bloc `finally`.
      *
      * @async
      * @method delete
@@ -694,20 +943,157 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return 0;
 
+        let stmt = null;
         try {
             const safeTable = this.#escapeIdentifier(tableName);
             const { cleanSql: cleanCond, cleanParams: condParams } = this.#normalizeParams(condition, params);
             const fullSql = `DELETE FROM \`${safeTable}\` WHERE ${cleanCond}`;
 
-            const stmt = this.#db.prepare(fullSql);
+            stmt = this.#db.prepare(fullSql);
             stmt.bind(condParams);
             stmt.step();
-            stmt.free();
 
-            return this.#db.getRowsModified();
+            return typeof this.#db.getRowsModified === 'function' ? this.#db.getRowsModified() : 0;
         } catch (err) {
-            console.warn(`NSql.delete : échec de suppression dans "${tableName}".`, err);
+            NUtil.log.error(`NSql.delete : Échec de suppression dans "${tableName}".`, {
+                code: 'ERR_SQL_DELETE',
+                tableName,
+                condition,
+                params,
+                error: err,
+                stack: err?.stack
+            });
             return 0;
+        } finally {
+            if (stmt) {
+                try {
+                    stmt.free();
+                } catch {
+                    // Ignore
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Transactions & Intégrité des Données
+    // =========================================================================
+
+    /**
+     * Exécute une série d'opérations dans une transaction atomique sécurisée.
+     * En cas d'erreur dans le callback, un ROLLBACK automatique est appliqué.
+     * Gère les transactions imbriquées via le mécanisme standard des `SAVEPOINT` SQLite.
+     *
+     * @async
+     * @method transaction
+     * @param {Function} callback - Fonction asynchrone recevant l'instance NSql `(sql) => Promise<any>`.
+     * @returns {Promise<NSqlResponse>} Résultat standardisé de la transaction.
+     *
+     * @example <caption>Exemple 1 : Transaction simple avec validation</caption>
+     * const res = await sql.transaction(async (tx) => {
+     *     await tx.insert('accounts', { id: 1, balance: 100 });
+     *     await tx.insert('accounts', { id: 2, balance: 50 });
+     *     return { completed: true };
+     * });
+     * console.log('Statut :', res.ok, 'Données :', res.data);
+     *
+     * @example <caption>Exemple 2 : Annulation automatique (rollback) lors d'un échec</caption>
+     * const res = await sql.transaction(async (tx) => {
+     *     await tx.update('accounts', { balance: 0 }, 'id = ?', [1]);
+     *     throw new Error('Erreur réseau simulée');
+     * });
+     * console.log(res.ok); // false (les modifications sont annulées)
+     */
+    async transaction(callback) {
+        if (typeof callback !== 'function') {
+            return {
+                ok: false,
+                data: null,
+                error: 'Callback de transaction manquant ou invalide.',
+                code: 'ERR_TX_CALLBACK_INVALID'
+            };
+        }
+
+        if (this.#isNativeApp()) {
+            try {
+                const res = await callback(this);
+                return { ok: true, data: res, error: null, code: null };
+            } catch (err) {
+                NUtil.log.error('NSql.transaction : Erreur durant la transaction native.', {
+                    code: 'ERR_TX_NATIVE_FAILED',
+                    error: err,
+                    stack: err?.stack
+                });
+                return { ok: false, data: null, error: err?.message || String(err), code: 'ERR_TX_NATIVE_FAILED' };
+            }
+        }
+
+        if (!this.#ensureDbReady()) {
+            return {
+                ok: false,
+                data: null,
+                error: 'Base de données non initialisée.',
+                code: 'ERR_SQL_NOT_INITIALIZED'
+            };
+        }
+
+        const isNested = this.#transactionDepth > 0;
+        const savepointName = `sp_${this.#transactionDepth}`;
+        this.#transactionDepth++;
+
+        try {
+            if (isNested) {
+                this.#db.run(`SAVEPOINT ${savepointName}`);
+            } else {
+                this.#db.run('BEGIN TRANSACTION');
+            }
+
+            const result = await callback(this);
+
+            if (isNested) {
+                this.#db.run(`RELEASE SAVEPOINT ${savepointName}`);
+            } else {
+                this.#db.run('COMMIT');
+            }
+
+            return {
+                ok: true,
+                data: result,
+                error: null,
+                code: null
+            };
+        } catch (err) {
+            NUtil.log.error('NSql.transaction : Erreur durant la transaction, exécution du ROLLBACK.', {
+                code: 'ERR_SQL_TRANSACTION_FAILED',
+                error: err,
+                stack: err?.stack,
+                nested: isNested,
+                savepoint: savepointName
+            });
+
+            try {
+                if (isNested) {
+                    this.#db.run(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+                    this.#db.run(`RELEASE SAVEPOINT ${savepointName}`);
+                } else {
+                    this.#db.run('ROLLBACK');
+                }
+            } catch (rollbackErr) {
+                NUtil.log.error('NSql.transaction : Échec critique du ROLLBACK.', {
+                    code: 'ERR_SQL_ROLLBACK_FAILED',
+                    error: rollbackErr,
+                    stack: rollbackErr?.stack
+                });
+            }
+
+            return {
+                ok: false,
+                data: null,
+                error: err?.message || String(err),
+                code: 'ERR_SQL_TRANSACTION_FAILED'
+            };
+        } finally {
+            this.#transactionDepth = Math.max(0, this.#transactionDepth - 1);
         }
     }
 
@@ -721,7 +1107,7 @@ export class NSql {
      * @async
      * @method getTableFields
      * @param {string} tableName - Nom de la table.
-     * @returns {Promise<string[]>}
+     * @returns {Promise<string[]>} Liste des noms des colonnes.
      *
      * @example <caption>Exemple 1 : Obtenir les colonnes de la table users</caption>
      * const fields = await sql.getTableFields('users');
@@ -781,7 +1167,7 @@ export class NSql {
      * @async
      * @method getNextId
      * @param {string} tableName - Nom de la table.
-     * @returns {Promise<number>}
+     * @returns {Promise<number>} Valeur d'identifiant suivante calculée.
      *
      * @example <caption>Exemple 1 : Obtenir le prochain ID d'utilisateur</caption>
      * const nextId = await sql.getNextId('users');
@@ -812,7 +1198,7 @@ export class NSql {
      * @async
      * @method generatePrimaryKeyValue
      * @param {string} tableName - Nom de la table.
-     * @returns {Promise<number>}
+     * @returns {Promise<number>} Identifiant calculé (1 si table vide).
      *
      * @example <caption>Exemple 1 : Générer un identifiant</caption>
      * const newKey = await sql.generatePrimaryKeyValue('products');
@@ -885,11 +1271,11 @@ export class NSql {
      *
      * @async
      * @method export
-     * @returns {Promise<Uint8Array|null>}
+     * @returns {Promise<Uint8Array|null>} Données binaires exportées ou `null`.
      *
      * @example <caption>Exemple 1 : Exporter la base SQLite en Uint8Array</caption>
      * const bytes = await sql.export();
-     * console.log('Taille exportée :', bytes.length, 'octets');
+     * console.log('Taille exportée :', bytes?.length, 'octets');
      *
      * @example <caption>Exemple 2 : Sauvegarder dans IndexedDB ou fichier</caption>
      * const uint8 = await sql.export();
@@ -906,7 +1292,12 @@ export class NSql {
         try {
             return this.#db.export();
         } catch (err) {
-            console.warn('NSql.export : échec d\'export binaire.', err);
+            NUtil.log.error('NSql.export : Échec de l\'export binaire de la base.', {
+                code: 'ERR_SQL_EXPORT_BINARY',
+                error: err,
+                stack: err?.stack,
+                database: this.#name
+            });
             return null;
         }
     }
@@ -916,7 +1307,7 @@ export class NSql {
      *
      * @async
      * @method exportBase64
-     * @returns {Promise<string>}
+     * @returns {Promise<string>} Données exportées en chaîne Base64 (vide en cas d'erreur).
      *
      * @example <caption>Exemple 1 : Obtenir la base encodée en Base64</caption>
      * const b64 = await sql.exportBase64();
@@ -937,10 +1328,11 @@ export class NSql {
 
     /**
      * Vide intégralement toutes les données de toutes les tables utilisateur (sans supprimer les tables).
+     * Encapsulé dans une transaction pour garantir la consistance.
      *
      * @async
      * @method clear
-     * @returns {Promise<boolean>}
+     * @returns {Promise<boolean>} `true` si la base a été vidée, `false` sinon.
      *
      * @example <caption>Exemple 1 : Vider les données de la base</caption>
      * const ok = await sql.clear();
@@ -957,35 +1349,34 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return false;
 
-        try {
-            const tables = await this.select(`
+        const txRes = await this.transaction(async (tx) => {
+            const tables = await tx.select(`
                 SELECT name FROM sqlite_master
                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
             `);
 
             for (const t of tables) {
-                this.#db.run(`DELETE FROM \`${this.#escapeIdentifier(t.name)}\``);
+                await tx.query(`DELETE FROM \`${this.#escapeIdentifier(t.name)}\``);
             }
 
             try {
-                this.#db.run('DELETE FROM sqlite_sequence');
+                await tx.query('DELETE FROM sqlite_sequence');
             } catch {
-                // Ignore si la table sqlite_sequence n'existe pas encore
+                // Ignore si sqlite_sequence n'existe pas encore
             }
-
             return true;
-        } catch (err) {
-            console.warn('NSql.clear : échec du vidage de la base.', err);
-            return false;
-        }
+        });
+
+        return txRes.ok;
     }
 
     /**
      * Supprime toutes les tables utilisateur de la base (`DROP TABLE IF EXISTS`).
+     * Encapsulé dans une transaction pour éviter un schéma partiellement corrompu.
      *
      * @async
      * @method deleteDb
-     * @returns {Promise<boolean>}
+     * @returns {Promise<boolean>} `true` si toutes les tables ont été supprimées.
      *
      * @example <caption>Exemple 1 : Supprimer toutes les tables de la base</caption>
      * const ok = await sql.deleteDb();
@@ -1002,21 +1393,19 @@ export class NSql {
 
         if (!this.#ensureDbReady()) return false;
 
-        try {
-            const tables = await this.select(`
+        const txRes = await this.transaction(async (tx) => {
+            const tables = await tx.select(`
                 SELECT name FROM sqlite_master
                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
             `);
 
             for (const t of tables) {
-                this.#db.run(`DROP TABLE IF EXISTS \`${this.#escapeIdentifier(t.name)}\``);
+                await tx.query(`DROP TABLE IF EXISTS \`${this.#escapeIdentifier(t.name)}\``);
             }
-
             return true;
-        } catch (err) {
-            console.warn('NSql.deleteDb : échec de suppression des tables.', err);
-            return false;
-        }
+        });
+
+        return txRes.ok;
     }
 
     // =========================================================================
@@ -1026,17 +1415,21 @@ export class NSql {
     /**
      * Vérifie si le contexte actif est une application native (WebView / conteneur).
      * @private
+     * @returns {boolean}
      */
     #isNativeApp() {
         return Boolean(NUtil?.env?.isWebView);
     }
 
     /**
-     * Relaye une action SQLite vers le conteneur applicatif natif via `requestApp`.
+     * Relaye une action SQLite vers le conteneur applicatif natif via `NUtil.sys.invokeNative`.
      * @private
+     * @param {string} actionType - Type d'action demandée.
+     * @param {Object} [extraParams={}] - Paramètres transmis.
+     * @returns {Promise<any>}
      */
     async #requestNative(actionType, extraParams = {}) {
-        return await NUtil.env.requestApp({
+        return await NUtil.sys.invokeNative({
             typeg: ['app', 'sql'],
             type: actionType,
             params: extraParams
@@ -1045,7 +1438,11 @@ export class NSql {
 
     /**
      * Charge le module `sql.js` (WebAssembly) une seule fois et le met en cache statique.
+     * En cas d'échec, réinitialise la promesse de chargement afin de permettre une nouvelle tentative propre.
+     *
      * @private
+     * @param {string|Function} [wasmPath] - Chemin ou fonction locateFile.
+     * @returns {Promise<any|null>} Instance du module sql.js ou `null`.
      */
     async #ensureSqlJsModule(wasmPath) {
         if (NSql.#sqlJsModule) {
@@ -1057,37 +1454,53 @@ export class NSql {
         }
 
         NSql.#moduleLoadingPromise = (async () => {
-            const initSqlJsFn = this.#resolveInitSqlJs();
-            if (typeof initSqlJsFn !== 'function') {
-                throw new NException('NSql : le module sql.js (initSqlJs) est introuvable.', {
-                    code: 'SQL_JS_NOT_FOUND'
+            try {
+                const initSqlJsFn = this.#resolveInitSqlJs();
+                if (typeof initSqlJsFn !== 'function') {
+                    NUtil.log.error('NSql : Le module sql.js (initSqlJs) est introuvable.', {
+                        code: 'ERR_SQL_JS_NOT_FOUND',
+                        database: this.#name
+                    });
+                    return null;
+                }
+
+                const locateFile = typeof wasmPath === 'function'
+                    ? wasmPath
+                    : (filename) => {
+                        if (typeof wasmPath === 'string' && wasmPath.trim()) {
+                            return wasmPath.endsWith('.wasm')
+                                ? wasmPath
+                                : `${wasmPath.replace(/\/+$/, '')}/${filename}`;
+                        }
+                        if (typeof location !== 'undefined' && location.origin) {
+                            return `${location.origin}/file/sqljs/${filename}`;
+                        }
+                        return filename;
+                    };
+
+                const loaded = await initSqlJsFn({ locateFile });
+                NSql.#sqlJsModule = loaded;
+                return loaded;
+            } catch (err) {
+                NUtil.log.error('NSql : Échec du chargement du binaire WebAssembly sql.js.', {
+                    code: 'ERR_SQL_JS_LOAD_FAILED',
+                    error: err,
+                    stack: err?.stack,
+                    database: this.#name
                 });
+                return null;
+            } finally {
+                NSql.#moduleLoadingPromise = null;
             }
-
-            const locateFile = typeof wasmPath === 'function'
-                ? wasmPath
-                : (filename) => {
-                    if (typeof wasmPath === 'string' && wasmPath.trim()) {
-                        return wasmPath.endsWith('.wasm') ? wasmPath : `${wasmPath.replace(/\/+$/, '')}/${filename}`;
-                    }
-                    if (typeof location !== 'undefined' && location.origin) {
-                        return `${location.origin}/file/sqljs/${filename}`;
-                    }
-                    return filename;
-                };
-
-            const loaded = await initSqlJsFn({ locateFile });
-            NSql.#sqlJsModule = loaded;
-            NSql.#moduleLoadingPromise = null;
-            return loaded;
         })();
 
         return NSql.#moduleLoadingPromise;
     }
 
     /**
-     * Trouve la fonction `initSqlJs` globale ou importée.
+     * Trouve la fonction `initSqlJs` globale ou disponible dans l'environnement.
      * @private
+     * @returns {Function|null}
      */
     #resolveInitSqlJs() {
         if (typeof globalThis !== 'undefined' && typeof globalThis.initSqlJs === 'function') {
@@ -1096,92 +1509,282 @@ export class NSql {
         if (typeof window !== 'undefined' && typeof window.initSqlJs === 'function') {
             return window.initSqlJs;
         }
+        if (typeof self !== 'undefined' && typeof self.initSqlJs === 'function') {
+            return self.initSqlJs;
+        }
         return null;
     }
 
     /**
      * S'assure que la base de données est ouverte et prête.
      * @private
+     * @returns {boolean}
      */
     #ensureDbReady() {
         if (!this.#db) {
-            console.warn('NSql : la base de données n\'est pas initialisée. Appelez d\'abord await sql.init().');
+            NUtil.log.warn('NSql : La base de données n\'est pas initialisée. Appelez d\'abord await sql.init().', {
+                code: 'WARN_SQL_NOT_INITIALIZED',
+                database: this.#name
+            });
             return false;
         }
         return true;
     }
 
     /**
-     * Normalise les paramètres (transforme `:key` en `?` si un objet est fourni).
+     * Normalise les paramètres SQL de manière contextuelle et sécurisée.
+     * Remplace les paramètres nommés `:paramName` par `?` en ignorant les occurrences situées
+     * à l'intérieur de chaînes littérales, de commentaires ou d'identifiants délimités.
+     *
      * @private
+     * @param {string} sql - Requête SQL source.
+     * @param {Array|Object} params - Paramètres positionnels ou nommés.
+     * @returns {{ cleanSql: string, cleanParams: Array<any> }}
      */
     #normalizeParams(sql, params) {
+        if (!sql || typeof sql !== 'string') {
+            return { cleanSql: '', cleanParams: [] };
+        }
+
         if (!params || (Array.isArray(params) && params.length === 0)) {
             return { cleanSql: sql, cleanParams: [] };
         }
 
         if (Array.isArray(params)) {
-            return { cleanSql: sql, cleanParams: params };
+            return {
+                cleanSql: sql,
+                cleanParams: params.map((p) => this.#formatParamValue(p))
+            };
         }
 
         if (typeof params === 'object') {
             const cleanParams = [];
-            const cleanSql = sql.replace(/:(\w+)/g, (match, key) => {
-                if (!(key in params)) {
-                    throw new NException(`NSql : paramètre nommé manquant "${key}".`, {
-                        code: 'MISSING_SQL_PARAM',
-                        context: { key, sql, params }
-                    });
-                }
-                cleanParams.push(params[key]);
-                return '?';
-            });
+            const len = sql.length;
+            let resultSql = '';
+            let i = 0;
 
-            return { cleanSql, cleanParams };
+            while (i < len) {
+                const char = sql[i];
+
+                // 1. Chaîne entre apostrophes simples '...' (avec support des échappements '')
+                if (char === "'") {
+                    resultSql += char;
+                    i++;
+                    while (i < len) {
+                        const c = sql[i];
+                        resultSql += c;
+                        if (c === "'") {
+                            if (i + 1 < len && sql[i + 1] === "'") {
+                                i++;
+                                resultSql += sql[i];
+                            } else {
+                                i++;
+                                break;
+                            }
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 2. Chaîne entre guillemets doubles "..."
+                if (char === '"') {
+                    resultSql += char;
+                    i++;
+                    while (i < len) {
+                        const c = sql[i];
+                        resultSql += c;
+                        if (c === '"') {
+                            if (i + 1 < len && sql[i + 1] === '"') {
+                                i++;
+                                resultSql += sql[i];
+                            } else {
+                                i++;
+                                break;
+                            }
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 3. Identifiant entre backticks `...`
+                if (char === '`') {
+                    resultSql += char;
+                    i++;
+                    while (i < len) {
+                        const c = sql[i];
+                        resultSql += c;
+                        if (c === '`') {
+                            i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 4. Commentaire mono-ligne -- ...
+                if (char === '-' && i + 1 < len && sql[i + 1] === '-') {
+                    while (i < len && sql[i] !== '\n') {
+                        resultSql += sql[i];
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 5. Commentaire multi-lignes /* ... */
+                if (char === '/' && i + 1 < len && sql[i + 1] === '*') {
+                    resultSql += '/*';
+                    i += 2;
+                    while (i < len) {
+                        if (sql[i] === '*' && i + 1 < len && sql[i + 1] === '/') {
+                            resultSql += '*/';
+                            i += 2;
+                            break;
+                        }
+                        resultSql += sql[i];
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 6. Paramètre nommé :paramName (doit commencer par ':' suivi d'une lettre ou _)
+                if (char === ':' && i + 1 < len && /[a-zA-Z_]/.test(sql[i + 1])) {
+                    let key = '';
+                    i++; // saute le ':'
+                    while (i < len && /[a-zA-Z0-9_]/.test(sql[i])) {
+                        key += sql[i];
+                        i++;
+                    }
+
+                    if (key in params) {
+                        cleanParams.push(this.#formatParamValue(params[key]));
+                    } else {
+                        NUtil.log.warn(`NSql : Paramètre nommé manquant "${key}". Liaison avec null.`, {
+                            code: 'WARN_SQL_MISSING_PARAM',
+                            key,
+                            sql
+                        });
+                        cleanParams.push(null);
+                    }
+                    resultSql += '?';
+                    continue;
+                }
+
+                // Caractère standard
+                resultSql += char;
+                i++;
+            }
+
+            return { cleanSql: resultSql, cleanParams };
         }
 
-        return { cleanSql: sql, cleanParams: [params] };
+        return {
+            cleanSql: sql,
+            cleanParams: [this.#formatParamValue(params)]
+        };
+    }
+
+    /**
+     * Formate une valeur JavaScript pour un paramètre SQLite compatible (gère dates, booléens, objets).
+     * @private
+     * @param {any} val - Valeur brute.
+     * @returns {any} Valeur normalisée (null, number, string, Uint8Array).
+     */
+    #formatParamValue(val) {
+        if (val === undefined || val === null) {
+            return null;
+        }
+        if (typeof val === 'boolean') {
+            return val ? 1 : 0;
+        }
+        if (val instanceof Date) {
+            return val.toISOString();
+        }
+        if (typeof val === 'bigint') {
+            return Number(val);
+        }
+        if (val instanceof Uint8Array) {
+            return val;
+        }
+        if (typeof val === 'object') {
+            try {
+                return JSON.stringify(val);
+            } catch {
+                return String(val);
+            }
+        }
+        return val;
     }
 
     /**
      * Échappe un identifiant SQL (nom de table ou colonne) pour éviter les injections.
      * @private
+     * @param {string} name - Nom d'identifiant à échapper.
+     * @returns {string} Identifiant protégé.
      */
     #escapeIdentifier(name) {
         return String(name).replace(/`/g, '``');
     }
 
     /**
-     * Convertit un `Uint8Array` en chaîne Base64.
+     * Convertit un `Uint8Array` en chaîne Base64 de façon performante et multiplateforme.
      * @private
+     * @param {Uint8Array} uint8 - Buffer binaire.
+     * @returns {string} Chaîne Base64.
      */
     #uint8ToBase64(uint8) {
         if (!(uint8 instanceof Uint8Array)) return '';
-        let binary = '';
-        const len = uint8.length;
-        const chunkSize = 8192; // Découpage par morceaux pour éviter RangeError sur String.fromCharCode
-        for (let i = 0; i < len; i += chunkSize) {
-            const sub = uint8.subarray(i, Math.min(i + chunkSize, len));
-            binary += String.fromCharCode.apply(null, sub);
+
+        // Environnement Node.js ou Buffer disponible
+        if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+            return Buffer.from(uint8.buffer, uint8.byteOffset, uint8.byteLength).toString('base64');
         }
-        return btoa(binary);
+
+        // Navigateur / Web Worker avec btoa par paquets de 8Ko pour éviter RangeError
+        if (typeof btoa === 'function') {
+            let binary = '';
+            const len = uint8.length;
+            const chunkSize = 8192;
+            for (let i = 0; i < len; i += chunkSize) {
+                const sub = uint8.subarray(i, Math.min(i + chunkSize, len));
+                binary += String.fromCharCode.apply(null, sub);
+            }
+            return btoa(binary);
+        }
+
+        return '';
     }
 
     /**
-     * Convertit une chaîne Base64 en `Uint8Array`.
+     * Convertit une chaîne Base64 en `Uint8Array` de façon résiliente.
      * @private
+     * @param {string} base64 - Données Base64.
+     * @returns {Uint8Array} Buffer binaire.
      */
     #base64ToUint8(base64) {
         if (!base64 || typeof base64 !== 'string') return new Uint8Array(0);
-        const binary = atob(base64.trim());
-        const len = binary.length;
-        const uint8 = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            uint8[i] = binary.charCodeAt(i);
+
+        // Environnement Node.js ou Buffer disponible
+        if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+            const buf = Buffer.from(base64.trim(), 'base64');
+            return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
         }
-        return uint8;
+
+        // Navigateur / Web Worker avec atob
+        if (typeof atob === 'function') {
+            const binary = atob(base64.trim());
+            const len = binary.length;
+            const uint8 = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                uint8[i] = binary.charCodeAt(i);
+            }
+            return uint8;
+        }
+
+        return new Uint8Array(0);
     }
 }
 
 export default NSql;
-

@@ -13,6 +13,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NJson
  * @description Utilitaire de gestion, manipulation et sérialisation de structures JSON sans état interne.
@@ -23,11 +25,12 @@
  * console.log(jsonUtil.parse('invalide', { default: true })); // { default: true }
  * console.log(jsonUtil.stringify({ b: 2, a: 1 }, { sortKeys: true })); // '{"a":1,"b":2}'
  *
- * @example <caption>Exemple 2 : Lecture, écriture et suppression par chemin imbriqué (dot-notation)</caption>
+ * @example <caption>Exemple 2 : Lecture, écriture et suppression par clé littérale (string) ou tableau de chemin imbriqué</caption>
  * const jsonUtil = new NJson();
- * const data = { user: { profile: { name: 'Neta' } } };
- * console.log(jsonUtil.get(data, 'user.profile.name')); // 'Neta'
- * jsonUtil.set(data, 'user.settings.theme', 'dark');
+ * const data = { 'cle.cle.cle': 'valeurSimple', user: { profile: { name: 'Neta' } } };
+ * console.log(jsonUtil.get(data, 'cle.cle.cle'));                // 'valeurSimple' (clé littérale unique)
+ * console.log(jsonUtil.get(data, ['user', 'profile', 'name'])); // 'Neta' (chemin imbriqué via tableau)
+ * jsonUtil.set(data, ['user', 'settings', 'theme'], 'dark');
  * console.log(data.user.settings.theme); // 'dark'
  *
  * @example <caption>Exemple 3 : Clonage profond, fusion profonde (merge) et aplatissement (flatten)</caption>
@@ -81,20 +84,25 @@ export class NJson {
     }
 
     /**
-     * Normalise n'importe quel chemin (`1`, `'1'`, `'user.1'`, `'user[1]'`, `[1, 2]`, `['user', 1]`)
-     * en un tableau de clés (chaînes ou nombres).
+     * Normalise un chemin ou une clé en un tableau de segments.
+     * Si une chaîne est fournie (ex: `'cle.cle.cle'`), elle est conservée telle quelle comme une seule clé littérale en chaîne.
+     * Pour naviguer dans des niveaux imbriqués, un tableau de clés/indices doit être fourni directement (ex: `['user', 'profile', 'name']`).
      *
-     * @param {string|number|Array<string|number>} path - Chemin ou index à normaliser.
-     * @returns {Array<string|number>} Tableau des segments du chemin.
+     * @param {string|number|Array<string|number>} path - Clé unique littérale ou tableau de segments hiérarchiques.
+     * @returns {Array<string>} Tableau des segments de clés.
      *
-     * @example <caption>Exemple 1 : Chemin numérique ou chaîne</caption>
-     * // Interne : #normalizePath(1) -> ['1']
-     * // Interne : #normalizePath('user.1.name') -> ['user', '1', 'name']
+     * @example <caption>Exemple 1 : Clé littérale sous forme de chaîne (y compris contenant des points) ou nombre</caption>
+     * // Interne : #normalizePath('cle.cle.cle') -> ['cle.cle.cle']
+     * // Interne : #normalizePath(1)             -> ['1']
      *
-     * @example <caption>Exemple 2 : Tableau mixte</caption>
-     * // Interne : #normalizePath(['user', 1]) -> ['user', '1']
+     * @example <caption>Exemple 2 : Tableau pour la navigation hiérarchique imbriquée</caption>
+     * // Interne : #normalizePath(['user', 'profile', 'name']) -> ['user', 'profile', 'name']
+     * // Interne : #normalizePath(['users', 1, 'name'])        -> ['users', '1', 'name']
      */
     #normalizePath(path) {
+        if (typeof path === 'string') {
+            return path.length > 0 ? [path] : [];
+        }
         if (typeof path === 'number' && Number.isFinite(path)) {
             return [String(Math.trunc(path))];
         }
@@ -105,14 +113,10 @@ export class NJson {
                 if (typeof item === 'number' && Number.isFinite(item)) {
                     result.push(String(Math.trunc(item)));
                 } else if (typeof item === 'string' && item.length > 0) {
-                    const subParts = item.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
-                    result.push(...subParts);
+                    result.push(item);
                 }
             }
             return result;
-        }
-        if (typeof path === 'string' && path.length > 0) {
-            return path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
         }
         return [];
     }
@@ -230,7 +234,7 @@ export class NJson {
      * @example <caption>Exemple 2 : Taille d'une propriété imbriquée via son chemin</caption>
      * const jsonUtil = new NJson();
      * const data = { user: { roles: ['admin', 'editor'] } };
-     * console.log(jsonUtil.size(data, 'user.roles')); // 2
+     * console.log(jsonUtil.size(data, ['user', 'roles'])); // 2
      */
     size(value, path = undefined) {
         const root = typeof value === 'string' ? this.parse(value, null) : value;
@@ -310,7 +314,11 @@ export class NJson {
             return typeof reviver === 'function'
                 ? JSON.parse(trimmed, reviver)
                 : JSON.parse(trimmed);
-        } catch {
+        } catch (err) {
+            NUtil.log.warn('NJson.parse: Échec du parsing de la chaîne JSON.', {
+                code: 'WARN_JSON_PARSE_ERROR',
+                cause: err
+            });
             return fallback;
         }
     }
@@ -379,7 +387,11 @@ export class NJson {
                 },
                 indent
             ) ?? fallback;
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NJson.stringify: Échec de la sérialisation JSON.', {
+                code: 'ERR_JSON_STRINGIFY_ERROR',
+                cause: err
+            });
             return fallback;
         }
     }
@@ -462,8 +474,11 @@ export class NJson {
         if (typeof globalThis.structuredClone === 'function') {
             try {
                 return globalThis.structuredClone(value);
-            } catch {
-                // Bascule sur la copie récursive
+            } catch (err) {
+                NUtil.log.warn('NJson.clone: structuredClone a échoué, bascule sur la sérialisation récursive.', {
+                    code: 'WARN_STRUCTURED_CLONE_FALLBACK',
+                    cause: err
+                });
             }
         }
         return this.parse(this.stringify(value));
@@ -540,11 +555,11 @@ export class NJson {
     // =========================================================================
 
     /**
-     * Lit une valeur profondément imbriquée dans un objet, un tableau ou une chaîne JSON
-     * à l'aide d'un chemin ou index (`1`, `'user.1'`, `[1, 2]`, `['user', 1]`, `'user[1].name'`).
+     * Lit une valeur dans un objet, un tableau ou une chaîne JSON
+     * à l'aide d'une clé simple (`'cle'`, `'cle.cle.cle'`), d'un index (`1`) ou d'un tableau de segments (`['user', 'profile', 'name']`).
      *
      * @param {Object|Array|string} data - Objet, tableau (ou chaîne JSON) source.
-     * @param {string|number|Array<string|number>} path - Chemin d'accès ou index numérique.
+     * @param {string|number|Array<string|number>} path - Clé littérale (chaîne/nombre) ou tableau de segments hiérarchiques.
      * @param {any} [fallback=undefined] - Valeur retournée si le chemin n'existe pas.
      * @returns {any} Valeur trouvée ou `fallback`.
      *
@@ -555,11 +570,11 @@ export class NJson {
      * const matrix = [[10, 20], [30, 40]];
      * console.log(jsonUtil.get(matrix, [1, 0])); // 30
      *
-     * @example <caption>Exemple 2 : Tableau imbriqué dans un objet</caption>
+     * @example <caption>Exemple 2 : Clé littérale avec points vs chemin hiérarchique</caption>
      * const jsonUtil = new NJson();
-     * const data = { users: [{ name: 'Ali' }, { name: 'Neta' }] };
-     * console.log(jsonUtil.get(data, 'users.1.name'));     // 'Neta'
-     * console.log(jsonUtil.get(data, ['users', 1, 'name'])); // 'Neta'
+     * const data = { 'cle.cle.cle': 'NLib', users: [{ name: 'Ali' }, { name: 'Neta' }] };
+     * console.log(jsonUtil.get(data, 'cle.cle.cle'));         // 'NLib' (clé littérale unique)
+     * console.log(jsonUtil.get(data, ['users', 1, 'name'])); // 'Neta' (chemin hiérarchique)
      */
     get(data, path, fallback = undefined) {
         const root = typeof data === 'string' ? this.parse(data, null) : data;
@@ -638,7 +653,7 @@ export class NJson {
      *
      * @example <caption>Exemple 1 : Récupérer un entier</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.getInt({ user: { age: '28' } }, 'user.age')); // 28
+     * console.log(jsonUtil.getInt({ user: { age: '28' } }, ['user', 'age'])); // 28
      *
      * @example <caption>Exemple 2 : Tronquer un flottant ou utiliser le fallback</caption>
      * const jsonUtil = new NJson();
@@ -664,7 +679,7 @@ export class NJson {
      *
      * @example <caption>Exemple 1 : Récupérer un flottant</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.getFloat({ item: { weight: '12,75' } }, 'item.weight')); // 12.75
+     * console.log(jsonUtil.getFloat({ item: { weight: '12,75' } }, ['item', 'weight'])); // 12.75
      *
      * @example <caption>Exemple 2 : À partir d'un tableau avec index</caption>
      * const jsonUtil = new NJson();
@@ -697,7 +712,7 @@ export class NJson {
      *
      * @example <caption>Exemple 1 : Récupérer une chaîne</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.getString({ users: ['Ali', 'Neta'] }, 'users.1')); // 'Neta'
+     * console.log(jsonUtil.getString({ users: ['Ali', 'Neta'] }, ['users', 1])); // 'Neta'
      *
      * @example <caption>Exemple 2 : Convertir un nombre ou utiliser le fallback</caption>
      * const jsonUtil = new NJson();
@@ -726,12 +741,12 @@ export class NJson {
      *
      * @example <caption>Exemple 1 : Récupérer un tableau imbriqué</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.getArray({ group: { roles: ['admin', 'user'] } }, 'group.roles'));
+     * console.log(jsonUtil.getArray({ group: { roles: ['admin', 'user'] } }, ['group', 'roles']));
      * // ['admin', 'user']
      *
      * @example <caption>Exemple 2 : Valeur non-tableau retourne le fallback []</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.getArray({ group: { roles: 'admin' } }, 'group.roles')); // []
+     * console.log(jsonUtil.getArray({ group: { roles: 'admin' } }, ['group', 'roles'])); // []
      */
     getArray(data, path, fallback = []) {
         const val = this.get(data, path, undefined);
@@ -763,7 +778,7 @@ export class NJson {
      *
      * @example <caption>Exemple 2 : Chemin invalide retourne {}</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.getObject(data, 'users.5')); // {}
+     * console.log(jsonUtil.getObject(data, ['users', 5])); // {}
      */
     getObject(data, path, fallback = {}) {
         const val = this.get(data, path, undefined);
@@ -780,16 +795,16 @@ export class NJson {
     }
 
     /**
-     * Vérifie si un chemin ou index (`1`, `'user.1'`, `['user', 1]`) existe dans un objet ou tableau.
+     * Vérifie si une clé littérale (`'cle'`, `'cle.cle.cle'`), un index (`1`) ou un chemin (`['user', 0, 'id']`) existe dans un objet ou tableau.
      *
      * @param {Object|Array|string} data - Objet ou tableau source.
-     * @param {string|number|Array<string|number>} path - Chemin ou index à vérifier.
+     * @param {string|number|Array<string|number>} path - Clé ou chemin à vérifier.
      * @returns {boolean} `true` si la propriété ou l'index final existe, sinon `false`.
      *
-     * @example <caption>Exemple 1 : Vérifier un chemin dans un objet ou tableau</caption>
+     * @example <caption>Exemple 1 : Vérifier une clé littérale ou un chemin dans un objet</caption>
      * const jsonUtil = new NJson();
-     * console.log(jsonUtil.has(['a', 'b'], 1));              // true
-     * console.log(jsonUtil.has({ user: [{ id: 1 }] }, 'user.0.id')); // true
+     * console.log(jsonUtil.has({ 'cle.cle.cle': 42 }, 'cle.cle.cle'));      // true (clé littérale)
+     * console.log(jsonUtil.has({ user: [{ id: 1 }] }, ['user', 0, 'id'])); // true (chemin hiérarchique)
      *
      * @example <caption>Exemple 2 : Index hors limites</caption>
      * const jsonUtil = new NJson();
@@ -801,26 +816,26 @@ export class NJson {
     }
 
     /**
-     * Définit une valeur à un chemin ou index (`1`, `'user.1'`, `[1, 2]`, `['user', 1]`),
+     * Définit une valeur à une clé littérale (`'cle'`, `'cle.cle.cle'`), un index (`1`) ou un chemin (`['user', 1, 'name']`),
      * aussi bien sur un tableau racine `[]` que sur un objet `{}` contenant des tableaux imbriqués,
-     * en créant automatiquement les tableaux ou objets intermédiaires manquants.
+     * en créant automatiquement les structures intermédiaires manquantes lorsqu'un tableau de chemin est passé.
      *
      * @param {Object|Array} data - Objet ou tableau cible à modifier.
-     * @param {string|number|Array<string|number>} path - Chemin ou index numérique.
+     * @param {string|number|Array<string|number>} path - Clé littérale ou tableau de chemin hiérarchique.
      * @param {any} value - Valeur à assigner.
      * @returns {Object|Array} La structure `data` mise à jour.
      *
-     * @example <caption>Exemple 1 : Modifier un tableau directement par index ou chemin</caption>
+     * @example <caption>Exemple 1 : Modifier un tableau directement par index ou clé</caption>
      * const jsonUtil = new NJson();
      * const arr = ['a', 'b'];
      * jsonUtil.set(arr, 1, 'B');
      * console.log(arr); // ['a', 'B']
      *
-     * @example <caption>Exemple 2 : Créer ou modifier un tableau imbriqué dans un objet</caption>
+     * @example <caption>Exemple 2 : Clé littérale avec points vs chemin hiérarchique</caption>
      * const jsonUtil = new NJson();
      * const obj = {};
-     * jsonUtil.set(obj, ['user', 1, 'name'], 'Neta');
-     * console.log(obj); // { user: [undefined, { name: 'Neta' }] }
+     * jsonUtil.set(obj, 'cle.cle.cle', 1);                 // { 'cle.cle.cle': 1 }
+     * jsonUtil.set(obj, ['user', 1, 'name'], 'Neta');      // { 'cle.cle.cle': 1, user: [undefined, { name: 'Neta' }] }
      */
     set(data, path, value) {
         if (data === null || data === undefined || typeof data !== 'object') {
@@ -859,11 +874,11 @@ export class NJson {
     }
 
     /**
-     * Supprime un élément ou une propriété située à un chemin ou index (`1`, `'user.1'`, `[1, 2]`, `['user', 1]`),
+     * Supprime un élément ou une propriété située à une clé littérale (`'cle'`, `'cle.cle.cle'`), un index (`1`) ou un chemin (`['user', 1]`),
      * que la cible soit un tableau (utilise `splice` pour retirer l'index) ou un objet (`delete`).
      *
      * @param {Object|Array} data - Objet ou tableau cible.
-     * @param {string|number|Array<string|number>} path - Chemin ou index à supprimer.
+     * @param {string|number|Array<string|number>} path - Clé littérale ou tableau de chemin hiérarchique.
      * @returns {boolean} `true` si la propriété ou l'élément existait et a été supprimé, sinon `false`.
      *
      * @example <caption>Exemple 1 : Supprimer un index dans un tableau racine ou imbriqué</caption>
@@ -871,10 +886,11 @@ export class NJson {
      * const list = ['a', 'b', 'c'];
      * console.log(jsonUtil.remove(list, 1)); // true -> list vaut ['a', 'c']
      *
-     * @example <caption>Exemple 2 : Supprimer dans un tableau imbriqué avec ['user', 1] ou 'user.1'</caption>
+     * @example <caption>Exemple 2 : Supprimer une clé littérale avec points ou dans un tableau imbriqué</caption>
      * const jsonUtil = new NJson();
-     * const data = { user: ['Ali', 'Neta', 'Marc'] };
-     * console.log(jsonUtil.remove(data, ['user', 1])); // true -> data.user vaut ['Ali', 'Marc']
+     * const data = { 'cle.cle.cle': 'supprimer', user: ['Ali', 'Neta', 'Marc'] };
+     * console.log(jsonUtil.remove(data, 'cle.cle.cle')); // true -> supprime la clé littérale 'cle.cle.cle'
+     * console.log(jsonUtil.remove(data, ['user', 1]));   // true -> data.user vaut ['Ali', 'Marc']
      */
     remove(data, path) {
         if (data === null || data === undefined || typeof data !== 'object') {

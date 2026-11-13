@@ -9,7 +9,6 @@
  * via `NUtil.config`.
  */
 
-import { NException } from '../core/NException.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -158,23 +157,27 @@ export class NConfig {
     // =========================================================================
 
     /**
-     * Vérifie que l'instance n'est pas verrouillée (`#frozen`) avant une opération d'écriture.
+     * Vérifie si l'instance est verrouillée (`#frozen`) avant une opération d'écriture.
+     * Consigne un avertissement via `NUtil.log.warn` si la configuration est gelée.
      *
-     * @throws {NException} Si la configuration est gelée (`CONFIG_FROZEN`).
+     * @param {string} [operation='modifier'] - Nom de l'opération tentée.
+     * @returns {boolean} `true` si l'écriture est autorisée, `false` si l'instance est verrouillée.
      *
-     * @example <caption>Exemple 1 : Vérification interne</caption>
-     * // Interne : this.#ensureNotFrozen();
+     * @example <caption>Exemple 1 : Configuration non verrouillée</caption>
+     * // Interne : this.#ensureNotFrozen('modifier') -> true
      *
-     * @example <caption>Exemple 2 : Lève NException si #frozen === true</caption>
-     * // Interne : throw new NException(..., { code: 'CONFIG_FROZEN' })
+     * @example <caption>Exemple 2 : Configuration gelée</caption>
+     * // Interne : this.#ensureNotFrozen('modifier') -> false (avec avertissement NUtil.log.warn)
      */
-    #ensureNotFrozen() {
+    #ensureNotFrozen(operation = 'modifier') {
         if (this.#frozen) {
-            throw new NException(
-                'Impossible de modifier la configuration : cette instance NConfig est verrouillée (frozen).',
-                { code: 'CONFIG_FROZEN' }
-            );
+            NUtil.log.warn(`NConfig: Impossible de ${operation} la configuration, cette instance est verrouillée (frozen).`, {
+                code: 'WARN_CONFIG_FROZEN',
+                operation
+            });
+            return false;
         }
+        return true;
     }
 
     // =========================================================================
@@ -377,22 +380,23 @@ export class NConfig {
     // =========================================================================
 
     /**
-     * Définit ou met à jour une valeur de configuration au chemin `path` (ex: `'server.port'`).
+     * Définit ou met à jour une valeur de configuration au chemin `path`.
      *
-     * @param {string|number|Array<string|number>} path - Clé ou chemin en notation pointée.
+     * @param {string|number|Array<string|number>} path - Clé littérale ou tableau de chemin hiérarchique.
      * @param {any} value - Valeur à enregistrer.
      * @returns {this} L'instance courante pour chaînage.
-     * @throws {NException} Si la configuration est gelée (`CONFIG_FROZEN`).
      *
      * @example <caption>Exemple 1 : Définir une clé imbriquée</caption>
-     * NUtil.config.set('server.port', 8080);
-     * console.log(NUtil.config.getInt('server.port')); // 8080
+     * NUtil.config.set(['server', 'port'], 8080);
+     * console.log(NUtil.config.getInt(['server', 'port'])); // 8080
      *
      * @example <caption>Exemple 2 : Chaîner plusieurs appels</caption>
      * NUtil.config.set('app.name', 'NLib').set('app.version', '1.0.0');
      */
     set(path, value) {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('modifier')) {
+            return this;
+        }
         if (!this.#data) {
             this.#data = {};
         }
@@ -405,7 +409,6 @@ export class NConfig {
      *
      * @param {Object<string, any>} defaultsObject - Objet des valeurs par défaut.
      * @returns {this} L'instance courante.
-     * @throws {NException} Si la configuration est gelée (`CONFIG_FROZEN`).
      *
      * @example <caption>Exemple 1 : Définir des valeurs par défaut</caption>
      * NUtil.config.setDefaults({ app: { locale: 'fr', timeout: 3000 } });
@@ -414,7 +417,9 @@ export class NConfig {
      * const cfg = new NConfig().setDefaults({ port: 3000 }).merge({ port: 8080 });
      */
     setDefaults(defaultsObject) {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('définir les valeurs par défaut de')) {
+            return this;
+        }
         if (!NUtil.json.isPlainObject(defaultsObject)) {
             return this;
         }
@@ -432,7 +437,6 @@ export class NConfig {
      *
      * @param {Object<string, any>} configObject - Objet de configuration à fusionner.
      * @returns {this} L'instance courante.
-     * @throws {NException} Si la configuration est gelée (`CONFIG_FROZEN`).
      *
      * @example <caption>Exemple 1 : Fusionner une configuration partielle</caption>
      * const cfg = new NConfig({ data: { db: { host: 'localhost', port: 3306 } } });
@@ -443,7 +447,9 @@ export class NConfig {
      * NUtil.config.merge({ env: 'production' });
      */
     merge(configObject) {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('fusionner')) {
+            return this;
+        }
         if (!NUtil.json.isPlainObject(configObject)) {
             return this;
         }
@@ -458,18 +464,19 @@ export class NConfig {
      *
      * @param {string|number|Array<string|number>} path - Clé ou chemin à supprimer.
      * @returns {boolean} `true` si la clé existait et a été supprimée, sinon `false`.
-     * @throws {NException} Si la configuration est gelée (`CONFIG_FROZEN`).
      *
      * @example <caption>Exemple 1 : Supprimer une clé imbriquée</caption>
      * const cfg = new NConfig({ data: { db: { host: 'localhost', password: '123' } } });
-     * console.log(cfg.remove('db.password')); // true
-     * console.log(cfg.has('db.password'));    // false
+     * console.log(cfg.remove(['db', 'password'])); // true
+     * console.log(cfg.has(['db', 'password']));    // false
      *
      * @example <caption>Exemple 2 : Clé inexistante</caption>
      * console.log(NUtil.config.remove('inconnu')); // false
      */
     remove(path) {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('supprimer une clé dans')) {
+            return false;
+        }
         if (!this.#data) {
             return false;
         }
@@ -485,7 +492,6 @@ export class NConfig {
      * si aucune valeur par défaut n'avait été définie.
      *
      * @returns {this} L'instance courante.
-     * @throws {NException} Si la configuration est gelée (`CONFIG_FROZEN`).
      *
      * @example <caption>Exemple 1 : Revenir aux valeurs par défaut</caption>
      * const cfg = new NConfig({ defaults: { port: 3000 }, data: { port: 8080 } });
@@ -498,7 +504,9 @@ export class NConfig {
      * console.log(cfg.isEmpty); // true
      */
     reset() {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('réinitialiser')) {
+            return this;
+        }
         this.#data = this.#defaults ? NUtil.json.clone(this.#defaults) : null;
         return this;
     }
@@ -524,8 +532,8 @@ export class NConfig {
     }
 
     /**
-     * Verrouille définitivement l'instance en lecture seule : tout appel ultérieur à `set`, `merge`,
-     * `remove` ou `reset` lèvera une `NException` (`CONFIG_FROZEN`).
+     * Verrouille définitivement l'instance en lecture seule : tout appel ultérieur modifiant la configuration
+     * sera ignoré et consignera un avertissement.
      *
      * @returns {this} L'instance courante.
      *
@@ -533,9 +541,10 @@ export class NConfig {
      * const cfg = new NConfig({ data: { env: 'production' } }).freeze();
      * console.log(cfg.isFrozen); // true
      *
-     * @example <caption>Exemple 2 : Toute modification après freeze() lève une NException</caption>
+     * @example <caption>Exemple 2 : Modification après freeze() est ignorée</caption>
      * const cfg = new NConfig().freeze();
-     * try { cfg.set('a', 1); } catch (e) { console.log(e.code); } // 'CONFIG_FROZEN'
+     * cfg.set('a', 1);
+     * console.log(cfg.has('a')); // false
      */
     freeze() {
         this.#frozen = true;
@@ -588,7 +597,9 @@ export class NConfig {
      * console.log(cfg.getString('URL')); // 'http://localhost:8080'
      */
     loadFromDotEnv(dotEnvContent) {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('charger le fichier .env dans')) {
+            return this;
+        }
         if (typeof dotEnvContent !== 'string' || dotEnvContent.trim().length === 0) {
             return this;
         }
@@ -647,7 +658,9 @@ export class NConfig {
      * NUtil.config.loadFromProcess(true, 'NLIB_');
      */
     loadFromProcess(overwrite = false, prefix = '') {
-        this.#ensureNotFrozen();
+        if (!this.#ensureNotFrozen('charger process.env dans')) {
+            return this;
+        }
         if (typeof process !== 'undefined' && process && typeof process.env === 'object' && process.env !== null) {
             const keys = Object.keys(process.env);
             for (let i = 0; i < keys.length; i++) {
@@ -665,19 +678,18 @@ export class NConfig {
 
     /**
      * Vérifie que toutes les clés ou chemins listés dans `requiredPaths` sont présents dans la configuration.
-     * Lève une `NException` (`ENV_OR_CONFIG_MISSING`) si au moins une clé manque.
+     * Consigne une erreur via `NUtil.log.error` (`ENV_OR_CONFIG_MISSING`) et retourne `false` si au moins une clé manque.
      *
-     * @param {string[]} requiredPaths - Liste des chemins de configuration obligatoires.
-     * @returns {boolean} `true` si tous les chemins sont présents.
-     * @throws {NException} Si une ou plusieurs clés obligatoires manquent.
+     * @param {Array<string|number|Array<string|number>>} requiredPaths - Liste des chemins de configuration obligatoires.
+     * @returns {boolean} `true` si tous les chemins sont présents, sinon `false`.
      *
-     * @example <caption>Exemple 1 : Vérifier les clés obligatoires</caption>
+     * @example <caption>Exemple 1 : Vérifier les clés obligatoires présentes</caption>
      * const cfg = new NConfig({ data: { db: { host: 'localhost', name: 'nlib' } } });
-     * console.log(cfg.require(['db.host', 'db.name'])); // true
+     * console.log(cfg.require(['db', ['db', 'host']])); // true
      *
-     * @example <caption>Exemple 2 : Lève une NException si une clé est absente</caption>
+     * @example <caption>Exemple 2 : Clé absente retourne false avec log error</caption>
      * const cfg = new NConfig();
-     * try { cfg.require(['db.password']); } catch (e) { console.log(e.code); } // 'ENV_OR_CONFIG_MISSING'
+     * console.log(cfg.require(['db.password'])); // false
      */
     require(requiredPaths = []) {
         if (!Array.isArray(requiredPaths) || requiredPaths.length === 0) {
@@ -685,10 +697,11 @@ export class NConfig {
         }
         const missing = requiredPaths.filter((p) => !this.has(p));
         if (missing.length > 0) {
-            throw new NException(
-                `Clés de configuration obligatoires manquantes : ${missing.join(', ')}`,
-                { code: 'ENV_OR_CONFIG_MISSING', cause: { missing } }
-            );
+            NUtil.log.error(`NConfig.require: Clés de configuration obligatoires manquantes : ${missing.join(', ')}`, {
+                code: 'ENV_OR_CONFIG_MISSING',
+                missing
+            });
+            return false;
         }
         return true;
     }

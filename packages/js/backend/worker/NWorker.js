@@ -24,7 +24,6 @@
  */
 
 import { NObject } from '../core/NObject.js';
-import { NException } from '../core/NException.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -136,7 +135,6 @@ export class NWorker extends NObject {
      * @param {Function|string} [options.source] - Code source JavaScript direct ou fonction inline (Blob).
      * @param {'module'|'classic'} [options.type='module'] - Type de module du Worker.
      * @param {Object<string, any>} [options.state] - État initial transmis à `NObject`.
-     * @throws {NException} Si appelé à l'intérieur même d'un Web Worker (`WORKER_UNSUPPORTED_IN_WORKER`).
      *
      * @example <caption>Exemple 1 : Créer un worker depuis un script module</caption>
      * const worker = new NWorker({ name: 'imageProcessor', url: './processor.js' });
@@ -155,10 +153,14 @@ export class NWorker extends NObject {
         }
 
         if (NUtil.env.isWorker && typeof self !== 'undefined') {
-            throw new NException(
-                'Les Web Workers ne sont pas supportés dans un Web Worker.',
-                { code: 'WORKER_UNSUPPORTED_IN_WORKER' }
-            );
+            this.util.log.error('NWorker: Les Web Workers ne sont pas supportés au sein d\'un Web Worker.', {
+                code: 'WORKER_UNSUPPORTED_IN_WORKER',
+                name: this.#name
+            });
+            this.#worker = null;
+            this.#isRunning = false;
+            this.initialize();
+            return;
         }
 
         if (typeof Worker !== 'undefined' && (options?.url || options?.source)) {
@@ -190,6 +192,11 @@ export class NWorker extends NObject {
                 };
 
                 this.#worker.onerror = (err) => {
+                    this.util.log.error(`NWorker [${this.#name}]: Erreur interceptée sur le worker natif.`, {
+                        code: 'ERR_WORKER_EXECUTION',
+                        name: this.#name,
+                        cause: err
+                    });
                     this.#worker = null;
                     this.#isRunning = false;
                     this.event.emit('error', err);
@@ -201,6 +208,11 @@ export class NWorker extends NObject {
                 });
             } catch (err) {
                 // Repli local en cas d'échec de création du Worker natif (ex: CSP, sandbox)
+                this.util.log.warn(`NWorker [${this.#name}]: Impossible d'instancier le Worker natif, bascule en mode repli.`, {
+                    code: 'WARN_WORKER_FALLBACK',
+                    name: this.#name,
+                    cause: err
+                });
                 this.#worker = null;
                 this.#isRunning = false;
             }
@@ -334,26 +346,34 @@ export class NWorker extends NObject {
 
     /**
      * Envoie une requête d'action au Web Worker (ou l'exécute en local si le Worker n'est pas disponible).
+     * Protégée par un délai d'attente configurable (timeout, 30s par défaut).
      *
      * @param {string} action - Nom de l'action à exécuter.
-     * @param {Object} [params={}] - Paramètres d'entrée transmis à l'action.
+     * @param {Object} [params={}] - Paramètres d'entrée transmis à l'action (peut contenir `params.timeout`).
      * @param {Function|null} [onUpdate=null] - Callback optionnel `(step) => void` appelé lors des progressions intermédiaires.
-     * @returns {Promise<{ id?: string, action: string, params: any, result: any, error?: any }>} Résultat de la requête.
+     * @param {number|null} [timeout=null] - Délai d'attente maximum en millisecondes (30000ms par défaut, 0 pour désactiver).
+     * @returns {Promise<{ id?: string, action: string, params: any, result: any, error?: any, success?: boolean, code?: string }>} Résultat de la requête.
      *
-     * @example <caption>Exemple 1 : Appel direct d'une action</caption>
+     * @example <caption>Exemple 1 : Appel direct d'une action avec délai par défaut (30s)</caption>
      * const res = await worker.request('sum', { list: [1, 2, 3, 4] });
      * console.log(res.result); // 10
      *
-     * @example <caption>Exemple 2 : Appel avec suivi de progression (onUpdate)</caption>
+     * @example <caption>Exemple 2 : Appel avec timeout personnalisé et suivi de progression</caption>
      * const res = await worker.request(
      *     'download',
      *     { url: 'https://example.com/file' },
-     *     (step) => console.log('Progression :', step.result)
+     *     (step) => console.log('Progression :', step.result),
+     *     15000 // 15 secondes max
      * );
      */
-    async request(action, params = {}, onUpdate = null) {
+    async request(action, params = {}, onUpdate = null, timeout = null) {
         const id = NUtil.uid('req_');
         const hasUpdateHandler = typeof onUpdate === 'function';
+        const timeoutMs = (typeof timeout === 'number' && timeout >= 0)
+            ? timeout
+            : ((params && typeof params.timeout === 'number' && params.timeout >= 0)
+                ? params.timeout
+                : 30000);
 
         // 1. Mode repli local : pas de Web Worker natif disponible
         if (!this.#worker) {
@@ -375,7 +395,10 @@ export class NWorker extends NObject {
 
             const actionInstance = NWorker.getActionInstance(action);
             if (!actionInstance || typeof actionInstance.request !== 'function') {
+                this.util.log.warn(`NWorker [${this.#name}]: Action "${action}" non enregistrée ou méthode request() absente.`);
                 return {
+                    success: false,
+                    code: 'WORKER_ACTION_ERROR',
                     id,
                     action,
                     params: cleanParams,
@@ -387,15 +410,53 @@ export class NWorker extends NObject {
             }
 
             try {
-                const result = await actionInstance.request(rawParams);
+                let timer = null;
+                const promise = actionInstance.request(rawParams);
+                const result = timeoutMs > 0
+                    ? await Promise.race([
+                        promise,
+                        new Promise((_, rejectTimeout) => {
+                            timer = setTimeout(() => {
+                                rejectTimeout(new Error('TIMEOUT'));
+                            }, timeoutMs);
+                        })
+                    ])
+                    : await promise;
+                if (timer) clearTimeout(timer);
                 return {
+                    success: true,
                     id,
                     action,
                     params: cleanParams,
                     result
                 };
             } catch (err) {
+                if (err?.message === 'TIMEOUT') {
+                    this.util.log.warn(`NWorker [${this.#name}]: Délai d'attente dépassé (${timeoutMs}ms) pour l'action locale "${action}".`, {
+                        code: 'ERR_TIMEOUT',
+                        action,
+                        timeout: timeoutMs
+                    });
+                    return {
+                        success: false,
+                        code: 'ERR_TIMEOUT',
+                        error: 'WORKER_TIMEOUT',
+                        id,
+                        action,
+                        params: cleanParams,
+                        result: {
+                            error: 'WORKER_TIMEOUT',
+                            message: `Délai d'attente dépassé (${timeoutMs}ms) pour l'action locale "${action}".`
+                        }
+                    };
+                }
+                this.util.log.error(`NWorker [${this.#name}]: Erreur lors de l'exécution locale de l'action "${action}".`, {
+                    code: 'WORKER_REQUEST_ERROR',
+                    cause: err
+                });
                 return {
+                    success: false,
+                    code: 'WORKER_REQUEST_ERROR',
                     id,
                     action,
                     params: cleanParams,
@@ -410,6 +471,8 @@ export class NWorker extends NObject {
         // 2. Vérification de l'état du Web Worker
         if (this.#terminated) {
             return {
+                success: false,
+                code: 'WORKER_TERMINATED',
                 id,
                 action,
                 params,
@@ -422,6 +485,8 @@ export class NWorker extends NObject {
 
         if (!this.isRunning) {
             return {
+                success: false,
+                code: 'WORKER_NO_RUNNING',
                 id,
                 action,
                 params,
@@ -438,13 +503,59 @@ export class NWorker extends NObject {
         }
 
         return new Promise((resolve) => {
-            this.#requests.set(id, {
+            let timer = null;
+
+            const safeResolve = (val) => {
+                if (timer) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+                resolve(val);
+            };
+
+            const triggerTimeout = () => {
+                this.#removeRequest(id);
+                this.util.log.warn(`NWorker [${this.#name}]: Délai d'attente dépassé (${timeoutMs}ms) pour l'action "${action}".`, {
+                    code: 'ERR_TIMEOUT',
+                    id,
+                    action,
+                    timeout: timeoutMs
+                });
+                safeResolve({
+                    success: false,
+                    code: 'ERR_TIMEOUT',
+                    error: 'WORKER_TIMEOUT',
+                    id,
+                    action,
+                    params,
+                    result: {
+                        error: 'WORKER_TIMEOUT',
+                        message: `Délai d'attente dépassé (${timeoutMs}ms) pour l'action "${action}".`
+                    }
+                });
+            };
+
+            if (timeoutMs > 0) {
+                timer = setTimeout(triggerTimeout, timeoutMs);
+            }
+
+            const requestEntry = {
                 id,
                 action,
                 params,
-                resolve,
-                onUpdate: hasUpdateHandler ? onUpdate : null
-            });
+                timer,
+                resolve: safeResolve,
+                onUpdate: hasUpdateHandler ? onUpdate : null,
+                refreshTimer: () => {
+                    if (timer && timeoutMs > 0) {
+                        clearTimeout(timer);
+                        timer = setTimeout(triggerTimeout, timeoutMs);
+                        requestEntry.timer = timer;
+                    }
+                }
+            };
+
+            this.#requests.set(id, requestEntry);
 
             try {
                 this.#worker.postMessage({
@@ -455,7 +566,13 @@ export class NWorker extends NObject {
                 });
             } catch (err) {
                 this.#removeRequest(id);
-                resolve({
+                this.util.log.error(`NWorker [${this.#name}]: Échec de postMessage pour l'action "${action}".`, {
+                    code: 'WORKER_POST_ERROR',
+                    cause: err
+                });
+                safeResolve({
+                    success: false,
+                    code: 'WORKER_POST_ERROR',
                     id,
                     action,
                     params,
@@ -493,7 +610,13 @@ export class NWorker extends NObject {
 
         if (this.#requests) {
             for (const [id, entry] of this.#requests.entries()) {
+                if (entry.timer) {
+                    clearTimeout(entry.timer);
+                    entry.timer = null;
+                }
                 entry.resolve({
+                    success: false,
+                    code: 'WORKER_TERMINATED',
                     id,
                     action: entry.action,
                     params: entry.params,
@@ -610,6 +733,8 @@ export class NWorker extends NObject {
      */
     async onRequest(action, params, onUpdate) {
         return {
+            success: false,
+            code: 'MAIN_ACTION_NOT_HANDLED',
             error: 'MAIN_ACTION_NOT_HANDLED',
             message: `Action "${action}" non gérée. Surcharger onRequest() dans une classe enfant.`
         };
@@ -689,6 +814,11 @@ export class NWorker extends NObject {
         if (!this.#requests) {
             return;
         }
+        const entry = this.#requests.get(id);
+        if (entry?.timer) {
+            clearTimeout(entry.timer);
+            entry.timer = null;
+        }
         this.#requests.delete(id);
         if (this.#requests.size === 0) {
             this.#requests = null;
@@ -717,19 +847,25 @@ export class NWorker extends NObject {
         }
 
         const entry = this.#requests.get(data.id);
+        const hasError = Boolean(data.error || (data.result && typeof data.result === 'object' && data.result.error));
         const response = {
+            success: !hasError,
             id: data.id,
             action: data.action ?? entry.action,
             params: data.params,
             result: data.result
         };
 
-        if (data.error) {
-            response.error = data.error;
+        if (hasError) {
+            response.code = data.error || data.result?.error || 'WORKER_ERROR';
+            if (data.error) {
+                response.error = data.error;
+            }
         }
 
         // Si keep === true : message intermédiaire de progression émis par onUpdate() côté Worker
         if (data.keep === true) {
+            entry.refreshTimer?.();
             if (typeof entry.onUpdate === 'function') {
                 entry.onUpdate(response);
             }
@@ -747,34 +883,39 @@ export class NWorker extends NObject {
 
     /**
      * Envoie une requête du Worker vers le thread principal et attend la réponse.
+     * Protégée par un délai d'attente configurable (timeout, 30s par défaut).
      * À appeler UNIQUEMENT depuis le contexte d'un Web Worker.
      *
      * @static
      * @param {string} action - Nom de l'action Main ciblée.
-     * @param {Object} [params={}] - Paramètres transmis au Main.
+     * @param {Object} [params={}] - Paramètres transmis au Main (peut contenir `params.timeout`).
      * @param {Function|null} [onUpdate=null] - Callback de progression optionnel.
-     * @returns {Promise<{ id: string, action: string, params: any, result: any, error?: any }>} Réponse de l'action Main.
+     * @param {number|null} [timeout=null] - Délai d'attente maximum en millisecondes (30000ms par défaut, 0 pour désactiver).
+     * @returns {Promise<{ id: string, action: string, params: any, result: any, error?: any, success?: boolean, code?: string }>} Réponse de l'action Main.
      *
-     * @example <caption>Exemple 1 : Récupérer des réglages depuis le Main</caption>
+     * @example <caption>Exemple 1 : Récupérer des réglages depuis le Main avec délai par défaut (30s)</caption>
      * const config = await NWorker.requestMain('getConfig', { key: 'theme' });
      * console.log(config.result);
      *
-     * @example <caption>Exemple 2 : Appel avec progression depuis le Worker vers le Main</caption>
+     * @example <caption>Exemple 2 : Appel avec progression et délai personnalisé</caption>
      * const res = await NWorker.requestMain('heavyMainTask', { count: 100 }, (step) => {
      *     console.log('Progression Main :', step.result);
-     * });
+     * }, 15000);
      */
-    static async requestMain(action, params = {}, onUpdate = null) {
+    static async requestMain(action, params = {}, onUpdate = null, timeout = null) {
         if (typeof self === 'undefined' || typeof self._NWorkerRequestMain !== 'function') {
             return {
-                action, params,
+                success: false,
+                code: 'NOT_IN_WORKER',
+                action,
+                params,
                 result: {
                     error: 'NOT_IN_WORKER',
                     message: 'requestMain() doit être appelé depuis un Web Worker.'
                 }
             };
         }
-        return self._NWorkerRequestMain(action, params, onUpdate);
+        return self._NWorkerRequestMain(action, params, onUpdate, timeout);
     }
 
     // =========================================================================
@@ -786,16 +927,94 @@ export class NWorker extends NObject {
 
             const reverseRequests = new Map();
 
-            self._NWorkerRequestMain = (action, params = {}, onUpdate = null) => {
+            self._NWorkerRequestMain = (action, params = {}, onUpdate = null, timeout = null) => {
                 const id = NUtil.uid('rev_');
                 const hasUpdateHandler = typeof onUpdate === 'function';
+                const timeoutMs = (typeof timeout === 'number' && timeout >= 0)
+                    ? timeout
+                    : ((params && typeof params.timeout === 'number' && params.timeout >= 0)
+                        ? params.timeout
+                        : 30000);
+
                 return new Promise((resolve) => {
-                    reverseRequests.set(id, { resolve, onUpdate });
-                    self.postMessage({
-                        id, action, params,
-                        hasUpdateHandler,
-                        reverse: true
-                    });
+                    let timer = null;
+
+                    const safeResolve = (val) => {
+                        if (timer) {
+                            clearTimeout(timer);
+                            timer = null;
+                        }
+                        resolve(val);
+                    };
+
+                    const triggerTimeout = () => {
+                        reverseRequests.delete(id);
+                        NUtil.log.warn(`NWorker [WorkerContext]: Délai d'attente dépassé (${timeoutMs}ms) pour requestMain("${action}").`, {
+                            code: 'ERR_TIMEOUT',
+                            id,
+                            action,
+                            timeout: timeoutMs
+                        });
+                        safeResolve({
+                            success: false,
+                            code: 'ERR_TIMEOUT',
+                            error: 'MAIN_TIMEOUT',
+                            id,
+                            action,
+                            params,
+                            result: {
+                                error: 'MAIN_TIMEOUT',
+                                message: `Délai d'attente dépassé (${timeoutMs}ms) pour la requête inverse vers le Main "${action}".`
+                            }
+                        });
+                    };
+
+                    if (timeoutMs > 0) {
+                        timer = setTimeout(triggerTimeout, timeoutMs);
+                    }
+
+                    const requestEntry = {
+                        resolve: safeResolve,
+                        onUpdate,
+                        timer,
+                        refreshTimer: () => {
+                            if (timer && timeoutMs > 0) {
+                                clearTimeout(timer);
+                                timer = setTimeout(triggerTimeout, timeoutMs);
+                                requestEntry.timer = timer;
+                            }
+                        }
+                    };
+
+                    reverseRequests.set(id, requestEntry);
+
+                    try {
+                        self.postMessage({
+                            id, action, params,
+                            hasUpdateHandler,
+                            reverse: true
+                        });
+                    } catch (err) {
+                        if (timer) {
+                            clearTimeout(timer);
+                            timer = null;
+                        }
+                        reverseRequests.delete(id);
+                        NUtil.log.error(`NWorker [WorkerContext]: Échec postMessage pour requestMain("${action}").`, {
+                            code: 'WORKER_POST_ERROR',
+                            cause: err
+                        });
+                        safeResolve({
+                            success: false,
+                            code: 'WORKER_POST_ERROR',
+                            action,
+                            params,
+                            result: {
+                                error: 'WORKER_POST_ERROR',
+                                message: err?.message ?? String(err)
+                            }
+                        });
+                    }
                 });
             };
 
@@ -817,8 +1036,13 @@ export class NWorker extends NObject {
                     if (!entry) return;
                     const response = { id, action, params: data.params, result: data.result };
                     if (data.keep === true) {
+                        entry.refreshTimer?.();
                         entry.onUpdate?.(response);
                         return;
+                    }
+                    if (entry.timer) {
+                        clearTimeout(entry.timer);
+                        entry.timer = null;
                     }
                     reverseRequests.delete(id);
                     entry.resolve(response);
@@ -844,6 +1068,7 @@ export class NWorker extends NObject {
 
                 const actionInstance = NWorker.getActionInstance(action);
                 if (!actionInstance || typeof actionInstance.request !== 'function') {
+                    NUtil.log.warn(`NWorker [WorkerContext]: Action "${action}" non enregistrée ou méthode request() absente.`);
                     self.postMessage({
                         id, action, params: cleanParams,
                         result: {
@@ -859,6 +1084,10 @@ export class NWorker extends NObject {
                     const result = await actionInstance.request(rawParams);
                     self.postMessage({ id, action, params: cleanParams, result, keep: false });
                 } catch (err) {
+                    NUtil.log.error(`NWorker [WorkerContext]: Erreur lors de l'exécution de l'action "${action}".`, {
+                        code: 'WORKER_REQUEST_ERROR',
+                        cause: err
+                    });
                     self.postMessage({
                         id, action, params: cleanParams,
                         result: {

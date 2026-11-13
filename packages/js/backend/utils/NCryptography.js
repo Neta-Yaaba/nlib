@@ -18,6 +18,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NCryptography
  * @description Utilitaire de chiffrement, déchiffrement, gestion de clés PEM et hachage sans état interne.
@@ -252,8 +254,15 @@ export class NCryptography {
         const size = Math.max(1, Math.trunc(length));
         const bytes = new Uint8Array(size);
         if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
-            globalThis.crypto.getRandomValues(bytes);
-            return bytes;
+            try {
+                globalThis.crypto.getRandomValues(bytes);
+                return bytes;
+            } catch (err) {
+                NUtil.log.warn('NCryptography.randomBytes: Échec crypto.getRandomValues, repli pseudo-aléatoire.', {
+                    code: 'WARN_CRYPTO_RANDOM_FALLBACK',
+                    cause: err
+                });
+            }
         }
         for (let i = 0; i < size; i++) {
             bytes[i] = Math.floor(Math.random() * 256);
@@ -321,7 +330,11 @@ export class NCryptography {
                 bytes[i] = binary.charCodeAt(i);
             }
             return bytes;
-        } catch {
+        } catch (err) {
+            NUtil.log.warn('NCryptography.base64ToBytes: Échec du décodage Base64.', {
+                code: 'ERR_BASE64_DECODE',
+                cause: err
+            });
             return new Uint8Array(0);
         }
     }
@@ -395,8 +408,16 @@ export class NCryptography {
 
         let digestBytes;
         if (this.isWebCryptoAvailable() && typeof globalThis.crypto.subtle.digest === 'function') {
-            const buffer = await globalThis.crypto.subtle.digest('SHA-256', inputBytes);
-            digestBytes = new Uint8Array(buffer);
+            try {
+                const buffer = await globalThis.crypto.subtle.digest('SHA-256', inputBytes);
+                digestBytes = new Uint8Array(buffer);
+            } catch (err) {
+                NUtil.log.warn('NCryptography.sha256: Échec crypto.subtle.digest, bascule sur le moteur SHA-256 pur JS.', {
+                    code: 'WARN_CRYPTO_DIGEST_FALLBACK',
+                    cause: err
+                });
+                digestBytes = this.#sha256Fallback(inputBytes);
+            }
         } else {
             digestBytes = this.#sha256Fallback(inputBytes);
         }
@@ -437,21 +458,32 @@ export class NCryptography {
      */
     async generateKeyPair(options = {}) {
         if (!this.isWebCryptoAvailable() || typeof globalThis.crypto.subtle.generateKey !== 'function') {
+            NUtil.log.warn('NCryptography.generateKeyPair: Web Crypto API non disponible dans cet environnement.', {
+                code: 'WARN_CRYPTO_UNAVAILABLE'
+            });
             return null;
         }
         const modulusLength = options?.modulusLength ?? 4096;
         const hash = options?.hash ?? 'SHA-1';
 
-        return await globalThis.crypto.subtle.generateKey(
-            {
-                name: 'RSA-OAEP',
-                modulusLength,
-                publicExponent: new Uint8Array([1, 0, 1]),
-                hash
-            },
-            true,
-            ['encrypt', 'decrypt']
-        );
+        try {
+            return await globalThis.crypto.subtle.generateKey(
+                {
+                    name: 'RSA-OAEP',
+                    modulusLength,
+                    publicExponent: new Uint8Array([1, 0, 1]),
+                    hash
+                },
+                true,
+                ['encrypt', 'decrypt']
+            );
+        } catch (err) {
+            NUtil.log.error('NCryptography.generateKeyPair: Échec de génération de la paire de clés RSA.', {
+                code: 'ERR_CRYPTO_GENERATE_KEY',
+                cause: err
+            });
+            return null;
+        }
     }
 
     /**
@@ -480,7 +512,11 @@ export class NCryptography {
             const b64 = this.bytesToBase64(spkiBuffer);
             const formattedB64 = (b64.match(/.{1,64}/g) || []).join('\n');
             return `-----BEGIN PUBLIC KEY-----\n${formattedB64}\n-----END PUBLIC KEY-----`;
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NCryptography.exportPublicKeyToPem: Échec de l\'export de la clé publique RSA.', {
+                code: 'ERR_CRYPTO_EXPORT_KEY',
+                cause: err
+            });
             return '';
         }
     }
@@ -511,7 +547,11 @@ export class NCryptography {
             const b64 = this.bytesToBase64(pkcs8Buffer);
             const formattedB64 = (b64.match(/.{1,64}/g) || []).join('\n');
             return `-----BEGIN PRIVATE KEY-----\n${formattedB64}\n-----END PRIVATE KEY-----`;
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NCryptography.exportPrivateKeyToPem: Échec de l\'export de la clé privée RSA.', {
+                code: 'ERR_CRYPTO_EXPORT_KEY',
+                cause: err
+            });
             return '';
         }
     }
@@ -543,6 +583,9 @@ export class NCryptography {
                 .replace(/\s+/g, '');
             const binaryDer = this.base64ToBytes(cleanPem);
             if (binaryDer.length === 0) {
+                NUtil.log.warn('NCryptography.importPublicKeyFromPem: Données DER vides après nettoyage PEM.', {
+                    code: 'ERR_CRYPTO_INVALID_PEM'
+                });
                 return null;
             }
             return await globalThis.crypto.subtle.importKey(
@@ -552,7 +595,11 @@ export class NCryptography {
                 true,
                 ['encrypt']
             );
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NCryptography.importPublicKeyFromPem: Clé publique PEM invalide ou non supportée.', {
+                code: 'ERR_CRYPTO_IMPORT_KEY',
+                cause: err
+            });
             return null;
         }
     }
@@ -583,6 +630,9 @@ export class NCryptography {
                 .replace(/\s+/g, '');
             const binaryDer = this.base64ToBytes(cleanPem);
             if (binaryDer.length === 0) {
+                NUtil.log.warn('NCryptography.importPrivateKeyFromPem: Données DER vides après nettoyage PEM.', {
+                    code: 'ERR_CRYPTO_INVALID_PEM'
+                });
                 return null;
             }
             return await globalThis.crypto.subtle.importKey(
@@ -592,7 +642,11 @@ export class NCryptography {
                 true,
                 ['decrypt']
             );
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NCryptography.importPrivateKeyFromPem: Clé privée PEM invalide ou non supportée.', {
+                code: 'ERR_CRYPTO_IMPORT_KEY',
+                cause: err
+            });
             return null;
         }
     }
@@ -638,43 +692,50 @@ export class NCryptography {
         }
 
         if (this.isWebCryptoAvailable() && resolvedKey) {
-            if (textBytes.length > 256) {
-                const aesKey = await globalThis.crypto.subtle.generateKey(
-                    { name: 'AES-CBC', length: 256 },
-                    true,
-                    ['encrypt']
-                );
-                const iv = this.randomBytes(16);
+            try {
+                if (textBytes.length > 256) {
+                    const aesKey = await globalThis.crypto.subtle.generateKey(
+                        { name: 'AES-CBC', length: 256 },
+                        true,
+                        ['encrypt']
+                    );
+                    const iv = this.randomBytes(16);
+                    const encryptedData = await globalThis.crypto.subtle.encrypt(
+                        { name: 'AES-CBC', iv },
+                        aesKey,
+                        textBytes
+                    );
+                    const rawAesKey = await globalThis.crypto.subtle.exportKey('raw', aesKey);
+                    const encryptedAesKey = await globalThis.crypto.subtle.encrypt(
+                        { name: 'RSA-OAEP' },
+                        resolvedKey,
+                        rawAesKey
+                    );
+
+                    return {
+                        type: 'hybrid',
+                        key: this.bytesToBase64(encryptedAesKey),
+                        iv: this.bytesToBase64(iv),
+                        data: this.bytesToBase64(encryptedData)
+                    };
+                }
+
                 const encryptedData = await globalThis.crypto.subtle.encrypt(
-                    { name: 'AES-CBC', iv },
-                    aesKey,
-                    textBytes
-                );
-                const rawAesKey = await globalThis.crypto.subtle.exportKey('raw', aesKey);
-                const encryptedAesKey = await globalThis.crypto.subtle.encrypt(
                     { name: 'RSA-OAEP' },
                     resolvedKey,
-                    rawAesKey
+                    textBytes
                 );
 
                 return {
-                    type: 'hybrid',
-                    key: this.bytesToBase64(encryptedAesKey),
-                    iv: this.bytesToBase64(iv),
+                    type: 'asymmetric',
                     data: this.bytesToBase64(encryptedData)
                 };
+            } catch (err) {
+                NUtil.log.warn('NCryptography.encrypt: Échec du chiffrement WebCrypto RSA, bascule sur l\'alternative de repli.', {
+                    code: 'WARN_CRYPTO_ENCRYPT_FALLBACK',
+                    cause: err
+                });
             }
-
-            const encryptedData = await globalThis.crypto.subtle.encrypt(
-                { name: 'RSA-OAEP' },
-                resolvedKey,
-                textBytes
-            );
-
-            return {
-                type: 'asymmetric',
-                data: this.bytesToBase64(encryptedData)
-            };
         }
 
         // Alternative si Web Crypto est absent ou si aucune clé RSA n'est fournie
@@ -723,7 +784,11 @@ export class NCryptography {
         if (typeof encryptedPayload === 'string') {
             try {
                 payload = JSON.parse(encryptedPayload);
-            } catch {
+            } catch (err) {
+                NUtil.log.warn('NCryptography.decrypt: Format d\'enveloppe JSON invalide.', {
+                    code: 'ERR_CRYPTO_PAYLOAD_JSON',
+                    cause: err
+                });
                 return '';
             }
         }
@@ -785,7 +850,11 @@ export class NCryptography {
                 encryptedContent
             );
             return new TextDecoder().decode(decryptedBuffer);
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NCryptography.decrypt: Échec du déchiffrement asymétrique/hybride.', {
+                code: 'ERR_CRYPTO_DECRYPT',
+                cause: err
+            });
             return '';
         }
     }
@@ -823,23 +892,30 @@ export class NCryptography {
         const keyMaterial = await this.sha256(secretKey, 'bytes');
 
         if (this.isWebCryptoAvailable()) {
-            const cryptoKey = await globalThis.crypto.subtle.importKey(
-                'raw',
-                keyMaterial,
-                { name: 'AES-CBC', length: 256 },
-                false,
-                ['encrypt']
-            );
-            const encryptedBuffer = await globalThis.crypto.subtle.encrypt(
-                { name: 'AES-CBC', iv },
-                cryptoKey,
-                textBytes
-            );
-            return {
-                type: 'aes-256-cbc',
-                iv: this.bytesToBase64(iv),
-                data: this.bytesToBase64(encryptedBuffer)
-            };
+            try {
+                const cryptoKey = await globalThis.crypto.subtle.importKey(
+                    'raw',
+                    keyMaterial,
+                    { name: 'AES-CBC', length: 256 },
+                    false,
+                    ['encrypt']
+                );
+                const encryptedBuffer = await globalThis.crypto.subtle.encrypt(
+                    { name: 'AES-CBC', iv },
+                    cryptoKey,
+                    textBytes
+                );
+                return {
+                    type: 'aes-256-cbc',
+                    iv: this.bytesToBase64(iv),
+                    data: this.bytesToBase64(encryptedBuffer)
+                };
+            } catch (err) {
+                NUtil.log.warn('NCryptography.encryptSymmetric: Échec WebCrypto AES-CBC, bascule en mode repli.', {
+                    code: 'WARN_CRYPTO_FALLBACK',
+                    cause: err
+                });
+            }
         }
 
         const cipherBytes = this.#streamCipherFallback(textBytes, keyMaterial, iv);
@@ -874,7 +950,11 @@ export class NCryptography {
         if (typeof payload === 'string') {
             try {
                 parsed = JSON.parse(payload);
-            } catch {
+            } catch (err) {
+                NUtil.log.warn('NCryptography.decryptSymmetric: Format JSON invalide.', {
+                    code: 'ERR_CRYPTO_PAYLOAD_JSON',
+                    cause: err
+                });
                 return '';
             }
         }
@@ -905,7 +985,11 @@ export class NCryptography {
                 cipherBytes
             );
             return new TextDecoder().decode(decryptedBuffer);
-        } catch {
+        } catch (err) {
+            NUtil.log.error('NCryptography.decryptSymmetric: Échec du déchiffrement AES-CBC.', {
+                code: 'ERR_CRYPTO_DECRYPT_SYMMETRIC',
+                cause: err
+            });
             return '';
         }
     }
@@ -956,8 +1040,11 @@ export class NCryptography {
                 combined.set(new Uint8Array(encrypted), iv.length + exportedKey.byteLength);
 
                 return this.bytesToBase64(combined);
-            } catch {
-                return '';
+            } catch (err) {
+                NUtil.log.warn('NCryptography.encryptLocal: Échec WebCrypto AES-GCM, bascule sur le chiffrement de repli.', {
+                    code: 'WARN_CRYPTO_FALLBACK',
+                    cause: err
+                });
             }
         }
 
@@ -1015,8 +1102,11 @@ export class NCryptography {
                     encrypted
                 );
                 return new TextDecoder().decode(decrypted);
-            } catch {
-                // Tentative avec le moteur de repli si la donnée avait été chiffrée sans Web Crypto
+            } catch (err) {
+                NUtil.log.warn('NCryptography.decryptLocal: Échec du déchiffrement AES-GCM, tentative avec le moteur de repli.', {
+                    code: 'WARN_CRYPTO_FALLBACK',
+                    cause: err
+                });
                 const plainBytes = this.#streamCipherFallback(encrypted, exportedKey, iv);
                 return new TextDecoder().decode(plainBytes);
             }

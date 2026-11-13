@@ -11,6 +11,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NDateTime
  * @description Utilitaire de gestion et traitement des dates et heures sans état interne.

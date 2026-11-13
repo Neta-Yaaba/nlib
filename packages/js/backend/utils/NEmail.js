@@ -11,6 +11,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NEmail
  * @description Utilitaire de gestion et traitement des adresses e-mail sans état interne.

@@ -109,9 +109,10 @@ Workspace pnpm (`pnpm-workspace.yaml`) :
 ```js
 import { NUtil } from '@nlib/js-backend';
 
-NUtil.db.store.set('theme', 'dark');          // stockage clé-valeur résilient
-await NUtil.db.sql.init();                    // SQLite (sql.js ou pont natif)
-const res = await NUtil.db.idb.getAll('x');   // IndexedDB : { ok, data, error, code }
+NUtil.db.store.set('theme', 'dark');          // Stockage clé-valeur avec contextes applicatifs et cryptage
+await NUtil.db.init();                        // Initialisation SQLite et persistance WebAssembly dans IndexedDB
+await NUtil.db.saveSql();                     // Sauvegarde binaire de la base SQL dans ntable
+const res = await NUtil.db.idb.getAll('ntable'); // IndexedDB : { ok, data, error, code }
 ```
 
 ## Avancement

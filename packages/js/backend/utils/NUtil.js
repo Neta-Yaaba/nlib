@@ -27,6 +27,7 @@ import { NSystem } from '../system/NSystem.js';
 import { NWorkerManager } from '../worker/NWorkerManager.js';
 import { NNetwork } from '../requests/NNetwork.js';
 import { NDatabase } from '../database/NDatabase.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * @class NUtil
@@ -107,6 +108,9 @@ export class NUtil {
 
     /** @type {NDatabase|null} */
     static #database = null;
+
+    /** @type {NLog|null} */
+    static #log = null;
 
     // =========================================================================
     // Accesseurs statiques (Getters avec initialisation paresseuse au 1er appel)
@@ -269,7 +273,7 @@ export class NUtil {
      * @returns {NJson} Instance de `NJson`.
      *
      * @example <caption>Exemple 1 : Lire dans un objet ou tableau via un chemin</caption>
-     * console.log(NUtil.json.getString({ users: ['Ali', 'Neta'] }, 'users.1')); // 'Neta'
+     * console.log(NUtil.json.getString({ users: ['Ali', 'Neta'] }, ['users', 1])); // 'Neta'
      *
      * @example <caption>Exemple 2 : Compter le nombre d'entrées</caption>
      * console.log(NUtil.json.size({ a: 1, b: 2 })); // 2
@@ -485,6 +489,22 @@ export class NUtil {
      */
     static get db() {
         return this.database;
+    }
+
+    /**
+     * Retourne l'instance partagée de `NLog` (système universel de journalisation de NLib).
+     *
+     * @returns {NLog} Instance partagée de `NLog`.
+     *
+     * @example <caption>Exemple 1 : Journaliser un message ou une anomalie</caption>
+     * NUtil.log.info('Opération réussie', { id: 123 });
+     * NUtil.log.error('Échec de validation', { champ: 'nom' });
+     */
+    static get log() {
+        if (!this.#log) {
+            this.#log = new NLog();
+        }
+        return this.#log;
     }
 
     // =========================================================================
@@ -819,39 +839,79 @@ export class NUtil {
     /**
      * Exécute une fonction asynchrone `fn` et réessaie automatiquement en cas d'échec
      * jusqu'à `attempts` tentatives avec un délai `delayMs` entre chaque essai.
+     * En cas d'échec total, consigne l'erreur via `NUtil.log.error` et retourne `options.fallback`
+     * si défini, ou un objet d'erreur standard `{ success: false, code, error, attempts }`.
      *
      * @param {Function} fn - Fonction asynchrone `(attemptIndex) => Promise<any>`.
      * @param {Object} [options={}] - Options de réessai.
      * @param {number} [options.attempts=3] - Nombre maximal de tentatives.
      * @param {number} [options.delayMs=300] - Délai initial entre deux tentatives en ms.
      * @param {boolean} [options.exponential=false] - Si `true`, double le délai à chaque échec.
-     * @returns {Promise<any>} Résultat de `fn` dès qu'elle réussit.
+     * @param {any} [options.fallback] - Valeur de repli retournée si toutes les tentatives échouent.
+     * @returns {Promise<any>} Résultat de `fn` dès qu'elle réussit, ou repli / objet d'erreur standard.
      *
      * @example <caption>Exemple 1 : Réessayer une opération réseau jusqu'à 3 fois</caption>
      * const res = await NUtil.retry(async () => 'succès', { attempts: 3, delayMs: 100 });
      * console.log(res); // 'succès'
      *
-     * @example <caption>Exemple 2 : Backoff exponentiel</caption>
-     * const data = await NUtil.retry(async (attempt) => attempt, { attempts: 2, exponential: true });
+     * @example <caption>Exemple 2 : Backoff exponentiel avec valeur de repli</caption>
+     * const data = await NUtil.retry(async (attempt) => attempt, { attempts: 2, exponential: true, fallback: null });
      */
     static async retry(fn, options = {}) {
+        if (typeof fn !== 'function') {
+            NUtil.log.error('NUtil.retry: Le paramètre fn doit être une fonction', {
+                code: 'ERR_INVALID_ARGUMENT',
+                fn
+            });
+            if ('fallback' in (options || {})) {
+                return options.fallback;
+            }
+            return {
+                success: false,
+                code: 'ERR_INVALID_ARGUMENT',
+                error: 'Le paramètre fn doit être une fonction',
+                attempts: 0
+            };
+        }
+
         const maxAttempts = Math.max(1, Math.trunc(options?.attempts ?? 3));
         const baseDelay = Math.max(0, Math.trunc(options?.delayMs ?? 300));
         const exponential = options?.exponential ?? false;
 
-        let lastError;
+        let lastError = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 return await fn(attempt);
             } catch (err) {
                 lastError = err;
+                NUtil.log.warn('NUtil.retry: Échec de la tentative', {
+                    attempt,
+                    maxAttempts,
+                    error: err?.message || String(err)
+                });
                 if (attempt < maxAttempts && baseDelay > 0) {
                     const wait = exponential ? baseDelay * (2 ** (attempt - 1)) : baseDelay;
                     await NUtil.sleep(wait);
                 }
             }
         }
-        throw lastError;
+
+        NUtil.log.error('NUtil.retry: Épuisement de toutes les tentatives', {
+            code: 'ERR_RETRY_EXHAUSTED',
+            attempts: maxAttempts,
+            error: lastError?.message || String(lastError)
+        });
+
+        if ('fallback' in (options || {})) {
+            return options.fallback;
+        }
+
+        return {
+            success: false,
+            code: 'ERR_RETRY_EXHAUSTED',
+            error: lastError?.message || String(lastError),
+            attempts: maxAttempts
+        };
     }
 }
 

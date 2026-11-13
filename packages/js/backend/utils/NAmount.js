@@ -12,6 +12,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NAmount
  * @description Utilitaire de gestion et traitement des montants financiers sans état interne.
@@ -357,6 +359,11 @@ export class NAmount {
         const a = this.parse(amount, 0);
         const d = this.parse(divisor, 0);
         if (d === 0) {
+            NUtil.log.warn('NAmount.divide: Division par zéro impossible.', {
+                code: 'WARN_DIVIDE_BY_ZERO',
+                amount,
+                divisor
+            });
             return 0;
         }
         return this.#round(a / d, decimals);
@@ -388,11 +395,19 @@ export class NAmount {
         } else if (Array.isArray(partsOrRatios) && partsOrRatios.length > 0) {
             ratios = partsOrRatios.map((r) => Math.max(0, Number(r) || 0));
         } else {
+            NUtil.log.warn('NAmount.allocate: Paramètre partsOrRatios invalide.', {
+                code: 'WARN_ALLOCATE_INVALID_PARAM',
+                partsOrRatios
+            });
             return [];
         }
 
         const totalRatio = ratios.reduce((acc, r) => acc + r, 0);
         if (totalRatio <= 0) {
+            NUtil.log.warn('NAmount.allocate: Somme des ratios nulle ou négative.', {
+                code: 'WARN_ALLOCATE_ZERO_RATIO',
+                ratios
+            });
             return ratios.map(() => 0);
         }
 
@@ -481,7 +496,15 @@ export class NAmount {
     extractTax(amountTTC, taxRate, decimals = 2) {
         const ttc = this.#round(this.parse(amountTTC, 0), decimals);
         const rate = this.parse(taxRate, 0);
-        const ht = this.#round(ttc / (1 + rate / 100), decimals);
+        const divisor = 1 + rate / 100;
+        if (divisor === 0) {
+            NUtil.log.warn('NAmount.extractTax: Taux de taxe entraînant une division par zéro (-100%).', {
+                code: 'WARN_TAX_RATE_INVALID',
+                taxRate
+            });
+            return { ht: 0, tax: ttc, ttc };
+        }
+        const ht = this.#round(ttc / divisor, decimals);
         const tax = this.subtract(ttc, ht, decimals);
         return { ht, tax, ttc };
     }
@@ -562,6 +585,10 @@ export class NAmount {
     format(amount, currency = '', options = {}) {
         const num = this.parse(amount, null);
         if (num === null) {
+            NUtil.log.warn('NAmount.format: Montant non convertible fourni.', {
+                code: 'WARN_FORMAT_INVALID_AMOUNT',
+                amount
+            });
             return '';
         }
 

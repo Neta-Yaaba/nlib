@@ -13,6 +13,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NArray
  * @description Utilitaire de gestion, transformation et requêtage de tableaux sans état interne.
@@ -879,10 +881,27 @@ export class NArray {
         const e = Number(end);
         let st = Number(step);
         if (!Number.isFinite(s) || !Number.isFinite(e) || !Number.isFinite(st) || st === 0) {
+            NUtil.log.warn('NArray.range: Paramètres de plage invalides.', {
+                code: 'WARN_ARRAY_RANGE_INVALID',
+                start,
+                end,
+                step
+            });
             return [];
         }
         if (s > e && st > 0) {
             st = -st;
+        }
+        const count = Math.floor(Math.abs(e - s) / Math.abs(st)) + 1;
+        if (count > 100000) {
+            NUtil.log.warn('NArray.range: Plage trop volumineuse (maximum 100 000 éléments).', {
+                code: 'WARN_ARRAY_RANGE_OVERFLOW',
+                start,
+                end,
+                step,
+                count
+            });
+            return [];
         }
         const out = [];
         if (st > 0) {

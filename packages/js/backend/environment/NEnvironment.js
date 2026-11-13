@@ -16,9 +16,6 @@
  * - Ne contient aucune méthode statique : s'utilise via une instance ou via `NUtil.env`.
  */
 
-import { NEvent } from '../core/NEvent.js';
-import { NWorker } from '../worker/NWorker.js';
-
 /**
  * @class NEnvironment
  * @description Utilitaire fournissant toutes les informations sur l'environnement d'exécution
@@ -403,14 +400,8 @@ export class NEnvironment {
         }
         const ua = navigator.userAgent;
 
-        if (typeof window !== 'undefined') {
-            if (
-                window.NLibNativeBridge ||
-                window.chrome?.webview ||
-                window.webkit?.messageHandlers
-            ) {
-                return true;
-            }
+        if (typeof window !== 'undefined' && window.NLibNativeBridge) {
+            return true;
         }
 
         if (/wv|WebView|ArkWeb/i.test(ua)) {
@@ -597,79 +588,6 @@ export class NEnvironment {
             language: this.language,
             timezone: this.timezone
         };
-    }
-
-    /**
-     * Exécute une action ou une commande auprès du conteneur applicatif hôte natif (Android, iOS, Windows, etc.)
-     * via le pont JavaScript natif (`window.NLibNativeBridge`).
-     *
-     * - Si appelé depuis le thread principal (`isBrowser`) dans une WebView :
-     *   Interroge directement `window.NLibNativeBridge.execute(params)`. Si l'appel est asynchrone (`result.isAsync`),
-     *   retourne une promesse écoutant l'événement `window.NLibNativeBridgeEvent` filtré par `result.requestId`.
-     * - Si appelé depuis un Web Worker (`isWorker`) :
-     *   Transmet automatiquement la requête au thread principal via `NWorker.requestMain('requestApp', params)`
-     *   qui l'exécute auprès du pont natif et retourne le résultat dans le Worker.
-     *
-     * @param {Object} params - Paramètres transmis au pont natif.
-     * @returns {Promise<any>} Résultat renvoyé par l'application native.
-     *
-     * @example <caption>Exemple 1 : Appel depuis le thread principal ou un Web Worker</caption>
-     * const res = await NUtil.env.requestApp({ action: 'vibrate', duration: 200 });
-     *
-     * @example <caption>Exemple 2 : Récupérer des informations matérielles de l'appareil</caption>
-     * const deviceInfo = await NUtil.env.requestApp({ action: 'getDeviceInfo' });
-     */
-    async requestApp(params) {
-        if (this.isWorker) {
-            const response = await NWorker.requestMain('requestApp', params);
-            return response?.result ?? response;
-        }
-
-        if (this.isWebView) {
-            if (this.isBrowser) {
-                if (typeof window !== 'undefined' && window.NLibNativeBridge) {
-                    const result = window.NLibNativeBridge.execute(params);
-                    if (result) {
-                        if (result.isAsync) {
-                            if (!window.NLibNativeBridgeEvent) {
-                                window.NLibNativeBridgeEvent = new NEvent();
-                            }
-                            return new Promise((resolve) => {
-                                const func = (data) => {
-                                    if (data && result.requestId === data.requestId) {
-                                        window.NLibNativeBridgeEvent.off('requestapp', func);
-                                        resolve(data);
-                                    }
-                                };
-                                window.NLibNativeBridgeEvent.on('requestapp', func);
-                            });
-                        } else {
-                            return result;
-                        }
-                    } else {
-                        return {
-                            error: 'NO_RESULT',
-                            message: 'Aucun résultat retourné par le pont natif.'
-                        };
-                    }
-                } else {
-                    return {
-                        error: 'NO_NATIVE_BRIDGE',
-                        message: 'Le pont natif window.NLibNativeBridge est introuvable.'
-                    };
-                }
-            } else {
-                return {
-                    error: 'UNSUPPORTED_CONTEXT',
-                    message: "Contexte d'exécution non supporté pour requestApp."
-                };
-            }
-        } else {
-            return {
-                error: 'NO_APP',
-                message: "L'application ne s'exécute pas dans une WebView hôte."
-            };
-        }
     }
 }
 

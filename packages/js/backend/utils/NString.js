@@ -11,6 +11,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NString
  * @description Utilitaire de traitement de texte sans état interne.
@@ -776,7 +778,17 @@ export class NString {
      * console.log(str.padStart('NLib', 8, ' ')); // '    NLib'
      */
     padStart(text, length, padChar = ' ') {
-        return String(text ?? '').padStart(length, String(padChar || ' '));
+        const len = Math.max(0, Math.floor(Number(length) || 0));
+        try {
+            return String(text ?? '').padStart(len, String(padChar || ' '));
+        } catch (err) {
+            NUtil.log.warn('NString.padStart: Paramètre de remplissage invalide.', {
+                code: 'WARN_STRING_PAD_ERROR',
+                length,
+                cause: err
+            });
+            return String(text ?? '');
+        }
     }
 
     /**
@@ -796,7 +808,17 @@ export class NString {
      * console.log(str.padEnd('ID', 6, ' ') + '| Nom'); // 'ID    | Nom'
      */
     padEnd(text, length, padChar = ' ') {
-        return String(text ?? '').padEnd(length, String(padChar || ' '));
+        const len = Math.max(0, Math.floor(Number(length) || 0));
+        try {
+            return String(text ?? '').padEnd(len, String(padChar || ' '));
+        } catch (err) {
+            NUtil.log.warn('NString.padEnd: Paramètre de remplissage invalide.', {
+                code: 'WARN_STRING_PAD_ERROR',
+                length,
+                cause: err
+            });
+            return String(text ?? '');
+        }
     }
 
     /**
@@ -816,7 +838,16 @@ export class NString {
      */
     repeat(text, count) {
         const n = Math.max(0, Math.floor(Number(count) || 0));
-        return String(text ?? '').repeat(n);
+        try {
+            return String(text ?? '').repeat(n);
+        } catch (err) {
+            NUtil.log.warn('NString.repeat: Valeur de répétition invalide ou excessive.', {
+                code: 'WARN_STRING_REPEAT_ERROR',
+                count,
+                cause: err
+            });
+            return '';
+        }
     }
 
     /**

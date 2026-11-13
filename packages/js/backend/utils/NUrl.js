@@ -12,6 +12,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NUrl
  * @description Utilitaire de gestion et traitement des URLs et paramètres de requête sans état interne.
@@ -881,7 +883,8 @@ export class NUrl {
         }
         try {
             return decodeURIComponent(encodedValue.replace(/\+/g, '%20'));
-        } catch {
+        } catch (error) {
+            NUtil.log.warn('NUrl.decode: Échec du décodage URI', { error, encodedValue });
             return encodedValue;
         }
     }
@@ -948,7 +951,8 @@ export class NUrl {
                 bytes[i] = binary.charCodeAt(i);
             }
             return new TextDecoder().decode(bytes);
-        } catch {
+        } catch (error) {
+            NUtil.log.warn('NUrl.decodeBase64Url: Format Base64URL invalide', { error, base64Url });
             return '';
         }
     }
@@ -1081,7 +1085,8 @@ export class NUrl {
                 return Number.isFinite(num) ? num : null;
             }
             return decodedStr;
-        } catch {
+        } catch (error) {
+            NUtil.log.warn('NUrl.unmaskId: Échec du démasquage ou format invalide', { error, token });
             return null;
         }
     }

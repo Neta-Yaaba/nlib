@@ -94,7 +94,20 @@ export class NManagedWorker extends NWorker {
      */
     async onRequest(action, params, onUpdate) {
         if (this.#manager && typeof this.#manager.hasAction === 'function' && this.#manager.hasAction(action)) {
-            return this.#manager.executeAction(action, params, onUpdate);
+            try {
+                return await this.#manager.executeAction(action, params, onUpdate);
+            } catch (err) {
+                this.util.log.error(`NManagedWorker [${this.name}]: Erreur lors de la délégation de l'action "${action}".`, {
+                    code: 'ERR_MANAGED_ACTION_EXEC',
+                    cause: err
+                });
+                return {
+                    success: false,
+                    code: 'ERR_MANAGED_ACTION_EXEC',
+                    error: 'ERR_MANAGED_ACTION_EXEC',
+                    message: err?.message ?? String(err)
+                };
+            }
         }
         return super.onRequest(action, params, onUpdate);
     }

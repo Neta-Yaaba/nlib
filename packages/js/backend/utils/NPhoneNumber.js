@@ -12,6 +12,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NPhoneNumber
  * @description Utilitaire de gestion et traitement des numéros de téléphone sans état interne.

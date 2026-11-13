@@ -15,6 +15,8 @@
  */
 
 import { NUtil } from '../utils/NUtil.js';
+import { NEvent } from '../core/NEvent.js';
+import { NWorker } from '../worker/NWorker.js';
 
 /**
  * @class NSystem
@@ -338,28 +340,48 @@ export class NSystem {
 
     /**
      * Exécute une fonction (synchrone ou asynchrone) et mesure précisément son temps d'exécution.
+     * Conforme à la règle Zero Throw : en cas d'erreur levée dans `fn`, capture l'exception, la consigne
+     * dans `NLog` et retourne un rapport d'échec sans interrompre l'application.
      *
      * @param {string} label - Nom de l'opération mesurée.
      * @param {Function} fn - Fonction à exécuter et chronométrer.
-     * @returns {Promise<{ label: string, durationMs: number, result: any }>} Rapport d'exécution.
+     * @returns {Promise<{ label: string, durationMs: number, result: any, success: boolean, error?: string }>} Rapport d'exécution.
      *
-     * @example <caption>Exemple 1 : Mesurer une tâche asynchrone</caption>
+     * @example <caption>Exemple 1 : Mesurer une tâche asynchrone avec succès</caption>
      * const report = await NUtil.sys.measure('RequeteSQL', async () => 42);
      * console.log(report.label, report.result, report.durationMs >= 0); // 'RequeteSQL' 42 true
      *
-     * @example <caption>Exemple 2 : Mesurer une boucle synchrone</caption>
-     * const { durationMs } = await NUtil.sys.measure('Boucle', () => NUtil.arr.range(1, 1000));
-     * console.log(durationMs >= 0); // true
+     * @example <caption>Exemple 2 : Mesurer une opération échouant sans lever d'exception</caption>
+     * const errReport = await NUtil.sys.measure('TacheErronee', () => { throw new Error('Oups'); });
+     * console.log(errReport.success); // false
      */
     async measure(label, fn) {
         const start = this.hrtime();
-        const result = await fn();
-        const durationMs = NUtil.num.round(this.hrtime() - start, 3);
-        return {
-            label: String(label || 'task'),
-            durationMs,
-            result
-        };
+        try {
+            const result = await fn();
+            const durationMs = NUtil.num.round(this.hrtime() - start, 3);
+            return {
+                success: true,
+                label: String(label || 'task'),
+                durationMs,
+                result
+            };
+        } catch (error) {
+            const durationMs = NUtil.num.round(this.hrtime() - start, 3);
+            NUtil.log.error(`NSystem: Échec lors de la mesure de "${label}".`, {
+                code: 'ERR_MEASURE_EXECUTION',
+                label,
+                cause: error
+            });
+            return {
+                success: false,
+                code: 'ERR_MEASURE_EXECUTION',
+                error: error?.message || 'Erreur lors de la mesure',
+                label: String(label || 'task'),
+                durationMs,
+                result: null
+            };
+        }
     }
 
     // =========================================================================
@@ -548,42 +570,170 @@ export class NSystem {
     }
 
     /**
-     * Envoie une commande système à l'hôte OS natif (`Android`, `iOS`, `Windows`, `macOS`, `Linux`, `HarmonyOS`)
-     * lorsque l'application tourne dans une WebView NLib.
+     * Envoie une commande système à l'hôte OS natif (Android, iOS, Windows, macOS, Linux, HarmonyOS)
+     * via le pont unique `window.NLibNativeBridge.invoke(action, payload)`.
      *
-     * @param {string} action - Nom de l'action système native (ex: `'vibrate'`, `'exitApp'`, `'openSettings'`).
-     * @param {Object} [payload={}] - Paramètres associés à l'action.
-     * @returns {Promise<any>} Réponse du conteneur natif ou `null` si aucun pont natif n'est connecté.
+     * - Accepte soit un nom d'action avec son payload (`invokeNative('vibrate', { duration: 200 })`),
+     *   soit un objet de paramètres complet (`invokeNative({ action: 'sql.query', payload: { ... } })`).
+     * - Si appelé depuis un Web Worker (`isWorker`), relaie automatiquement la commande au thread principal
+     *   via `NWorker.requestMain('invokeNative', { action, payload })`.
+     * - Si l'appel est asynchrone (`result.isAsync`), attend l'événement de retour filtré par `result.requestId`
+     *   avec protection automatique par temporisation (timeout configurable via `payload.timeout`, 30s par défaut).
+     * - Conforme à la règle **Zero Throw / Zero Reject** : en cas d'absence de conteneur natif ou d'erreur,
+     *   consigne l'anomalie dans `NLog` et retourne un objet résultat standardisé `{ success: false, code, error, message }`.
      *
-     * @example <caption>Exemple 1 : Demander une action système au conteneur OS</caption>
-     * const res = await NUtil.sys.invokeNative('getDeviceInfo', {});
+     * @param {string|Object} actionOrParams - Nom de l'action native ou objet contenant l'action et son payload.
+     * @param {Object} [payloadOrOptions={}] - Paramètres transmis à l'action native.
+     * @returns {Promise<any>} Réponse renvoyée par le conteneur natif ou objet résultat standardisé.
      *
-     * @example <caption>Exemple 2 : Hors WebView retourne null sans erreur</caption>
-     * console.log(await NUtil.sys.invokeNative('vibrate', { duration: 100 })); // null (si navigateur standard)
+     * @example <caption>Exemple 1 : Demander une action système avec paramètres</caption>
+     * const res = await NUtil.sys.invokeNative('vibrate', { duration: 150 });
+     * console.log(res);
+     *
+     * @example <caption>Exemple 2 : Requête native structurée avec gestion de délai</caption>
+     * const info = await NUtil.sys.invokeNative('getDeviceInfo', { timeout: 5000 });
+     * console.log(info);
      */
-    async invokeNative(action, payload = {}) {
-        if (typeof action !== 'string' || action.trim().length === 0) {
-            return null;
-        }
-        const message = { action: action.trim(), payload, timestamp: Date.now() };
+    async invokeNative(actionOrParams, payloadOrOptions = {}) {
+        try {
+            let action;
+            let payload;
 
-        if (typeof window !== 'undefined') {
-            // 1. Pont standard unifié NLib
-            if (window.NLibNativeBridge && typeof window.NLibNativeBridge.invoke === 'function') {
-                return await window.NLibNativeBridge.invoke(message.action, message.payload);
+            if (typeof actionOrParams === 'string') {
+                action = actionOrParams.trim();
+                payload = payloadOrOptions;
+            } else if (actionOrParams && typeof actionOrParams === 'object') {
+                action = actionOrParams.action || (Array.isArray(actionOrParams.type) ? actionOrParams.type.join('.') : (actionOrParams.type || 'default'));
+                payload = actionOrParams.payload !== undefined ? actionOrParams.payload : actionOrParams;
+            } else {
+                NUtil.log.warn("invokeNative: Paramètres d'appel invalides.", { actionOrParams });
+                return {
+                    success: false,
+                    code: 'INVALID_PARAMS',
+                    error: 'INVALID_PARAMS',
+                    message: "Paramètres invalides fournis à invokeNative."
+                };
             }
-            // 2. Windows WebView2
-            if (window.chrome?.webview && typeof window.chrome.webview.postMessage === 'function') {
-                window.chrome.webview.postMessage(JSON.stringify(message));
-                return true;
+
+            if (!action) {
+                NUtil.log.warn("invokeNative: Le nom de l'action ne peut pas être vide.");
+                return {
+                    success: false,
+                    code: 'INVALID_ACTION',
+                    error: 'INVALID_ACTION',
+                    message: "Le nom de l'action native ne peut pas être vide."
+                };
             }
-            // 3. iOS / macOS WKWebView
-            if (window.webkit?.messageHandlers?.nlib && typeof window.webkit.messageHandlers.nlib.postMessage === 'function') {
-                window.webkit.messageHandlers.nlib.postMessage(message);
-                return true;
+
+            // 1. Relai automatique si exécuté au sein d'un Web Worker
+            if (NUtil.env.isWorker) {
+                const response = await NWorker.requestMain('invokeNative', { action, payload });
+                return response?.result ?? response;
             }
+
+            // 2. Vérification de l'environnement WebView / Conteneur hôte
+            if (!NUtil.env.isWebView) {
+                NUtil.log.warn("invokeNative: L'application ne s'exécute pas dans un conteneur WebView hôte.", {
+                    action,
+                    payload
+                });
+                return {
+                    success: false,
+                    code: 'NO_APP',
+                    error: 'NO_APP',
+                    message: "L'application ne s'exécute pas dans une WebView hôte."
+                };
+            }
+
+            if (typeof window === 'undefined' || !window.NLibNativeBridge || typeof window.NLibNativeBridge.invoke !== 'function') {
+                NUtil.log.warn('invokeNative: Le pont natif window.NLibNativeBridge.invoke est introuvable.', {
+                    action,
+                    payload
+                });
+                return {
+                    success: false,
+                    code: 'NO_NATIVE_BRIDGE',
+                    error: 'NO_NATIVE_BRIDGE',
+                    message: 'Le pont natif window.NLibNativeBridge.invoke est introuvable.'
+                };
+            }
+
+            // 3. Exécution exclusive auprès de window.NLibNativeBridge.invoke
+            const result = await window.NLibNativeBridge.invoke(action, payload);
+            if (result === undefined || result === null) {
+                NUtil.log.warn('invokeNative: Aucun résultat retourné par window.NLibNativeBridge.invoke.', {
+                    action,
+                    payload
+                });
+                return {
+                    success: false,
+                    code: 'NO_RESULT',
+                    error: 'NO_RESULT',
+                    message: 'Aucun résultat retourné par le pont natif.'
+                };
+            }
+
+            // 4. Gestion des réponses asynchrones avec temporisation et nettoyage d'écouteur
+            if (result && result.isAsync && result.requestId) {
+                if (!window.NLibNativeBridgeEvent) {
+                    window.NLibNativeBridgeEvent = new NEvent();
+                }
+
+                const timeoutMs = (payload && typeof payload.timeout === 'number' && payload.timeout > 0)
+                    ? payload.timeout
+                    : 30000;
+
+                return new Promise((resolve) => {
+                    let timer = null;
+
+                    const func = (data) => {
+                        if (data && result.requestId === data.requestId) {
+                            if (timer) {
+                                clearTimeout(timer);
+                                timer = null;
+                            }
+                            window.NLibNativeBridgeEvent.off('invokenative', func);
+                            window.NLibNativeBridgeEvent.off('requestapp', func);
+                            resolve(data);
+                        }
+                    };
+
+                    timer = setTimeout(() => {
+                        window.NLibNativeBridgeEvent.off('invokenative', func);
+                        window.NLibNativeBridgeEvent.off('requestapp', func);
+                        NUtil.log.warn(`invokeNative: Délai d'attente dépassé (${timeoutMs}ms) pour la requête id: ${result.requestId}.`, {
+                            requestId: result.requestId,
+                            action,
+                            payload
+                        });
+                        resolve({
+                            success: false,
+                            code: 'ERR_TIMEOUT',
+                            error: 'TIMEOUT',
+                            message: `Délai d'attente dépassé (${timeoutMs}ms) pour la requête native id: ${result.requestId}.`
+                        });
+                    }, timeoutMs);
+
+                    window.NLibNativeBridgeEvent.on('invokenative', func);
+                    window.NLibNativeBridgeEvent.on('requestapp', func);
+                });
+            }
+
+            return result;
+        } catch (error) {
+            NUtil.log.error("invokeNative: Erreur inattendue lors de l'exécution de la commande native.", {
+                code: 'ERR_NATIVE_INVOKE',
+                params: actionOrParams,
+                cause: error
+            });
+            return {
+                success: false,
+                code: 'ERR_NATIVE_INVOKE',
+                error: 'ERR_NATIVE_INVOKE',
+                message: error?.message || 'Erreur inattendue lors de la communication avec le pont natif.',
+                details: { cause: error }
+            };
         }
-        return null;
     }
 
     /**

@@ -11,6 +11,8 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NUtil } from './NUtil.js';
+
 /**
  * @class NNumber
  * @description Utilitaire de gestion et traitement des nombres sans état interne.
@@ -435,6 +437,11 @@ export class NNumber {
     percentage(part, total, decimals = 2) {
         const t = Number(total);
         if (!t) {
+            NUtil.log.warn('NNumber.percentage: Total nul ou invalide, calcul de pourcentage impossible.', {
+                code: 'WARN_PERCENTAGE_ZERO_TOTAL',
+                part,
+                total
+            });
             return 0;
         }
         return this.round((Number(part) / t) * 100, decimals);
