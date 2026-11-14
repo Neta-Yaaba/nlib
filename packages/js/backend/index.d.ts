@@ -1,0 +1,1570 @@
+/**
+ * @file index.d.ts
+ * @package @nlib/js-backend
+ * @description Déclarations TypeScript complètes du paquet `@nlib/js-backend`,
+ * organisées dossier par dossier et classe par classe.
+ */
+
+/* ========================================================================== *
+ * 1. DOSSIER core/ (NObject, NEvent)                                         *
+ * ========================================================================== */
+
+export interface NObjectOptions {
+    state?: Record<string, any>;
+    autoInit?: boolean;
+}
+
+export interface NObjectSerialized {
+    className: string;
+    isInitialized: boolean;
+    state: Record<string, any>;
+}
+
+export type NEventCallback = (...args: any[]) => any;
+
+/**
+ * Gestionnaire d'événements synchrone et asynchrone (`core/NEvent.js`).
+ */
+export class NEvent {
+    constructor(target?: object | null);
+
+    readonly isEmpty: boolean;
+    readonly target: object | null;
+    readonly util: typeof NUtil;
+
+    has(event: string): boolean;
+    hasListener(event: string, callback: NEventCallback): boolean;
+    listenerCount(event?: string): number;
+    eventNames(): string[];
+    on(event: string, callback: NEventCallback): this;
+    once(event: string, callback: NEventCallback): this;
+    off(event?: string, callback?: NEventCallback): this;
+    emit(event: string, ...args: any[]): this;
+    emitAsync(event: string, ...args: any[]): Promise<any[]>;
+    waitFor<T = any>(event: string, timeout?: number): Promise<T | null>;
+    clear(): this;
+}
+
+/**
+ * Classe de base fournissant la gestion d'état interne, un bus d'événements intégré
+ * et un cycle de vie (`core/NObject.js`).
+ */
+export class NObject {
+    constructor(options?: NObjectOptions);
+
+    readonly state: Record<string, any>;
+    readonly event: NEvent;
+    readonly className: string;
+    readonly util: typeof NUtil;
+    readonly isInitialized: boolean;
+    readonly isDestroyed: boolean;
+
+    initialize(): this;
+    destroy(): void;
+    hasState(key: string): boolean;
+    getState<T = any>(key: string, defaultValue?: T): T;
+    setState(keyOrObject: string | Record<string, any>, value?: any): this;
+    deleteState(key: string): boolean;
+    clearState(): this;
+    toJSON(): NObjectSerialized;
+    fromJSON(json: string | Record<string, any>): this;
+    clone(): this;
+
+    static create<T extends NObject = NObject>(options?: NObjectOptions): T;
+}
+
+/* ========================================================================== *
+ * 2. DOSSIER log/ (NLog)                                                     *
+ * ========================================================================== */
+
+export type NLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface NLogOptions {
+    consoleEnabled?: boolean;
+    traceEnabled?: boolean;
+    maxLogs?: number;
+    context?: Record<string, any>;
+}
+
+export interface NLogEntry {
+    id: string;
+    timestamp: string;
+    level: NLogLevel;
+    message: string;
+    details: any;
+    context: Record<string, any>;
+    trace?: string | null;
+}
+
+export interface NLogFilter {
+    level?: NLogLevel;
+    search?: string;
+    limit?: number;
+    since?: Date | string | number;
+}
+
+/**
+ * Gestionnaire de journalisation centralisé avec historique circulaire en mémoire (`log/NLog.js`).
+ */
+export class NLog {
+    static readonly LEVEL: {
+        readonly DEBUG: 'debug';
+        readonly INFO: 'info';
+        readonly WARN: 'warn';
+        readonly ERROR: 'error';
+    };
+
+    constructor(options?: NLogOptions);
+
+    readonly event: NEvent;
+    readonly isConsoleEnabled: boolean;
+    readonly isTraceEnabled: boolean;
+    readonly maxLogs: number;
+    readonly context: Record<string, any>;
+
+    setConsoleEnabled(enabled: boolean): this;
+    setTraceEnabled(enabled: boolean): this;
+    setMaxLogs(max: number): this;
+    setContext(contextObj: Record<string, any>, merge?: boolean): this;
+    debug(message: string, details?: any): NLogEntry;
+    info(message: string, details?: any): NLogEntry;
+    warn(message: string, details?: any): NLogEntry;
+    error(message: string, details?: any): NLogEntry;
+    write(level: NLogLevel, message: string, details?: any): NLogEntry;
+    captureException(err: unknown, customMessage?: string | null, extraDetails?: Record<string, any>): NLogEntry;
+    getLogs(filter?: NLogLevel | ((entry: NLogEntry) => boolean) | NLogFilter | null): NLogEntry[];
+    getLastLog(level?: NLogLevel | null): NLogEntry | null;
+    count(level?: NLogLevel | null): number;
+    export(pretty?: boolean): string;
+    import(jsonOrArray: string | NLogEntry[], append?: boolean): number;
+    clear(): this;
+    destroy(): void;
+}
+
+/* ========================================================================== *
+ * 3. DOSSIER config/ (NConfig)                                               *
+ * ========================================================================== */
+
+export type NConfigPath = string | Array<string | number>;
+
+/**
+ * Gestionnaire de configuration applicative en mémoire avec typage fort et valeurs par défaut (`config/NConfig.js`).
+ */
+export class NConfig {
+    constructor(initialValues?: Record<string, any>, defaults?: Record<string, any>);
+
+    readonly isFrozen: boolean;
+    readonly isEmpty: boolean;
+
+    has(path: NConfigPath): boolean;
+    get<T = any>(path: NConfigPath, fallback?: T): T;
+    getString(path: NConfigPath, fallback?: string): string;
+    getNumber(path: NConfigPath, fallback?: number): number;
+    getInt(path: NConfigPath, fallback?: number): number;
+    getFloat(path: NConfigPath, fallback?: number): number;
+    getBoolean(path: NConfigPath, fallback?: boolean): boolean;
+    getArray<T = any>(path: NConfigPath, fallback?: T[]): T[];
+    getObject<T extends Record<string, any> = Record<string, any>>(path: NConfigPath, fallback?: T): T;
+    set(path: NConfigPath, value: any): this;
+    setDefaults(defaultsObj: Record<string, any>): this;
+    merge(configObj: Record<string, any>): this;
+    delete(path: NConfigPath): boolean;
+    reset(): this;
+    clear(): this;
+    freeze(): this;
+    require(keys: NConfigPath[]): { valid: boolean; missing: string[] };
+    loadFromDotEnv(envContent: string, prefix?: string): this;
+    loadFromProcess(prefix?: string): this;
+    toObject(): Record<string, any>;
+    toJSON(pretty?: boolean): string;
+}
+
+/* ========================================================================== *
+ * 4. DOSSIER environment/ (NEnvironment)                                     *
+ * ========================================================================== */
+
+export type NEnvironmentType = 'browser' | 'worker' | 'node' | 'unknown';
+export type NEnvironmentOS = 'Windows' | 'macOS' | 'iOS' | 'Android' | 'HarmonyOS' | 'Linux' | 'Unknown';
+export type NEnvironmentBrowser = 'Chrome' | 'Firefox' | 'Safari' | 'Edge' | 'Opera' | 'Unknown';
+
+export interface NEnvironmentInfo {
+    type: NEnvironmentType;
+    os: NEnvironmentOS;
+    browser: NEnvironmentBrowser;
+    isBrowser: boolean;
+    isNode: boolean;
+    isWorker: boolean;
+    isMobile: boolean;
+    isTablet: boolean;
+    isDesktop: boolean;
+    isTouch: boolean;
+    isWebView: boolean;
+    isOnline: boolean;
+    isSecureContext: boolean;
+    isDarkMode: boolean;
+    language: string;
+    timezone: string;
+    userAgent: string;
+}
+
+/**
+ * Détection des caractéristiques de l'environnement d'exécution (`environment/NEnvironment.js`).
+ */
+export class NEnvironment {
+    constructor();
+
+    readonly type: NEnvironmentType;
+    readonly isBrowser: boolean;
+    readonly isNode: boolean;
+    readonly isWorker: boolean;
+    readonly os: NEnvironmentOS;
+    readonly isAndroid: boolean;
+    readonly isHarmonyOS: boolean;
+    readonly isIOS: boolean;
+    readonly isWindows: boolean;
+    readonly isMacOS: boolean;
+    readonly isLinux: boolean;
+    readonly browser: NEnvironmentBrowser;
+    readonly isMobile: boolean;
+    readonly isTablet: boolean;
+    readonly isDesktop: boolean;
+    readonly isTouch: boolean;
+    readonly isWebView: boolean;
+    readonly isOnline: boolean;
+    readonly isOffline: boolean;
+    readonly isSecureContext: boolean;
+    readonly isDarkMode: boolean;
+    readonly language: string;
+    readonly timezone: string;
+    readonly userAgent: string;
+    readonly info: NEnvironmentInfo;
+}
+
+/* ========================================================================== *
+ * 5. DOSSIER system/ (NSystem)                                               *
+ * ========================================================================== */
+
+export interface NSystemMemoryInfo {
+    used: number;
+    total: number;
+    limit: number | null;
+    formattedUsed: string;
+    formattedTotal: string;
+}
+
+export interface NSystemScreenInfo {
+    width: number;
+    height: number;
+    availWidth: number;
+    availHeight: number;
+    pixelRatio: number;
+    colorDepth: number;
+    orientation: string;
+}
+
+export interface NSystemNetworkInfo {
+    online: boolean;
+    effectiveType: string | null;
+    downlink: number | null;
+    rtt: number | null;
+    saveData: boolean;
+}
+
+export interface NSystemBatteryInfo {
+    supported: boolean;
+    charging: boolean | null;
+    level: number | null;
+    chargingTime: number | null;
+    dischargingTime: number | null;
+}
+
+export interface NSystemStorageQuota {
+    supported: boolean;
+    usage: number;
+    quota: number;
+    free: number;
+    percentUsed: number;
+    formattedUsage: string;
+    formattedQuota: string;
+    formattedFree: string;
+}
+
+/**
+ * Informations matérielles, mesures de performance, presse-papiers et passerelle native (`system/NSystem.js`).
+ */
+export class NSystem {
+    constructor();
+
+    readonly cpuCores: number;
+    readonly arch: string;
+    readonly deviceMemory: number | null;
+    readonly memory: NSystemMemoryInfo | null;
+    readonly screen: NSystemScreenInfo;
+    readonly network: NSystemNetworkInfo;
+
+    uptime(): number;
+    hrtime(): number;
+    measure<T = any>(fn: () => T | Promise<T>, label?: string): Promise<{ result: T; durationMs: number; label: string }>;
+    getBattery(): Promise<NSystemBatteryInfo>;
+    getStorageQuota(): Promise<NSystemStorageQuota>;
+    copyToClipboard(text: string): Promise<boolean>;
+    readFromClipboard(): Promise<string | null>;
+    watchNetwork(callback: (state: NSystemNetworkInfo) => void): () => void;
+    invokeNative<T = any>(payload: Record<string, any>): Promise<T>;
+    getSnapshot(): Promise<Record<string, any>>;
+}
+
+/* ========================================================================== *
+ * 6. DOSSIER utils/ (NUtil + 11 classes utilitaires)                         *
+ * ========================================================================== */
+
+export interface NRetryOptions {
+    retries?: number;
+    delay?: number;
+    backoff?: number;
+    onRetry?: (attempt: number, error: any) => void;
+}
+
+export type NDebouncedFunction<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
+    cancel: () => void;
+};
+
+/**
+ * Point d'entrée statique centralisant l'accès aux singletons et utilitaires globaux (`utils/NUtil.js`).
+ */
+export class NUtil {
+    static readonly str: NString;
+    static readonly num: NNumber;
+    static readonly date: NDateTime;
+    static readonly amount: NAmount;
+    static readonly email: NEmail;
+    static readonly phone: NPhoneNumber;
+    static readonly crypto: NCryptography;
+    static readonly url: NUrl;
+    static readonly json: NJson;
+    static readonly password: NPassword;
+    static readonly arr: NArray;
+    static readonly env: NEnvironment;
+    static readonly config: NConfig;
+    static readonly sys: NSystem;
+    static readonly system: NSystem;
+    static readonly worker: NWorkerManager;
+    static readonly network: NNetwork;
+    static readonly net: NNetwork;
+    static readonly database: NDatabase;
+    static readonly db: NDatabase;
+    static readonly file: NFile;
+    static readonly dir: NDirectory;
+    static readonly directory: NDirectory;
+    static readonly cache: NCache;
+    static readonly log: NLog;
+
+    static uuid(): string;
+    static uid(prefix?: string): string;
+    static getType(value: any): string;
+    static isEmpty(value: any): boolean;
+    static isDefined<T>(value: T | null | undefined): value is T;
+    static isEqual(a: any, b: any): boolean;
+    static toBoolean(value: any): boolean;
+    static sleep(ms: number): Promise<void>;
+    static setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): any;
+    static clearTimeout(timerId: any): void;
+    static debounce<T extends (...args: any[]) => any>(fn: T, delay?: number): NDebouncedFunction<T>;
+    static throttle<T extends (...args: any[]) => any>(fn: T, limit?: number): (...args: Parameters<T>) => void;
+    static retry<T = any>(fn: (attempt: number) => Promise<T> | T, options?: NRetryOptions): Promise<T | null>;
+}
+
+/**
+ * Centralisation du chiffrement local (asynchrone/synchrone), du chiffrement hybride client-serveur
+ * et des fonctions de hachage (`utils/NCryptography.js`).
+ */
+export class NCryptography {
+    constructor();
+
+    encryptLocal(data: any): Promise<string>;
+    decryptLocal<T = any>(cipherPayload: string, options?: { parseJson?: boolean }): Promise<T | null>;
+    encryptLocalSync(data: any): string;
+    decryptLocalSync<T = any>(cipherPayload: string, options?: { parseJson?: boolean }): T | null;
+
+    sha256(data: string | Uint8Array): Promise<string>;
+    sha256Sync(data: string | Uint8Array): string;
+    hmacSha256Sync(message: string | Uint8Array, key: string | Uint8Array): Uint8Array;
+
+    generateKeyPair(): Promise<{ publicKey: CryptoKey; privateKey: CryptoKey } | null>;
+    exportPublicKeyToPem(publicKey: CryptoKey): Promise<string>;
+    exportPrivateKeyToPem(privateKey: CryptoKey): Promise<string>;
+    importPublicKeyFromPem(pem: string): Promise<CryptoKey | null>;
+    importPrivateKeyFromPem(pem: string): Promise<CryptoKey | null>;
+
+    encrypt(plainText: string, publicKey: CryptoKey): Promise<string>;
+    decrypt(encryptedPayload: string, privateKey: CryptoKey): Promise<string>;
+    encryptSymmetric(plainText: string, secretKey: string): Promise<string>;
+    decryptSymmetric(encryptedPayload: string, secretKey: string): Promise<string>;
+}
+
+export interface NStringCompareOptions {
+    caseSensitive?: boolean;
+    ignoreAccents?: boolean;
+    ignoreSpecialChars?: boolean;
+    ignoreSpaces?: boolean;
+    trim?: boolean;
+}
+
+export interface NStringMaskOptions {
+    visibleStart?: number;
+    visibleEnd?: number;
+    maskChar?: string;
+}
+
+/**
+ * Manipulation, comparaison, transformation de casse et formatage de chaînes (`utils/NString.js`).
+ */
+export class NString {
+    constructor();
+
+    isString(value: any): value is string;
+    isEmpty(text: any, trim?: boolean): boolean;
+    isNotEmpty(text: any, trim?: boolean): boolean;
+    length(text: string, trim?: boolean): number;
+    equals(textA: string, textB: string, options?: NStringCompareOptions): boolean;
+    contains(text: string, search: string, options?: NStringCompareOptions): boolean;
+    startsWith(text: string, prefix: string, options?: NStringCompareOptions): boolean;
+    endsWith(text: string, suffix: string, options?: NStringCompareOptions): boolean;
+    toUpperCase(text: string): string;
+    toLowerCase(text: string): string;
+    capitalize(text: string, lowerRest?: boolean): string;
+    capitalizeWords(text: string): string;
+    toCamelCase(text: string): string;
+    toPascalCase(text: string): string;
+    toSnakeCase(text: string): string;
+    toKebabCase(text: string): string;
+    trim(text: string, chars?: string | null): string;
+    cleanSpaces(text: string): string;
+    removeAccents(text: string): string;
+    slugify(text: string, separator?: string): string;
+    escapeHtml(text: string): string;
+    unescapeHtml(text: string): string;
+    split(text: string, separator?: string | RegExp, limit?: number): string[];
+    splitAt<T = string | null>(text: string, separator: string | RegExp, index: number, defaultValue?: T): string | T;
+    insertEvery(text: string, step?: number, separator?: string, fromEnd?: boolean): string;
+    truncate(text: string, maxLength: number, suffix?: string): string;
+    padStart(text: string | number, length: number, padChar?: string): string;
+    padEnd(text: string | number, length: number, padChar?: string): string;
+    repeat(text: string, count: number): string;
+    reverse(text: string): string;
+    replaceAll(text: string, search: string | RegExp, replacement: string): string;
+    template(text: string, data?: Record<string, any>): string;
+    mask(text: string, options?: NStringMaskOptions): string;
+    countOccurrences(text: string, subString: string, options?: NStringCompareOptions): number;
+    wordCount(text: string): number;
+    random(length?: number, charset?: string): string;
+}
+
+export interface NNumberFormatOptions {
+    decimals?: number;
+    thousandsSeparator?: string;
+    decimalSeparator?: string;
+}
+
+export interface NNumberCurrencyOptions extends NNumberFormatOptions {
+    symbol?: string;
+    position?: 'before' | 'after';
+    space?: boolean;
+}
+
+/**
+ * Validation, conversion, calculs mathématiques et formatage numérique (`utils/NNumber.js`).
+ */
+export class NNumber {
+    constructor();
+
+    isNumber(value: any): value is number;
+    isNumeric(value: any): boolean;
+    isInteger(value: any): boolean;
+    isFloat(value: any): boolean;
+    isPositive(value: any, strict?: boolean): boolean;
+    isNegative(value: any, strict?: boolean): boolean;
+    isEven(value: any): boolean;
+    isOdd(value: any): boolean;
+    isBetween(value: any, min: number, max: number, inclusive?: boolean): boolean;
+    equals(a: any, b: any, epsilon?: number): boolean;
+    toNumber(value: any, defaultValue?: number): number;
+    toInt(value: any, defaultValue?: number, radix?: number): number;
+    toFloat(value: any, defaultValue?: number): number;
+    round(value: any, decimals?: number): number;
+    floor(value: any, decimals?: number): number;
+    ceil(value: any, decimals?: number): number;
+    clamp(value: any, min: number, max: number): number;
+    percentage(part: any, total: any, decimals?: number): number;
+    percentageOf(percent: any, total: any, decimals?: number): number;
+    sum(numbers?: any[]): number;
+    average(numbers?: any[], decimals?: number): number;
+    min(numbers?: any[]): number | null;
+    max(numbers?: any[]): number | null;
+    randomInt(min?: number, max?: number): number;
+    randomFloat(min?: number, max?: number, decimals?: number): number;
+    format(value: any, options?: NNumberFormatOptions): string;
+    formatCurrency(value: any, options?: NNumberCurrencyOptions): string;
+    formatBytes(bytes: number, decimals?: number): string;
+    pad(value: number | string, length?: number): string;
+}
+
+export type NDateInput = Date | string | number;
+
+/**
+ * Manipulation, arithmétique calendaire, calculs d'écarts et formatage de dates (`utils/NDateTime.js`).
+ */
+export class NDateTime {
+    constructor();
+
+    now(): Date;
+    timestamp(inSeconds?: boolean): number;
+    toDate(value: NDateInput, defaultValue?: Date | null): Date | null;
+    isValid(value: any): boolean;
+    isLeapYear(yearOrDate?: number | NDateInput): boolean;
+    isToday(value: NDateInput): boolean;
+    isPast(value: NDateInput): boolean;
+    isFuture(value: NDateInput): boolean;
+    isWeekend(value: NDateInput): boolean;
+    isSameDay(dateA: NDateInput, dateB: NDateInput): boolean;
+    isBefore(dateA: NDateInput, dateB: NDateInput): boolean;
+    isAfter(dateA: NDateInput, dateB: NDateInput): boolean;
+    isBetween(value: NDateInput, start: NDateInput, end: NDateInput, inclusive?: boolean): boolean;
+    getYear(value: NDateInput): number | null;
+    getMonth(value: NDateInput): number | null;
+    getDay(value: NDateInput): number | null;
+    getDayOfWeek(value: NDateInput): number | null;
+    getHours(value: NDateInput): number | null;
+    getMinutes(value: NDateInput): number | null;
+    getSeconds(value: NDateInput): number | null;
+    daysInMonth(yearOrDate: number | NDateInput, month?: number): number | null;
+    addYears(value: NDateInput, years: number): Date | null;
+    addMonths(value: NDateInput, months: number): Date | null;
+    addDays(value: NDateInput, days: number): Date | null;
+    addHours(value: NDateInput, hours: number): Date | null;
+    addMinutes(value: NDateInput, minutes: number): Date | null;
+    addSeconds(value: NDateInput, seconds: number): Date | null;
+    startOfDay(value: NDateInput): Date | null;
+    endOfDay(value: NDateInput): Date | null;
+    startOfMonth(value: NDateInput): Date | null;
+    endOfMonth(value: NDateInput): Date | null;
+    startOfYear(value: NDateInput): Date | null;
+    endOfYear(value: NDateInput): Date | null;
+    diffInSeconds(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    diffInMinutes(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    diffInHours(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    diffInDays(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    getAge(birthDate: NDateInput, referenceDate?: NDateInput): number | null;
+    format(value: NDateInput, pattern?: string): string;
+    toSql(value?: NDateInput, includeTime?: boolean): string;
+    toIso(value?: NDateInput): string;
+}
+
+/**
+ * Calculs monétaires exacts en centimes, TVA, remises et formatage de devises (`utils/NAmount.js`).
+ */
+export class NAmount {
+    constructor();
+
+    isValid(value: any, allowNegative?: boolean): boolean;
+    parse(value: any, fallback?: number | null): number | null;
+    toCents(amount: any, decimals?: number): number;
+    fromCents(cents: number, decimals?: number): number;
+    add(amountA: any, amountB: any, decimals?: number): number;
+    subtract(amountA: any, amountB: any, decimals?: number): number;
+    multiply(amount: any, factor: number, decimals?: number): number;
+    divide(amount: any, divisor: number, decimals?: number): number;
+    sum(amounts?: any[], decimals?: number): number;
+    allocate(amount: any, parts?: number, decimals?: number): number[];
+    taxAmount(amountHT: any, taxRate: number, decimals?: number): number;
+    addTax(amountHT: any, taxRate: number, decimals?: number): number;
+    extractTax(amountTTC: any, taxRate: number, decimals?: number): { ht: number; tax: number; ttc: number };
+    applyDiscount(amount: any, discountPercent: number, decimals?: number): number;
+    convert(amount: any, exchangeRate: number, decimals?: number): number;
+    format(amount: any, currency?: string, options?: NNumberCurrencyOptions): string;
+}
+
+export interface NEmailParsed {
+    email: string;
+    local: string;
+    baseLocal: string;
+    tag: string;
+    domain: string;
+    tld: string;
+}
+
+export interface NEmailNormalizeOptions {
+    stripPlusTag?: boolean;
+    normalizeGmailDots?: boolean;
+}
+
+/**
+ * Validation, normalisation, analyse et masquage d'adresses e-mail (`utils/NEmail.js`).
+ */
+export class NEmail {
+    constructor();
+
+    isValid(email: any): boolean;
+    isFreeProvider(email: string): boolean;
+    isDisposable(email: string): boolean;
+    isCorporate(email: string): boolean;
+    normalize(email: string, options?: NEmailNormalizeOptions): string;
+    equals(emailA: string, emailB: string, options?: NEmailNormalizeOptions): boolean;
+    parse(email: string): NEmailParsed | null;
+    getLocalPart(email: string, stripPlusTag?: boolean): string;
+    getDomain(email: string): string;
+    getTld(email: string): string;
+    mask(email: string, options?: { visibleStart?: number; visibleEnd?: number; maskChar?: string }): string;
+    formatDisplay(email: string, displayName?: string): string;
+    extractFromText(text: string, unique?: boolean): string[];
+}
+
+export interface NPhoneParsed {
+    raw: string;
+    e164: string;
+    countryCode: string;
+    nationalNumber: string;
+    digits: string;
+    isInternational: boolean;
+}
+
+/**
+ * Validation, nettoyage, analyse et formatage de numéros de téléphone (`utils/NPhoneNumber.js`).
+ */
+export class NPhoneNumber {
+    constructor();
+
+    clean(phone: string, keepPlus?: boolean): string;
+    digitsOnly(phone: string): string;
+    isValid(phone: any, options?: { countryCode?: string; minLength?: number; maxLength?: number }): boolean;
+    equals(phoneA: string, phoneB: string, defaultCountryCode?: string): boolean;
+    parse(phone: string, defaultCountryCode?: string): NPhoneParsed | null;
+    toE164(phone: string, defaultCountryCode?: string): string;
+    format(
+        phone: string,
+        style?: 'e164' | 'international' | 'national' | 'rfc3966',
+        options?: { defaultCountryCode?: string; groupSize?: number; separator?: string }
+    ): string;
+    mask(phone: string, options?: NStringMaskOptions): string;
+}
+
+export interface NUrlParsed {
+    href: string;
+    protocol: string;
+    origin: string;
+    host: string;
+    hostname: string;
+    port: string;
+    pathname: string;
+    search: string;
+    query: Record<string, any>;
+    hash: string;
+    username: string;
+    password: string;
+    isRelative: boolean;
+}
+
+export interface NUrlBuildParts {
+    base?: string;
+    protocol?: string;
+    hostname?: string;
+    port?: string | number;
+    path?: string | string[];
+    query?: Record<string, any>;
+    hash?: string;
+}
+
+/**
+ * Manipulation d'URLs, Query Strings et obfuscation signée d'identifiants (`utils/NUrl.js`).
+ */
+export class NUrl {
+    constructor();
+
+    isValid(url: any, options?: { requireHttps?: boolean; allowRelative?: boolean }): boolean;
+    isAbsolute(url: string): boolean;
+    isRelative(url: string): boolean;
+    isHttps(url: string): boolean;
+    isSameOrigin(urlA: string, urlB: string): boolean;
+    parse(url: string): NUrlParsed | null;
+    getProtocol(url: string): string;
+    getDomain(url: string, stripWww?: boolean): string;
+    getPath(url: string): string;
+    getPathSegments(url: string): string[];
+    getHash(url: string): string;
+    parseQueryString(queryOrUrl: string): Record<string, any>;
+    stringifyQueryParams(params: Record<string, any>, prefixQuestionMark?: boolean): string;
+    getQueryParam<T = any>(url: string, paramName: string, fallback?: T): T;
+    setQueryParams(url: string, params: Record<string, any>): string;
+    removeQueryParams(url: string, paramNames: string | string[]): string;
+    join(...segments: string[]): string;
+    build(parts?: NUrlBuildParts): string;
+    normalize(url: string, options?: { sortQuery?: boolean; stripTrailingSlash?: boolean; stripHash?: boolean }): string;
+    encode(value: string): string;
+    decode(encodedValue: string): string;
+    encodeBase64Url(text: string): string;
+    decodeBase64Url(base64Url: string): string;
+    encodeId(idOrValue: string | number, salt?: string): string;
+    decodeId(token: string, salt?: string, asNumber?: boolean): string | number | null;
+}
+
+export type NJsonPath = string | number | Array<string | number>;
+
+/**
+ * Sérialisation JSON tolérante aux cycles, clonage et lecture/écriture par chemin (`utils/NJson.js`).
+ */
+export class NJson {
+    constructor();
+
+    isValid(jsonString: any): boolean;
+    isPlainObject(value: any): value is Record<string, any>;
+    isValidObject(value: any): boolean;
+    isValidArray(value: any): boolean;
+    isEmpty(value: any): boolean;
+    size(data: any): number;
+    parse<T = any>(value: any, fallback?: T, reviver?: ((key: string, value: any) => any) | null): T;
+    stringify(
+        value: any,
+        options?: { pretty?: boolean; indent?: number; sortKeys?: boolean; fallback?: string }
+    ): string;
+    prettify(value: any, indent?: number): string;
+    minify(value: any): string;
+    clone<T = any>(value: T): T;
+    equals(a: any, b: any): boolean;
+    merge<T extends Record<string, any> = Record<string, any>>(...objects: Record<string, any>[]): T;
+    get<T = any>(data: any, path: NJsonPath, fallback?: T): T;
+    getNumber(data: any, path: NJsonPath, fallback?: number | null): number | null;
+    getInt(data: any, path: NJsonPath, fallback?: number | null): number | null;
+    getFloat(data: any, path: NJsonPath, fallback?: number | null): number | null;
+    getString(data: any, path: NJsonPath, fallback?: string): string;
+    getArray<T = any>(data: any, path: NJsonPath, fallback?: T[]): T[];
+    getObject<T extends Record<string, any> = Record<string, any>>(data: any, path: NJsonPath, fallback?: T | null): T | null;
+    has(data: any, path: NJsonPath): boolean;
+    set<T = any>(data: T, path: NJsonPath, value: any): T;
+    remove(data: any, path: NJsonPath): boolean;
+    pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys?: K[]): Pick<T, K>;
+    omit<T extends Record<string, any>, K extends keyof T>(obj: T, keysToOmit?: K[]): Omit<T, K>;
+    flatten(obj: Record<string, any>, separator?: string, prefix?: string): Record<string, any>;
+    unflatten(flatObj: Record<string, any>, separator?: string): Record<string, any>;
+}
+
+export interface NPasswordRules {
+    minLength?: number;
+    maxLength?: number;
+    requireUppercase?: boolean;
+    requireLowercase?: boolean;
+    requireNumber?: boolean;
+    requireSymbol?: boolean;
+    disallowSpaces?: boolean;
+}
+
+export interface NPasswordValidationResult {
+    valid: boolean;
+    errors: string[];
+    checks: Record<string, boolean>;
+}
+
+export interface NPasswordStrengthResult {
+    score: 0 | 1 | 2 | 3 | 4;
+    label: 'very_weak' | 'weak' | 'medium' | 'strong' | 'very_strong';
+    entropyBits: number;
+    length: number;
+}
+
+/**
+ * Validation, évaluation de robustesse, génération et hachage PBKDF2 de mots de passe (`utils/NPassword.js`).
+ */
+export class NPassword {
+    constructor();
+
+    validate(password: string, rules?: NPasswordRules): NPasswordValidationResult;
+    isStrong(password: string, rules?: NPasswordRules): boolean;
+    strength(password: string): NPasswordStrengthResult;
+    generate(
+        length?: number,
+        options?: {
+            uppercase?: boolean;
+            lowercase?: boolean;
+            numbers?: boolean;
+            symbols?: boolean;
+            excludeSimilar?: boolean;
+        }
+    ): string;
+    generatePin(length?: number): string;
+    hash(password: string, iterations?: number): Promise<string>;
+    verify(password: string, storedHash: string): Promise<boolean>;
+}
+
+export interface NPaginatedResult<T = any> {
+    data: T[];
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+}
+
+/**
+ * Manipulation immuable de tableaux et de collections d'objets (`utils/NArray.js`).
+ */
+export class NArray {
+    constructor();
+
+    isArray(value: any): value is any[];
+    isEmpty(list: any): boolean;
+    isNotEmpty(list: any): boolean;
+    toArray<T = any>(value: any): T[];
+    clone<T = any>(list: T[]): T[];
+    equals(listA: any[], listB: any[]): boolean;
+    first<T = any>(list: T[], count?: number, defaultValue?: any): T | T[] | any;
+    last<T = any>(list: T[], count?: number, defaultValue?: any): T | T[] | any;
+    at<T = any>(list: T[], index: number, defaultValue?: any): T | any;
+    insertAt<T = any>(list: T[], index: number, ...items: T[]): T[];
+    removeAt<T = any>(list: T[], index: number): T[];
+    removeValue<T = any>(list: T[], valueToRemove: T): T[];
+    compact<T = any>(list: T[], keepZeroAndFalse?: boolean): NonNullable<T>[];
+    unique<T = any>(list: T[], key?: keyof T | ((item: T) => any)): T[];
+    flatten<T = any>(list: any[], depth?: number): T[];
+    pluck<T = any, K extends keyof T = keyof T>(list: T[], key: K): Array<T[K]>;
+    groupBy<T = any>(list: T[], keyOrFn: keyof T | ((item: T) => string)): Record<string, T[]>;
+    keyBy<T = any>(list: T[], key: keyof T | ((item: T) => string)): Record<string, T>;
+    sortBy<T = any>(list: T[], keyOrFn?: keyof T | ((item: T) => any) | null, order?: 'asc' | 'desc'): T[];
+    chunk<T = any>(list: T[], size?: number): T[][];
+    paginate<T = any>(list: T[], page?: number, perPage?: number): NPaginatedResult<T>;
+    shuffle<T = any>(list: T[]): T[];
+    sample<T = any>(list: T[], count?: number): T | T[];
+    intersection<T = any>(listA: T[], listB: T[]): T[];
+    difference<T = any>(listA: T[], listB: T[]): T[];
+    union<T = any>(...lists: T[][]): T[];
+    range(start: number, end: number, step?: number): number[];
+}
+
+
+/* ========================================================================== *
+ * 7. DOSSIER database/ (NDatabase, NSql, NIndexedDB, NStorage)               *
+ * ========================================================================== */
+
+export interface NIndexedDBStoreIndexConfig {
+    name: string;
+    keyPath: string | string[];
+    unique?: boolean;
+    multiEntry?: boolean;
+}
+
+export interface NIndexedDBStoreConfig {
+    keyPath?: string | string[] | null;
+    autoIncrement?: boolean;
+    indexes?: NIndexedDBStoreIndexConfig[];
+}
+
+export interface NDatabaseOptions extends NObjectOptions {
+    name?: string;
+    version?: number;
+    stores?: Record<string, NIndexedDBStoreConfig>;
+    dbStructure?: Record<string, string> | null;
+    wasmPath?: string | null;
+    storagePrefix?: string;
+    autoSave?: boolean;
+    autoSaveDelay?: number;
+}
+
+/**
+ * Façade unifiant l'accès à `NSql`, `NIndexedDB` et `NStorage` (`database/NDatabase.js`).
+ */
+export class NDatabase extends NObject {
+    constructor(options?: NDatabaseOptions);
+
+    readonly context: 'native' | 'worker' | 'browser' | 'node';
+    readonly name: string;
+    readonly version: number;
+    readonly isInitialized: boolean;
+    readonly autoSave: boolean;
+    readonly autoSaveDelay: number;
+    readonly sql: NSql;
+    readonly indexed: NIndexedDB;
+    readonly idb: NIndexedDB;
+    readonly storage: NStorage;
+    readonly store: NStorage;
+
+    init(options?: NDatabaseOptions): Promise<boolean>;
+    saveSql(snapshotKey?: string): Promise<boolean>;
+    loadSql(snapshotKey?: string): Promise<Uint8Array | null>;
+    flushAutoSave(): Promise<boolean>;
+    cancelAutoSave(): this;
+    clearAll(): Promise<boolean>;
+    close(): Promise<boolean>;
+}
+
+export interface NSqlOptions {
+    name?: string;
+    wasmPath?: string | null;
+    data?: Uint8Array | ArrayBuffer | number[] | null;
+    dbStructure?: Record<string, string> | null;
+}
+
+export interface NSqlPrimaryKeyInfo {
+    name: string;
+    type: string;
+    isAutoIncrement: boolean;
+}
+
+/**
+ * Moteur de base de données relationnelle SQLite natif / WebAssembly (`database/NSql.js`).
+ */
+export class NSql {
+    constructor(options?: NSqlOptions);
+
+    readonly name: string;
+    readonly isInitialized: boolean;
+    readonly isOpen: boolean;
+    readonly isNative: boolean;
+    readonly rawDatabase: any | null;
+    readonly util: typeof NUtil;
+    readonly event: NEvent;
+
+    init(options?: NSqlOptions): Promise<boolean>;
+    close(): Promise<boolean>;
+    createTable(tableName: string, sqlCreateTable: string): Promise<boolean>;
+    createTables(dbStructure: Record<string, string>): Promise<boolean>;
+    query<T = any>(sql: string, params?: any[]): Promise<T>;
+    execute(sql: string, params?: any[]): Promise<boolean>;
+    select<T = Record<string, any>>(sql: string, params?: any[]): Promise<T[]>;
+    selectOne<T = Record<string, any>>(sql: string, params?: any[]): Promise<T | null>;
+    selectAll<T = Record<string, any>>(tableName: string): Promise<T[]>;
+    selectAsList(sql: string, params?: any[]): Promise<any[][]>;
+    countRows(tableName: string): Promise<number>;
+    insert(tableName: string, data: Record<string, any> | Record<string, any>[]): Promise<string | number | boolean | null>;
+    update(tableName: string, data: Record<string, any>, condition: string, params?: any[]): Promise<boolean>;
+    delete(tableName: string, condition: string, params?: any[]): Promise<boolean>;
+    transaction(callback: (sql: NSql) => Promise<any> | any): Promise<boolean>;
+    getTableFields(tableName: string): Promise<string[]>;
+    getPrimaryKey(tableName: string): Promise<NSqlPrimaryKeyInfo | null>;
+    getNextId(tableName: string): Promise<number>;
+    generatePrimaryKeyValue(tableName: string): Promise<string | number | null>;
+    getDbStruct(): Promise<Record<string, any>>;
+    export(): Uint8Array | null;
+    exportBase64(): string;
+    clear(): Promise<boolean>;
+    deleteDb(): Promise<boolean>;
+}
+
+export interface NIndexedDBEncryptionOptions {
+    encrypt?: boolean;
+    encryptKey?: boolean;
+}
+
+export interface NIndexedDBOptions extends NIndexedDBEncryptionOptions {
+    name?: string;
+    version?: number;
+    stores?: Record<string, NIndexedDBStoreConfig>;
+}
+
+/**
+ * Moteur NoSQL asynchrone basé sur IndexedDB avec chiffrement local optionnel (`database/NIndexedDB.js`).
+ */
+export class NIndexedDB {
+    constructor(options?: NIndexedDBOptions);
+
+    readonly isAvailable: boolean;
+    readonly isOpen: boolean;
+    readonly name: string;
+    readonly version: number;
+    readonly storeNames: string[];
+    readonly encryptEnabled: boolean;
+    readonly encryptKeyEnabled: boolean;
+
+    configureEncryption(options?: NIndexedDBEncryptionOptions): this;
+    open(options?: NIndexedDBOptions): Promise<boolean>;
+    ensureStore(storeName: string, storeConfig?: NIndexedDBStoreConfig): Promise<boolean>;
+    put<T = any>(storeName: string, value: T, key?: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<any>;
+    putMany<T = any>(storeName: string, items: T[], options?: NIndexedDBEncryptionOptions): Promise<boolean>;
+    get<T = any>(storeName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<T | null>;
+    getAll<T = any>(storeName: string, options?: NIndexedDBEncryptionOptions): Promise<T[]>;
+    getAllKeys(storeName: string, options?: NIndexedDBEncryptionOptions): Promise<any[]>;
+    find<T = any>(storeName: string, predicate: (item: T) => boolean, options?: NIndexedDBEncryptionOptions): Promise<T[]>;
+    count(storeName: string): Promise<number>;
+    delete(storeName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<boolean>;
+    clear(storeName: string): Promise<boolean>;
+    close(): void;
+    deleteDatabase(dbName?: string): Promise<boolean>;
+}
+
+export interface NStorageOptions extends NIndexedDBEncryptionOptions {
+    prefix?: string;
+    type?: 'local' | 'session';
+}
+
+/**
+ * Gestionnaire de stockage synchrone clé-valeur avec TTL et chiffrement local synchrone (`database/NStorage.js`).
+ */
+export class NStorage {
+    constructor(options?: NStorageOptions);
+
+    readonly isAvailable: boolean;
+    readonly isPersistent: boolean;
+    readonly prefix: string;
+    readonly size: number;
+    readonly encryptEnabled: boolean;
+    readonly encryptKeyEnabled: boolean;
+
+    configureEncryption(options?: NIndexedDBEncryptionOptions): this;
+    setPrefix(prefix: string): this;
+    useSessionStorage(): this;
+    useLocalStorage(): this;
+    set(key: string, value: any, ttlSeconds?: number, options?: NIndexedDBEncryptionOptions): boolean;
+    get<T = any>(key: string, defaultValue?: T, options?: NIndexedDBEncryptionOptions): T;
+    getString(key: string, defaultValue?: string, options?: NIndexedDBEncryptionOptions): string;
+    getNumber(key: string, defaultValue?: number, options?: NIndexedDBEncryptionOptions): number;
+    getBoolean(key: string, defaultValue?: boolean, options?: NIndexedDBEncryptionOptions): boolean;
+    getObject<T = Record<string, any>>(key: string, defaultValue?: T | null, options?: NIndexedDBEncryptionOptions): T | null;
+    getJson<T = any>(key: string, defaultValue?: T | null, options?: NIndexedDBEncryptionOptions): T | null;
+    has(key: string, options?: NIndexedDBEncryptionOptions): boolean;
+    remove(key: string, options?: NIndexedDBEncryptionOptions): boolean;
+    keys(options?: NIndexedDBEncryptionOptions): string[];
+    clear(): boolean;
+}
+
+/* ========================================================================== *
+ * 8. DOSSIER filesystem/ (NFile, NDirectory)                                 *
+ * ========================================================================== */
+
+export type NFileSystemDriver = 'native' | 'fs' | 'idb';
+
+export interface NFilePathParts {
+    fullPath: string;
+    dir: string;
+    fileName: string;
+    baseName: string;
+    ext: string;
+    extWithDot: string;
+}
+
+export interface NFileStat {
+    path: string;
+    name: string;
+    size: number;
+    mimeType: string;
+    isFile: boolean;
+    isDirectory: boolean;
+    createdAt: number;
+    updatedAt: number;
+    driver: NFileSystemDriver;
+}
+
+export interface NFileOperationOptions {
+    encoding?: string;
+    mimeType?: string;
+    overwrite?: boolean;
+    defaultValue?: any;
+    pretty?: boolean;
+    indent?: number;
+    algorithm?: 'SHA-256' | 'SHA-1' | 'SHA-384' | 'SHA-512';
+}
+
+/**
+ * Gestionnaire de fichiers multiplateforme (`filesystem/NFile.js`).
+ */
+export class NFile {
+    constructor();
+
+    readonly driver: NFileSystemDriver;
+    readonly isNativeAvailable: boolean;
+    readonly isFsApiAvailable: boolean;
+
+    normalizePath(path?: string): string;
+    joinPath(...segments: string[]): string;
+    splitPath(path: string): NFilePathParts;
+    getDirName(path: string): string;
+    getFileName(path: string): string;
+    getBaseName(path: string): string;
+    getExtension(path: string, includeDot?: boolean): string;
+    getMimeType(pathOrExt: string, fallback?: string): string;
+
+    toUint8Array(data: string | ArrayBuffer | ArrayBufferView | Blob | number[]): Promise<Uint8Array>;
+    toText(data: string | ArrayBuffer | ArrayBufferView | Blob, encoding?: string): Promise<string>;
+    toBase64(data: string | ArrayBuffer | ArrayBufferView | Blob): Promise<string>;
+    fromBase64(base64OrDataUrl: string): Uint8Array;
+    toDataUrl(data: string | ArrayBuffer | ArrayBufferView | Blob, mimeType?: string): Promise<string>;
+    toBlob(data: string | ArrayBuffer | ArrayBufferView | Blob, mimeType?: string): Promise<Blob | null>;
+
+    exists(path: string, options?: NFileOperationOptions): Promise<boolean>;
+    stat(path: string, options?: NFileOperationOptions): Promise<NFileStat | null>;
+    info(path: string, options?: NFileOperationOptions): Promise<NFileStat | null>;
+
+    write(path: string, data: any, options?: NFileOperationOptions): Promise<boolean>;
+    writeText(path: string, text?: string, options?: NFileOperationOptions): Promise<boolean>;
+    writeJson(path: string, value: any, options?: NFileOperationOptions): Promise<boolean>;
+    writeBytes(path: string, bytes: Uint8Array | ArrayBuffer | number[], options?: NFileOperationOptions): Promise<boolean>;
+    writeBase64(path: string, base64OrDataUrl: string, options?: NFileOperationOptions): Promise<boolean>;
+    append(path: string, data: any, options?: NFileOperationOptions): Promise<boolean>;
+
+    read(path: string, options?: NFileOperationOptions): Promise<Uint8Array | null>;
+    readBytes(path: string, options?: NFileOperationOptions): Promise<Uint8Array | null>;
+    readText(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    readJson<T = any>(path: string, options?: NFileOperationOptions): Promise<T | null>;
+    readBase64(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    readDataUrl(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    readBlob(path: string, options?: NFileOperationOptions): Promise<Blob | null>;
+
+    delete(path: string, options?: NFileOperationOptions): Promise<boolean>;
+    remove(path: string, options?: NFileOperationOptions): Promise<boolean>;
+    copy(sourcePath: string, destinationPath: string, options?: NFileOperationOptions): Promise<boolean>;
+    move(sourcePath: string, destinationPath: string, options?: NFileOperationOptions): Promise<boolean>;
+    rename(path: string, newFileName: string, options?: NFileOperationOptions): Promise<boolean>;
+    checksum(path: string, options?: NFileOperationOptions): Promise<string | null>;
+}
+
+export interface NDirectoryEntry {
+    name: string;
+    path: string;
+    type: 'file' | 'directory';
+    isFile: boolean;
+    isDirectory: boolean;
+    size?: number;
+    mimeType?: string;
+    updatedAt?: number;
+}
+
+export interface NDirectoryTreeItem extends NDirectoryEntry {
+    children?: NDirectoryTreeItem[];
+}
+
+export interface NDirectoryFindCriteria {
+    name?: string | RegExp;
+    ext?: string;
+    type?: 'file' | 'directory';
+    filter?: (entry: NDirectoryEntry) => boolean;
+    recursive?: boolean;
+}
+
+/**
+ * Gestionnaire de répertoires multiplateforme (`filesystem/NDirectory.js`).
+ */
+export class NDirectory {
+    constructor();
+
+    readonly driver: NFileSystemDriver;
+    readonly isNativeAvailable: boolean;
+    readonly isFsApiAvailable: boolean;
+
+    normalizePath(path?: string): string;
+    joinPath(...segments: string[]): string;
+    getName(path: string): string;
+    getParent(path: string): string;
+
+    exists(path?: string, options?: Record<string, any>): Promise<boolean>;
+    create(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    mkdir(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    ensure(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+
+    stat(path?: string, options?: Record<string, any>): Promise<Record<string, any> | null>;
+    info(path?: string, options?: Record<string, any>): Promise<Record<string, any> | null>;
+
+    list(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
+    listFiles(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
+    listDirectories(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
+    tree(path?: string, options?: Record<string, any>): Promise<NDirectoryTreeItem>;
+    find(path?: string, criteria?: NDirectoryFindCriteria): Promise<NDirectoryEntry[]>;
+    size(path?: string, options?: { recursive?: boolean }): Promise<number>;
+
+    clear(path: string, options?: Record<string, any>): Promise<boolean>;
+    delete(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    rmdir(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    copy(sourcePath: string, destinationPath: string, options?: { overwrite?: boolean }): Promise<boolean>;
+    move(sourcePath: string, destinationPath: string, options?: { overwrite?: boolean }): Promise<boolean>;
+    rename(path: string, newDirectoryName: string, options?: Record<string, any>): Promise<boolean>;
+}
+
+/* ========================================================================== *
+ * 9. DOSSIER cache/ (NCache)                                                 *
+ * ========================================================================== */
+
+export type NCacheDriver = 'native' | 'caches' | 'idb' | 'store' | 'memory';
+
+export interface NCacheConstructorOptions {
+    maxMemoryEntries?: number;
+    defaultTtl?: number;
+    namespace?: string;
+    cacheStorageName?: string;
+}
+
+export interface NCacheItemOptions {
+    ttl?: number;
+    namespace?: string;
+    tags?: string[];
+    mimeType?: string;
+    defaultValue?: any;
+    rawResponse?: boolean;
+    as?: 'bytes' | 'text' | 'base64' | 'dataUrl' | 'blob';
+    all?: boolean;
+}
+
+export interface NCacheStats {
+    driver: NCacheDriver;
+    hits: number;
+    misses: number;
+    totalRequests: number;
+    hitRate: number;
+}
+
+/**
+ * Système de mise en cache unifié à sélection automatique de moteur (`cache/NCache.js`).
+ */
+export class NCache {
+    constructor(options?: NCacheConstructorOptions);
+
+    readonly driver: NCacheDriver;
+    readonly isNativeAvailable: boolean;
+    readonly isCacheStorageAvailable: boolean;
+    readonly isIdbAvailable: boolean;
+    readonly isStoreAvailable: boolean;
+    readonly stats: NCacheStats;
+
+    set(key: string, value: any, options?: NCacheItemOptions): Promise<boolean>;
+    get<T = any>(key: string, options?: NCacheItemOptions): Promise<T>;
+    has(key: string, options?: NCacheItemOptions): Promise<boolean>;
+    remember<T = any>(key: string, ttlOrOptions: number | NCacheItemOptions, factoryFn: () => Promise<T> | T): Promise<T>;
+    getOrSet<T = any>(key: string, ttlOrOptions: number | NCacheItemOptions, factoryFn: () => Promise<T> | T): Promise<T>;
+    delete(key: string, options?: NCacheItemOptions): Promise<boolean>;
+    remove(key: string, options?: NCacheItemOptions): Promise<boolean>;
+    clearByTag(tag: string, options?: NCacheItemOptions): Promise<number>;
+    prune(options?: NCacheItemOptions): Promise<number>;
+    keys(options?: NCacheItemOptions): Promise<string[]>;
+    clear(options?: NCacheItemOptions): Promise<boolean>;
+
+    putResponse(url: string, responseOrData: Response | any, options?: NCacheItemOptions): Promise<boolean>;
+    matchUrl<T = any>(url: string, options?: NCacheItemOptions): Promise<T | Response | null>;
+    cacheUrl<T = any>(url: string, options?: NCacheItemOptions): Promise<T | Response | null>;
+    deleteUrl(url: string, options?: NCacheItemOptions): Promise<boolean>;
+
+    cacheFile(keyOrPath: string, data: any, options?: NCacheItemOptions): Promise<boolean>;
+    getFile<T = Uint8Array | string | Blob | null>(keyOrPath: string, options?: NCacheItemOptions): Promise<T>;
+}
+
+/* ========================================================================== *
+ * 10. DOSSIER requests/ (NNetwork, NTableRequest, NRequestManager)           *
+ * ========================================================================== */
+
+export type NNetworkEncryptionMode = 'asymmetric' | 'symmetric';
+
+export interface NNetworkEncryptionConfig {
+    enabled?: boolean;
+    mode?: NNetworkEncryptionMode;
+    serverPublicKey?: CryptoKey | string | null;
+    clientPublicKey?: CryptoKey | string | null;
+    clientPrivateKey?: CryptoKey | string | null;
+    sharedSecret?: string | null;
+    persistKeys?: boolean;
+    headerName?: string;
+}
+
+export interface NNetworkOptions {
+    baseUrl?: string;
+    timeout?: number;
+    headers?: Record<string, string>;
+    encryption?: NNetworkEncryptionConfig | null;
+}
+
+export interface NNetworkRequestOptions {
+    url?: string;
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | string;
+    headers?: Record<string, string>;
+    params?: Record<string, any>;
+    body?: any;
+    timeout?: number;
+    responseType?: 'json' | 'text' | 'bytes' | 'blob' | 'arrayBuffer';
+    encrypt?: boolean;
+    decrypt?: boolean;
+    cacheTtl?: number;
+    retries?: number;
+    retryDelay?: number;
+    savePath?: string;
+    useNative?: boolean;
+}
+
+export interface NNetworkResponse<T = any> {
+    ok: boolean;
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    data: T | null;
+    raw: any;
+    url: string;
+    duration: number;
+    encrypted: boolean;
+    cached?: boolean;
+    savedToFile?: boolean;
+}
+
+export interface NNetworkWebSocketOptions {
+    id?: string;
+    protocols?: string | string[];
+    reconnect?: boolean;
+    reconnectDelay?: number;
+    maxReconnectAttempts?: number;
+    encrypt?: boolean;
+    decrypt?: boolean;
+    onOpen?: (event: any, handle: NNetworkWebSocketHandle) => void;
+    onMessage?: (data: any, rawEvent: any, handle: NNetworkWebSocketHandle) => void;
+    onError?: (error: any, handle: NNetworkWebSocketHandle) => void;
+    onClose?: (event: any, handle: NNetworkWebSocketHandle) => void;
+}
+
+export interface NNetworkWebSocketHandle {
+    readonly id: string;
+    readonly url: string;
+    readonly isConnected: boolean;
+    send: (data: any, options?: { encrypt?: boolean }) => Promise<boolean>;
+    close: (code?: number, reason?: string) => boolean;
+}
+
+/**
+ * Client HTTP et WebSocket intégrant le chiffrement client-serveur de `NCryptography` (`requests/NNetwork.js`).
+ */
+export class NNetwork {
+    constructor(options?: NNetworkOptions);
+
+    readonly isOnline: boolean;
+    readonly baseUrl: string;
+    readonly defaultTimeout: number;
+    readonly defaultHeaders: Record<string, string>;
+    readonly isEncryptionEnabled: boolean;
+    readonly encryptionMode: NNetworkEncryptionMode;
+    readonly hasEncryptionKeys: boolean;
+    readonly activeSocketCount: number;
+
+    setBaseUrl(url?: string): this;
+    setDefaultTimeout(ms: number): this;
+    setDefaultHeader(name: string, value: string): this;
+    removeDefaultHeader(name: string): this;
+    setBearerToken(token: string | null): this;
+
+    configureEncryption(config?: NNetworkEncryptionConfig): Promise<this>;
+    generateClientKeyPair(options?: { persist?: boolean }): Promise<{ publicKey: string; privateKey: string } | null>;
+    setServerPublicKey(publicKeyOrPem: CryptoKey | string, persist?: boolean): Promise<boolean>;
+    setClientKeyPair(keyPair: { publicKey?: CryptoKey | string; privateKey: CryptoKey | string }, persist?: boolean): Promise<boolean>;
+    setSharedSecret(secretKey: string, persist?: boolean): Promise<boolean>;
+    loadKeysFromStorage(): Promise<boolean>;
+    clearEncryptionKeys(removeFromStorage?: boolean): Promise<boolean>;
+
+    encryptPayload(data: any): Promise<string | null>;
+    decryptPayload<T = any>(encryptedPayload: string, parseJson?: boolean): Promise<T | null>;
+
+    request<T = any>(options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    get<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    post<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    put<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    patch<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    delete<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    upload<T = any>(url: string, filesOrFields?: Record<string, any>, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    download(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<Uint8Array>>;
+
+    connectWebSocket(url: string, options?: NNetworkWebSocketOptions): NNetworkWebSocketHandle | null;
+    sendWebSocket(idOrUrl: string, data: any, options?: { encrypt?: boolean }): Promise<boolean>;
+    closeWebSocket(idOrUrl: string, code?: number, reason?: string): boolean;
+    closeAllWebSockets(): void;
+}
+
+export interface NTableRequestOptions extends NObjectOptions {
+    table: string;
+    request?: NNetwork | null;
+    db?: NSql | null;
+    primaryKey?: string;
+}
+
+export interface NTableRequestQuery {
+    id?: string | number;
+    data?: Record<string, any> | Record<string, any>[];
+    where?: string;
+    params?: any[];
+    limit?: number;
+    offset?: number;
+    orderBy?: string;
+    offline?: boolean;
+    url?: string;
+    [key: string]: any;
+}
+
+/**
+ * Synchronisation bidirectionnelle d'une table SQLite locale avec un serveur distant (`requests/NTableRequest.js`).
+ */
+export class NTableRequest extends NObject {
+    constructor(options?: NTableRequestOptions);
+
+    readonly table: string;
+    readonly primaryKey: string;
+    readonly db: NSql;
+    readonly request: NNetwork;
+    readonly isSyncing: boolean;
+
+    getData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
+    get<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
+    getDatas<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T[]>;
+    gets<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T[]>;
+    insertData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
+    insert<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | boolean | null>;
+    updateData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | boolean | null>;
+    update(req?: NTableRequestQuery): Promise<boolean>;
+    deleteData(req?: NTableRequestQuery): Promise<boolean>;
+    delete(req?: NTableRequestQuery): Promise<boolean>;
+    syncDatas(options?: { batchSize?: number; clearBeforeSync?: boolean; params?: Record<string, any> }): Promise<boolean>;
+
+    generateSqlSearch(textSearch: string, arrayField: string[]): string;
+    generateSqlSearchParams(textSearch: string, arrayField: string[]): { clause: string; params: string[] };
+    generateSqlLimited(limit: number, offset?: number): string;
+}
+
+export interface NRequestManagerOptions {
+    db?: NSql | null;
+    request?: NNetwork | null;
+}
+
+/**
+ * Registre centralisant plusieurs instances de `NTableRequest` (`requests/NRequestManager.js`).
+ */
+export class NRequestManager {
+    constructor(options?: NRequestManagerOptions);
+
+    readonly size: number;
+    readonly tables: string[];
+    readonly db: NSql;
+    readonly request: NNetwork;
+
+    register(tableName: string, instanceOrOptions?: NTableRequest | Partial<NTableRequestOptions>): NTableRequest | null;
+    table(tableName: string, options?: Partial<NTableRequestOptions>): NTableRequest | null;
+    get(tableName: string): NTableRequest | null;
+    has(tableName: string): boolean;
+    unregister(tableName: string): boolean;
+    syncAll(options?: { parallel?: boolean; batchSize?: number; clearBeforeSync?: boolean }): Promise<Record<string, boolean>>;
+    clear(): void;
+}
+
+/* ========================================================================== *
+ * 11. DOSSIER worker/ (NWorker, NManagedWorker, NWorkerManager, NServiceWorker)
+ * ========================================================================== */
+
+export interface NWorkerOptions extends NObjectOptions {
+    name?: string;
+    url?: string | URL | null;
+    source?: string | (() => void) | null;
+    type?: 'classic' | 'module';
+}
+
+export type NWorkerUpdateCallback = (updateData: any) => void;
+export type NWorkerActionHandler = (params: any, onUpdate?: NWorkerUpdateCallback) => Promise<any> | any;
+
+/**
+ * Encapsulation d'un Web Worker bidirectionnel avec suivi de progression (`worker/NWorker.js`).
+ */
+export class NWorker extends NObject {
+    constructor(options?: NWorkerOptions);
+
+    readonly name: string;
+    readonly isRunning: boolean;
+    readonly pendingCount: number;
+
+    request<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
+    onRequest(action: string, params: any, onUpdate?: NWorkerUpdateCallback): Promise<any>;
+    terminate(): void;
+    destroy(): void;
+
+    static addActionInstance(action: string, initFunction: NWorkerActionHandler): void;
+    static getActionInstance(action: string): NWorkerActionHandler | null;
+    static requestMain<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
+}
+
+/**
+ * Worker géré relayant ses requêtes entrantes aux actions de `NWorkerManager` (`worker/NManagedWorker.js`).
+ */
+export class NManagedWorker extends NWorker {
+    constructor(options?: NWorkerOptions, manager?: NWorkerManager | null);
+
+    readonly manager: NWorkerManager | null;
+
+    onRequest(action: string, params: any, onUpdate?: NWorkerUpdateCallback): Promise<any>;
+}
+
+/**
+ * Gestionnaire centralisé de Web Workers et de pools Round-Robin (`worker/NWorkerManager.js`).
+ */
+export class NWorkerManager {
+    constructor();
+
+    readonly isWorkerContext: boolean;
+    readonly isSupported: boolean;
+    readonly size: number;
+    readonly names: string[];
+
+    registerAction(action: string, handler: NWorkerActionHandler): this;
+    unregisterAction(action: string): boolean;
+    hasAction(action: string): boolean;
+    executeAction<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null): Promise<T | null>;
+
+    create(name: string, options?: NWorkerOptions): NManagedWorker;
+    add(name: string, worker: NWorker): NWorker | null;
+    createPool(name: string, options?: NWorkerOptions, size?: number): NManagedWorker[];
+    has(name: string): boolean;
+    get(name: string): NWorker | null;
+    request<T = any>(name: string, action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
+    terminate(name: string): boolean;
+    terminateAll(): void;
+    toJSON(): Record<string, any>;
+}
+
+export type NServiceWorkerStrategy =
+    | 'cache-first'
+    | 'network-first'
+    | 'stale-while-revalidate'
+    | 'cache-only'
+    | 'network-only';
+
+export type NServiceWorkerMode = 'native-sw' | 'worker-scope' | 'monkey-patch' | 'inactive';
+
+export interface NServiceWorkerRoute {
+    match: string | RegExp | ((url: string, request: { url: string; method: string; headers?: Record<string, string> }) => boolean);
+    strategy?: NServiceWorkerStrategy;
+    ttl?: number;
+    methods?: string[];
+    handler?: (context: { url: string; method: string; headers: Record<string, string>; request?: Request }) => Promise<Response | any> | Response | any;
+}
+
+export interface NServiceWorkerOptions {
+    swUrl?: string;
+    scope?: string;
+    entryPoint?: string;
+    defaultStrategy?: NServiceWorkerStrategy;
+    defaultTtl?: number;
+    precache?: string[];
+    routes?: NServiceWorkerRoute[];
+}
+
+/**
+ * Gestionnaire du mode hors-ligne (Offline), d'interception des requêtes avec cache,
+ * de point d'entrée unique (`entryPoint`) et de repli par Monkey Patching (`worker/NServiceWorker.js`).
+ */
+export class NServiceWorker {
+    constructor(options?: NServiceWorkerOptions);
+
+    readonly event: NEvent;
+    readonly isNativeSupported: boolean;
+    readonly isServiceWorkerScope: boolean;
+    readonly isEnabled: boolean;
+    readonly isMonkeyPatched: boolean;
+    readonly mode: NServiceWorkerMode;
+    readonly entryPoint: string;
+
+    configure(options?: NServiceWorkerOptions): this;
+    setEntryPoint(entryPointUrl: string): this;
+    addRoute(route: NServiceWorkerRoute): this;
+    clearRoutes(): this;
+
+    enable(options?: NServiceWorkerOptions & { forceMonkeyPatch?: boolean; autoPrecache?: boolean }): Promise<{ ok: boolean; mode: NServiceWorkerMode }>;
+    disable(options?: { unregister?: boolean }): Promise<boolean>;
+    enableMonkeyPatch(): boolean;
+    disableMonkeyPatch(): boolean;
+
+    precache(urls?: string[], options?: { ttl?: number }): Promise<{ total: number; cached: number; failed: number }>;
+    handleRequest(requestOrUrl: Request | string, init?: RequestInit): Promise<Response>;
+    resolveFileUrl(urlOrPath: string, options?: { preferBlobUrl?: boolean; mimeType?: string }): Promise<string | null>;
+    installServiceWorkerListeners(): boolean;
+}

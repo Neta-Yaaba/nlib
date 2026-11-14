@@ -4,11 +4,20 @@
   "description": "NLib JS Backend - Fondation logique sans interface (Core, SQL, Bridge)",
   "type": "module",
   "main": "./index.js",
+  "types": "./index.d.ts",
+  "scripts": {
+    "test": "node ./tests/index.js"
+  },
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./*": "./*"
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "cache",
     "config",
     "core",
