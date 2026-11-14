@@ -9,10 +9,12 @@
   },
   "files": [
     "index.js",
+    "cache",
     "config",
     "core",
     "database",
     "environment",
+    "filesystem",
     "log",
     "requests",
     "system",

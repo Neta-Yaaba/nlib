@@ -6,8 +6,8 @@
  * `NJson`, `NPassword`, `NArray`, `NEnvironment`, `NConfig`, `NSystem`) sous forme de propriétés statiques
  * à initialisation paresseuse (`NUtil.str`, `NUtil.num`, `NUtil.date`, `NUtil.amount`, `NUtil.email`, `NUtil.phone`,
  * `NUtil.crypto`, `NUtil.url`, `NUtil.json`, `NUtil.password`, `NUtil.arr`, `NUtil.env`, `NUtil.config`, `NUtil.sys`),
- * ainsi que des méthodes utilitaires transversales statiques (UUID v4, vérification de types, temporisation,
- * debounce, throttle, retry).
+ * ainsi que des méthodes utilitaires transversales statiques (UUID v4, vérification de types, temporisation
+ * datetime-driven NUtil.setTimeout / clearTimeout, sleep, debounce, throttle, retry).
  */
 
 import { NString } from './NString.js';
@@ -26,7 +26,10 @@ import { NConfig } from '../config/NConfig.js';
 import { NSystem } from '../system/NSystem.js';
 import { NWorkerManager } from '../worker/NWorkerManager.js';
 import { NNetwork } from '../requests/NNetwork.js';
+import { NCache } from '../cache/NCache.js';
 import { NDatabase } from '../database/NDatabase.js';
+import { NDirectory } from '../filesystem/NDirectory.js';
+import { NFile } from '../filesystem/NFile.js';
 import { NLog } from '../log/NLog.js';
 
 /**
@@ -109,8 +112,23 @@ export class NUtil {
     /** @type {NDatabase|null} */
     static #database = null;
 
+    /** @type {NFile|null} */
+    static #file = null;
+
+    /** @type {NDirectory|null} */
+    static #dir = null;
+
+    /** @type {NCache|null} */
+    static #cache = null;
+
     /** @type {NLog|null} */
     static #log = null;
+
+    /** @type {Map<number, Object>} */
+    static #activeTimers = new Map();
+
+    /** @type {number} */
+    static #timerSeq = 0;
 
     // =========================================================================
     // Accesseurs statiques (Getters avec initialisation paresseuse au 1er appel)
@@ -492,6 +510,85 @@ export class NUtil {
     }
 
     /**
+     * Retourne l'instance partagée de `NFile` (gestionnaire de fichiers multiplateforme instancié au premier accès).
+     * Bascule automatiquement entre le pont natif (`invokeNative`), File System Access API (`navigator.storage`) et `IndexedDB`.
+     *
+     * @returns {NFile} Instance partagée de `NFile`.
+     *
+     * @example <caption>Exemple 1 : Écrire et lire un fichier texte via NUtil.file</caption>
+     * await NUtil.file.writeText('docs/note.txt', 'Bonjour NLib');
+     * console.log(await NUtil.file.readText('docs/note.txt')); // 'Bonjour NLib'
+     *
+     * @example <caption>Exemple 2 : Manipuler des chemins et extensions</caption>
+     * console.log(NUtil.file.getExtension('rapport.pdf')); // 'pdf'
+     * console.log(NUtil.file.getMimeType('rapport.pdf'));  // 'application/pdf'
+     */
+    static get file() {
+        if (!this.#file) {
+            this.#file = new NFile();
+        }
+        return this.#file;
+    }
+
+    /**
+     * Retourne l'instance partagée de `NDirectory` (gestionnaire de répertoires multiplateforme instancié au premier accès).
+     * Bascule automatiquement entre le pont natif (`invokeNative`), File System Access API (`navigator.storage`) et `IndexedDB`.
+     *
+     * @returns {NDirectory} Instance partagée de `NDirectory`.
+     *
+     * @example <caption>Exemple 1 : Créer et lister un répertoire via NUtil.dir</caption>
+     * await NUtil.dir.create('projets/2026');
+     * const res = await NUtil.dir.list('projets');
+     * console.log(res.data);
+     *
+     * @example <caption>Exemple 2 : Rechercher des fichiers dans un répertoire</caption>
+     * const pdfs = await NUtil.dir.find('projets', { extension: 'pdf' });
+     * console.log(pdfs.length);
+     */
+    static get dir() {
+        if (!this.#dir) {
+            this.#dir = new NDirectory();
+        }
+        return this.#dir;
+    }
+
+    /**
+     * Alias explicite vers `NUtil.dir` retournant la même instance partagée de `NDirectory`.
+     *
+     * @returns {NDirectory} Instance partagée de `NDirectory`.
+     *
+     * @example <caption>Exemple 1 : Vérifier l'existence d'un dossier via NUtil.directory</caption>
+     * console.log(await NUtil.directory.exists('projets/2026'));
+     *
+     * @example <caption>Exemple 2 : Calculer la taille totale d'un dossier</caption>
+     * console.log(await NUtil.directory.size('projets'));
+     */
+    static get directory() {
+        return this.dir;
+    }
+
+    /**
+     * Retourne l'instance partagée de `NCache` (gestionnaire universel de cache multi-niveaux instancié au premier accès).
+     * Combine automatiquement L1 Mémoire vive (LRU) + CacheStorage API + NStorage + NFile / IndexedDB.
+     *
+     * @returns {NCache} Instance partagée de `NCache`.
+     *
+     * @example <caption>Exemple 1 : Mettre en cache et lire une donnée avec TTL</caption>
+     * await NUtil.cache.set('session:user', { id: 1, name: 'Neta' }, 300);
+     * console.log(await NUtil.cache.get('session:user'));
+     *
+     * @example <caption>Exemple 2 : Mettre en cache une URL ou réponse HTTP</caption>
+     * await NUtil.cache.putResponse('https://api.nlib.dev/v1/conf', { env: 'prod' }, { ttl: 600 });
+     * console.log(await NUtil.cache.matchUrl('https://api.nlib.dev/v1/conf', { format: 'json' }));
+     */
+    static get cache() {
+        if (!this.#cache) {
+            this.#cache = new NCache();
+        }
+        return this.#cache;
+    }
+
+    /**
      * Retourne l'instance partagée de `NLog` (système universel de journalisation de NLib).
      *
      * @returns {NLog} Instance partagée de `NLog`.
@@ -751,20 +848,196 @@ export class NUtil {
     // =========================================================================
 
     /**
+     * Planifie l'exécution d'un callback synchronisée sur l'horloge réelle (`Date.now()`),
+     * indépendamment des fluctuations de la vitesse du processeur, des ralentissements du système,
+     * du throttling des onglets de navigateur en arrière-plan ou des mises en veille.
+     *
+     * Le mécanisme calcule le timestamp cible réel (`targetTime = Date.now() + delay`) et recalibre
+     * en continu le délai restant par découpage dynamique. Ainsi, un délai de 60 secondes (1 minute)
+     * s'exécute exactement après 1 minute de temps réel (datetime), même en cas de mise en veille
+     * temporaire de l'ordinateur ou de surcharge importante du CPU.
+     *
+     * @param {Function} callback - Fonction à exécuter lorsque le délai est écoulé.
+     * @param {number|Date|string} [delayOrTarget=0] - Délai en millisecondes ou date cible (objet `Date` ou chaîne ISO).
+     * @param {...any} args - Arguments optionnels transmis au callback lors de son exécution.
+     * @returns {Object} Descripteur de timer doté des méthodes `.cancel()` et `.clear()`.
+     *
+     * @example <caption>Exemple 1 : Délai d'une minute (60 000 ms) synchronisé sur l'heure réelle</caption>
+     * const timer = NUtil.setTimeout(() => {
+     *     console.log('1 minute réelle écoulée');
+     * }, 60000);
+     *
+     * @example <caption>Exemple 2 : Date cible absolue avec transmission d'arguments</caption>
+     * const targetDate = new Date(Date.now() + 5000);
+     * NUtil.setTimeout((user, role) => {
+     *     console.log(`Notification envoyée à ${user} (${role})`);
+     * }, targetDate, 'Alice', 'admin');
+     *
+     * @example <caption>Exemple 3 : Annuler un timer avant son échéance</caption>
+     * const timer = NUtil.setTimeout(() => console.log('Ne s\'exécutera pas'), 30000);
+     * timer.cancel(); // ou NUtil.clearTimeout(timer);
+     */
+    static setTimeout(callback, delayOrTarget = 0, ...args) {
+        if (typeof callback !== 'function') {
+            NUtil.log.error('NUtil.setTimeout: Le paramètre callback doit être une fonction', {
+                code: 'ERR_INVALID_ARGUMENT',
+                callback
+            });
+            return {
+                id: 0,
+                targetTime: 0,
+                delay: 0,
+                active: false,
+                cancel: () => {},
+                clear: () => {}
+            };
+        }
+
+        const now = Date.now();
+        let targetTime;
+        let requestedDelay = 0;
+
+        if (delayOrTarget instanceof Date) {
+            targetTime = delayOrTarget.getTime();
+            requestedDelay = Math.max(0, targetTime - now);
+        } else if (typeof delayOrTarget === 'string') {
+            const parsed = Date.parse(delayOrTarget);
+            if (!Number.isNaN(parsed)) {
+                targetTime = parsed;
+                requestedDelay = Math.max(0, targetTime - now);
+            } else {
+                const num = Number(delayOrTarget);
+                requestedDelay = Number.isNaN(num) ? 0 : Math.max(0, num);
+                targetTime = now + requestedDelay;
+            }
+        } else if (typeof delayOrTarget === 'number' && !Number.isNaN(delayOrTarget)) {
+            requestedDelay = Math.max(0, delayOrTarget);
+            targetTime = now + requestedDelay;
+        } else {
+            requestedDelay = 0;
+            targetTime = now;
+        }
+
+        const timerId = ++this.#timerSeq;
+        let nativeTimeoutId = null;
+        let isActive = true;
+
+        const cleanup = () => {
+            isActive = false;
+            if (nativeTimeoutId !== null) {
+                clearTimeout(nativeTimeoutId);
+                nativeTimeoutId = null;
+            }
+            this.#activeTimers.delete(timerId);
+        };
+
+        const tick = () => {
+            if (!isActive) return;
+
+            const current = Date.now();
+            const remaining = targetTime - current;
+
+            // Si le temps réel (datetime horloge) est atteint ou dépassé
+            if (remaining <= 0) {
+                cleanup();
+                try {
+                    callback(...args);
+                } catch (err) {
+                    NUtil.log.error('NUtil.setTimeout: Erreur lors de l\'exécution du callback', {
+                        timerId,
+                        targetTime,
+                        error: err?.message || String(err)
+                    });
+                }
+                return;
+            }
+
+            // Découpage dynamique par tranches (au plus 1000 ms) pour recalibrer en continu
+            // l'échéance par rapport à Date.now(), évitant toute dérive due au throttling de l'onglet,
+            // à la charge CPU ou à la mise en veille de la machine.
+            const nextStep = remaining > 1000 ? Math.min(1000, remaining) : remaining;
+            nativeTimeoutId = setTimeout(tick, nextStep);
+        };
+
+        const timerHandle = {
+            id: timerId,
+            targetTime,
+            delay: requestedDelay,
+            get active() {
+                return isActive;
+            },
+            cancel: () => cleanup(),
+            clear: () => cleanup()
+        };
+
+        this.#activeTimers.set(timerId, timerHandle);
+
+        const initialRemaining = targetTime - now;
+        if (initialRemaining <= 0) {
+            nativeTimeoutId = setTimeout(tick, 0);
+        } else {
+            const firstStep = initialRemaining > 1000 ? Math.min(1000, initialRemaining) : initialRemaining;
+            nativeTimeoutId = setTimeout(tick, firstStep);
+        }
+
+        return timerHandle;
+    }
+
+    /**
+     * Annule un timer planifié par `NUtil.setTimeout`.
+     *
+     * @param {Object|number} timerOrId - Objet timer retourné par `NUtil.setTimeout` ou son identifiant numérique.
+     * @returns {boolean} `true` si le timer était actif et a été annulé, `false` sinon.
+     *
+     * @example <caption>Exemple 1 : Annuler un timer à l'aide de l'objet timer</caption>
+     * const timer = NUtil.setTimeout(() => console.log('Action'), 60000);
+     * NUtil.clearTimeout(timer);
+     *
+     * @example <caption>Exemple 2 : Annuler un timer à partir de son identifiant numérique</caption>
+     * const timer = NUtil.setTimeout(() => {}, 10000);
+     * NUtil.clearTimeout(timer.id);
+     */
+    static clearTimeout(timerOrId) {
+        if (!timerOrId) return false;
+
+        if (typeof timerOrId === 'object' && typeof timerOrId.cancel === 'function') {
+            const wasActive = timerOrId.active;
+            timerOrId.cancel();
+            return Boolean(wasActive);
+        }
+
+        const id = Number(timerOrId);
+        if (!Number.isNaN(id) && this.#activeTimers.has(id)) {
+            const handle = this.#activeTimers.get(id);
+            if (handle) {
+                const wasActive = handle.active;
+                handle.cancel();
+                return Boolean(wasActive);
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Met en pause l'exécution asynchrone pendant `ms` millisecondes.
+     * S'appuie sur `NUtil.setTimeout` synchronisé sur l'horloge réelle (`Date.now()`)
+     * pour garantir que la durée de pause réelle écoulée corresponde exactement au temps demandé,
+     * même en cas de baisse de fréquence CPU ou de mise en veille.
      *
      * @param {number} [ms=0] - Durée de la pause en millisecondes.
-     * @returns {Promise<void>} Promesse résolue après le délai.
+     * @returns {Promise<void>} Promesse résolue après le délai réel.
      *
      * @example <caption>Exemple 1 : Attendre 200 ms</caption>
      * await NUtil.sleep(200);
      *
-     * @example <caption>Exemple 2 : Pause minimale au prochain tick</caption>
-     * await NUtil.sleep();
+     * @example <caption>Exemple 2 : Attendre 1 minute (60 000 ms réelles)</caption>
+     * await NUtil.sleep(60000);
      */
     static sleep(ms = 0) {
-        const delay = Math.max(0, Math.trunc(Number(ms) || 0));
-        return new Promise((resolve) => setTimeout(resolve, delay));
+        return new Promise((resolve) => {
+            NUtil.setTimeout(resolve, ms);
+        });
     }
 
     /**

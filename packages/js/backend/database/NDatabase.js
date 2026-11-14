@@ -134,6 +134,35 @@ export class NDatabase {
      */
     #initPromise = null;
 
+    /**
+     * Indique si la sauvegarde automatique de la base SQLite dans IndexedDB est activée lors des changements.
+     * @type {boolean}
+     * @private
+     */
+    #autoSave = true;
+
+    /**
+     * Délai de temporisation (debounce en ms) avant l'exécution de la sauvegarde automatique.
+     * Évite d'exécuter de multiples sauvegardes binaires successives lors d'écritures en rafale.
+     * @type {number}
+     * @private
+     */
+    #autoSaveDelay = 500;
+
+    /**
+     * Descripteur de timer actif pour la sauvegarde automatique (`NUtil.setTimeout`).
+     * @type {Object|null}
+     * @private
+     */
+    #autoSaveTimer = null;
+
+    /**
+     * Indique si l'écouteur d'événements de changement a déjà été attaché à l'instance NSql.
+     * @type {boolean}
+     * @private
+     */
+    #isListeningToSqlChanges = false;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -149,10 +178,14 @@ export class NDatabase {
      * @param {Object<string, string>} [sqlOptions.dbStructure] - Définition DDL des tables SQL.
      * @param {string} [sqlOptions.wasmPath] - Chemin d'accès au binaire SQL.js WebAssembly.
      * @param {Uint8Array|ArrayBuffer|string} [sqlOptions.dbData] - Données binaires initiales SQLite.
+     * @param {boolean} [sqlOptions.autoSave=true] - Active ou désactive la sauvegarde automatique lors des changements SQL.
+     * @param {number} [sqlOptions.autoSaveDelay=500] - Délai de temporisation (debounce en ms) avant l'exécution de la sauvegarde automatique.
      *
-     * @example <caption>Exemple 1 : Instanciation standard avec options SQL</caption>
+     * @example <caption>Exemple 1 : Instanciation standard avec options SQL et sauvegarde automatique</caption>
      * const db = new NDatabase({
      *     name: 'gestpos',
+     *     autoSave: true,
+     *     autoSaveDelay: 300,
      *     dbStructure: { orders: 'CREATE TABLE orders (id INTEGER PRIMARY KEY, total REAL);' }
      * });
      *
@@ -173,6 +206,14 @@ export class NDatabase {
 
         if (typeof opts.version === 'number' && Number.isFinite(opts.version) && opts.version >= 1) {
             this.#version = Math.floor(opts.version);
+        }
+
+        if (typeof opts.autoSave === 'boolean') {
+            this.#autoSave = opts.autoSave;
+        }
+
+        if (typeof opts.autoSaveDelay === 'number' && opts.autoSaveDelay >= 0) {
+            this.#autoSaveDelay = Math.floor(opts.autoSaveDelay);
         }
 
         if (sqlOptions === false) {
@@ -256,6 +297,50 @@ export class NDatabase {
         return NUtil;
     }
 
+    /**
+     * Indique si la sauvegarde automatique de la base SQLite dans IndexedDB est activée lors des changements.
+     * @type {boolean}
+     *
+     * @example <caption>Exemple 1 : Consulter le statut d'auto-sauvegarde</caption>
+     * console.log('Auto-save actif :', db.autoSave);
+     *
+     * @example <caption>Exemple 2 : Désactiver l'auto-sauvegarde pendant un import massif</caption>
+     * db.autoSave = false;
+     * // 10 000 insertions
+     * await db.saveSql(); // Sauvegarde manuelle unique
+     * db.autoSave = true;
+     */
+    get autoSave() {
+        return this.#autoSave;
+    }
+
+    set autoSave(value) {
+        this.#autoSave = Boolean(value);
+        if (!this.#autoSave) {
+            this.cancelAutoSave();
+        }
+    }
+
+    /**
+     * Retourne le délai d'attente (debounce en ms) avant l'exécution de la sauvegarde automatique.
+     * @type {number}
+     *
+     * @example <caption>Exemple 1 : Lire le délai de debounce actuel</caption>
+     * console.log(`Délai auto-save : ${db.autoSaveDelay} ms`);
+     *
+     * @example <caption>Exemple 2 : Ajuster le délai pour regrouper les écritures</caption>
+     * db.autoSaveDelay = 1000;
+     */
+    get autoSaveDelay() {
+        return this.#autoSaveDelay;
+    }
+
+    set autoSaveDelay(value) {
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+            this.#autoSaveDelay = Math.floor(value);
+        }
+    }
+
     // =========================================================================
     // Accesseurs vers les Sous-Moteurs de Persistance
     // =========================================================================
@@ -278,6 +363,7 @@ export class NDatabase {
                 ...(this.#sqlOptions && typeof this.#sqlOptions === 'object' ? this.#sqlOptions : {})
             };
             this.#sqlInstance = new NSql(opts);
+            this.#attachSqlEventListener();
         }
         return this.#sqlInstance;
     }
@@ -480,7 +566,9 @@ export class NDatabase {
                     }
 
                     sqlSuccess = await this.sql.init(effectiveSqlOpts);
-                    if (!sqlSuccess) {
+                    if (sqlSuccess) {
+                        this.#attachSqlEventListener();
+                    } else {
                         errors.sql = 'Échec de l\'initialisation de NSql.';
                         NUtil.log.error('NDatabase.init : Erreur lors de l\'initialisation du moteur SQL.', {
                             code: 'ERR_DB_INIT_SQL',
@@ -571,6 +659,92 @@ export class NDatabase {
             });
             return { ok: false, error: err?.message || String(err) };
         }
+    }
+
+    /**
+     * Planifie une sauvegarde automatique différée de la base SQL dans IndexedDB (`saveSql()`).
+     * Utilise le timer datetime de `NUtil.setTimeout` avec un délai d'apaisement (debounce)
+     * pour regrouper les écritures rapprochées et éviter les sauvegardes répétées lors
+     * d'insertions, de mises à jour ou de suppressions en rafale.
+     *
+     * @param {number} [delayMs] - Délai d'attente en millisecondes (par défaut `this.#autoSaveDelay`).
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Déclencher une planification avec le délai par défaut</caption>
+     * db.scheduleAutoSave();
+     *
+     * @example <caption>Exemple 2 : Planifier avec un délai spécifique de 1 seconde</caption>
+     * db.scheduleAutoSave(1000);
+     */
+    scheduleAutoSave(delayMs) {
+        if (!this.#autoSave) {
+            return;
+        }
+
+        // Si SQL est désactivé ou opère via le pont natif (SQLite natif persistant sur disque hôte)
+        if (this.#sqlOptions === false || (this.#sqlInstance && this.#sqlInstance.isNative)) {
+            return;
+        }
+
+        const wait = typeof delayMs === 'number' && Number.isFinite(delayMs) && delayMs >= 0
+            ? Math.floor(delayMs)
+            : this.#autoSaveDelay;
+
+        // Annule le timer précédent pour réinitialiser le debounce à la fin du flux
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+        }
+
+        this.#autoSaveTimer = NUtil.setTimeout(async () => {
+            this.#autoSaveTimer = null;
+            await this.saveSql();
+        }, wait);
+    }
+
+    /**
+     * Annule toute sauvegarde automatique planifiée en attente d'exécution.
+     *
+     * @returns {boolean} `true` si un timer était planifié et a été annulé, `false` sinon.
+     *
+     * @example <caption>Exemple 1 : Annuler une sauvegarde automatique en cours d'attente</caption>
+     * const cancelled = db.cancelAutoSave();
+     * console.log('Sauvegarde annulée :', cancelled);
+     *
+     * @example <caption>Exemple 2 : Stopper la sauvegarde avant fermeture</caption>
+     * db.cancelAutoSave();
+     */
+    cancelAutoSave() {
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Force l'exécution immédiate de la sauvegarde automatique en attente,
+     * sans attendre l'expiration du délai de temporisation (debounce).
+     *
+     * @async
+     * @method flushAutoSave
+     * @returns {Promise<{ ok: boolean, error?: string }|null>} Résultat de `saveSql()` ou `null` si aucune sauvegarde n'était planifiée.
+     *
+     * @example <caption>Exemple 1 : Forcer la persistance avant une navigation de page</caption>
+     * await db.flushAutoSave();
+     *
+     * @example <caption>Exemple 2 : Contrôle du statut forcé</caption>
+     * const res = await db.flushAutoSave();
+     * if (res?.ok) console.log('Sauvegarde différée purgée avec succès.');
+     */
+    async flushAutoSave() {
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+            return await this.saveSql();
+        }
+        return null;
     }
 
     /**
@@ -694,6 +868,8 @@ export class NDatabase {
      * console.log('Bases fermées :', closed);
      */
     close() {
+        this.cancelAutoSave();
+
         if (this.#indexedInstance) {
             try {
                 this.#indexedInstance.close();
@@ -717,6 +893,7 @@ export class NDatabase {
         }
 
         this.#isInitialized = false;
+        this.#isListeningToSqlChanges = false;
         return true;
     }
 
@@ -790,6 +967,21 @@ export class NDatabase {
     // =========================================================================
     // Méthodes Internes Privées
     // =========================================================================
+
+    /**
+     * Attache l'écouteur d'événements de changement sur l'instance NSql active
+     * pour déclencher automatiquement `scheduleAutoSave()`.
+     *
+     * @private
+     */
+    #attachSqlEventListener() {
+        if (this.#sqlInstance && !this.#isListeningToSqlChanges) {
+            this.#sqlInstance.event.on('change', () => {
+                this.scheduleAutoSave();
+            });
+            this.#isListeningToSqlChanges = true;
+        }
+    }
 
     /**
      * Résout le contexte applicatif avec repli automatique sur `NUtil.config`.

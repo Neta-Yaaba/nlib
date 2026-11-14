@@ -35,6 +35,7 @@ export { NEnvironment } from './environment/NEnvironment.js';
 export { NWorker } from './worker/NWorker.js';
 export { NManagedWorker } from './worker/NManagedWorker.js';
 export { NWorkerManager } from './worker/NWorkerManager.js';
+export { NServiceWorker } from './worker/NServiceWorker.js';
 
 // Requêtes réseau & tables
 export { NNetwork } from './requests/NNetwork.js';
@@ -46,4 +47,14 @@ export { NDatabase } from './database/NDatabase.js';
 export { NIndexedDB } from './database/NIndexedDB.js';
 export { NSql } from './database/NSql.js';
 export { NStorage } from './database/NStorage.js';
+
+// Système de fichiers
+export { NFile } from './filesystem/NFile.js';
+export { NDirectory } from './filesystem/NDirectory.js';
+
+// Cache multi-niveaux
+export { NCache } from './cache/NCache.js';
+
+
+
 

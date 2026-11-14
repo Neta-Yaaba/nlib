@@ -74,12 +74,17 @@ const db = new NDatabase({
 // Initialise IndexedDB, restaure le binaire SQLite si existant et initialise NSql
 await db.init();
 
-// Requêtes SQL
+// Détection réactive des changements via NEvent (insert, update, delete, createTable, change)
+db.sql.event.on('insert:products', ({ data, id }) => {
+    console.log(`Produit créé #${id} :`, data.name);
+});
+
+// Requêtes SQL (déclenchent automatiquement une sauvegarde saveSql différée avec debounce)
 await db.sql.insert('products', { name: 'Pain', price: 150 });
 const items = await db.sql.select('SELECT * FROM products WHERE price > :min', { min: 100 });
 
-// Sauvegarde dans IndexedDB (ntable) pour persistance entre sessions de navigation Web
-await db.saveSql();
+// Sauvegarde automatique transparente, ou sauvegarde manuelle immédiate si besoin
+await db.flushAutoSave(); // ou db.saveSql()
 ```
 
 ### 2. Stockage contextuel et cryptage avec `NStorage`
@@ -115,6 +120,19 @@ const tableReq = new NTableRequest('articles');
 // tableReq.db accède automatiquement à NUtil.db (NDatabase)
 // Utilise le SQL sous-jacent via tableReq.db.sql
 const rows = await tableReq.db.sql.select('SELECT * FROM articles WHERE active = 1');
+```
+
+### 4. Minuterie basée sur le datetime réel (`NUtil.setTimeout`)
+```javascript
+import { NUtil } from '@nlib/js-backend';
+
+// 1 minute (60 000 ms) réelle garantie, sans dérive CPU ni impact de mise en veille
+const timer = NUtil.setTimeout(() => {
+    console.log('1 minute réelle écoulée');
+}, 60000);
+
+// Annulation possible via l'instance ou NUtil.clearTimeout
+timer.cancel(); // ou NUtil.clearTimeout(timer);
 ```
 
 ---

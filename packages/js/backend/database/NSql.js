@@ -12,9 +12,11 @@
  * - Verrouillage anti-concurrence : chargement du module WebAssembly et initialisation protégés contre les appels simultanés.
  * - Normalisation lexicale des paramètres : analyseur SQL contextuel (ignore chaînes, commentaires et identifiants).
  * - Transactions robustes : support des transactions atomiques et imbriquées via `SAVEPOINT` avec rollback garanti.
+ * - Détection réactive des changements : bus d'événements `NEvent` (`this.event`) notifiant en temps réel les insertions, modifications, suppressions et créations de tables.
  * - Multiplateforme : fonctionne de façon transparente en navigateur, Web Worker, WebView native et Node.js.
  */
 
+import { NEvent } from '../core/NEvent.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -118,6 +120,14 @@ export class NSql {
      */
     #transactionDepth = 0;
 
+    /**
+     * Instance interne de `NEvent` pour la détection et notification des changements dans la base.
+     * Allocation paresseuse : reste à null tant que `this.event` n'est pas accédé.
+     * @type {NEvent|null}
+     * @private
+     */
+    #event = null;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -180,6 +190,34 @@ export class NSql {
     }
 
     /**
+     * Indique si la base est actuellement ouverte et opérationnelle (alias de commodité).
+     * @type {boolean}
+     *
+     * @example <caption>Exemple 1 : Vérifier si la base est ouverte</caption>
+     * if (sql.isOpen) { console.log('Base active'); }
+     *
+     * @example <caption>Exemple 2 : Condition de sauvegarde</caption>
+     * if (sql.isOpen) { await sql.export(); }
+     */
+    get isOpen() {
+        return this.#isInitialized && Boolean(this.#db || this.#isNativeApp());
+    }
+
+    /**
+     * Indique si le moteur SQL s'exécute via le pont applicatif natif (WebView / conteneur).
+     * @type {boolean}
+     *
+     * @example <caption>Exemple 1 : Détecter le mode natif</caption>
+     * console.log('SQLite natif :', sql.isNative);
+     *
+     * @example <caption>Exemple 2 : Différencier WebAssembly et natif</caption>
+     * if (!sql.isNative) { console.log('Moteur WebAssembly sql.js'); }
+     */
+    get isNative() {
+        return this.#isNativeApp();
+    }
+
+    /**
      * Retourne l'instance native sous-jacente `SQL.Database` (si exécuté en WebAssembly sql.js).
      * @type {any}
      *
@@ -205,6 +243,38 @@ export class NSql {
      */
     get util() {
         return NUtil;
+    }
+
+    /**
+     * Gestionnaire d'événements réactif de l'instance `NSql`.
+     * Permet d'écouter les opérations et changements intervenant sur la base de données :
+     * - Événement général : `'change'` (reçoit `{ type, table, database, timestamp, ... }`)
+     * - Événements par action : `'insert'`, `'update'`, `'delete'`, `'createTable'`, `'dropTable'`, `'clear'`, etc.
+     * - Événements ciblés par table : `'insert:tableName'`, `'update:tableName'`, `'delete:tableName'`, `'createTable:tableName'`
+     * - Canal de table unifié : `'tableName:change'`
+     *
+     * @type {NEvent}
+     *
+     * @example <caption>Exemple 1 : Écouter les insertions sur la table users</caption>
+     * sql.event.on('insert:users', (evt) => {
+     *     console.log('Utilisateur inséré :', evt.data, 'ID généré :', evt.id);
+     * });
+     *
+     * @example <caption>Exemple 2 : Écouter tous les changements d'une table spécifique</caption>
+     * sql.event.on('products:change', (evt) => {
+     *     console.log(`Action [${evt.type}] sur les produits :`, evt);
+     * });
+     *
+     * @example <caption>Exemple 3 : Écouter l'ensemble des modifications de la base</caption>
+     * sql.event.on('change', ({ type, table, data }) => {
+     *     console.log(`Changement SQL [${type}] sur la table "${table}" :`, data);
+     * });
+     */
+    get event() {
+        if (!this.#event) {
+            this.#event = new NEvent(this);
+        }
+        return this.#event;
     }
 
     // =========================================================================
@@ -388,13 +458,18 @@ export class NSql {
 
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('createTable', { tableName, sqlCreateTable });
-            return Boolean(res?.ok ?? res);
+            const ok = Boolean(res?.ok ?? res);
+            if (ok) {
+                this.#emitChange('createTable', tableName, { sql: sqlCreateTable });
+            }
+            return ok;
         }
 
         if (!this.#ensureDbReady()) return false;
 
         try {
             this.#db.run(sqlCreateTable);
+            this.#emitChange('createTable', tableName, { sql: sqlCreateTable });
             return true;
         } catch (err) {
             NUtil.log.error(`NSql.createTable : Échec de la création de la table "${tableName}".`, {
@@ -458,7 +533,14 @@ export class NSql {
     async query(sql, params = []) {
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('query', { query: sql, params });
-            return Boolean(res?.ok ?? res);
+            const ok = Boolean(res?.ok ?? res);
+            if (ok) {
+                const action = this.#inspectSqlAction(sql);
+                if (action) {
+                    this.#emitChange(action.type, action.table, { sql, params });
+                }
+            }
+            return ok;
         }
 
         if (!this.#ensureDbReady()) return false;
@@ -469,6 +551,12 @@ export class NSql {
             stmt = this.#db.prepare(cleanSql);
             stmt.bind(cleanParams);
             stmt.step();
+
+            const action = this.#inspectSqlAction(sql);
+            if (action) {
+                this.#emitChange(action.type, action.table, { sql, params });
+            }
+
             return true;
         } catch (err) {
             NUtil.log.error('NSql.query : Échec d\'exécution de la requête.', {
@@ -520,6 +608,18 @@ export class NSql {
 
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('execute', { query: sql, params });
+            const isOk = res && typeof res === 'object' && 'ok' in res ? Boolean(res.ok) : Boolean(res);
+            if (isOk) {
+                const action = this.#inspectSqlAction(sql);
+                if (action) {
+                    this.#emitChange(action.type, action.table, {
+                        sql,
+                        params,
+                        rowsModified: res?.data?.rowsModified ?? 0,
+                        id: res?.data?.lastInsertRowId ?? null
+                    });
+                }
+            }
             if (res && typeof res === 'object' && 'ok' in res) {
                 return res;
             }
@@ -558,6 +658,16 @@ export class NSql {
                 }
             } catch {
                 // Ignore
+            }
+
+            const action = this.#inspectSqlAction(sql);
+            if (action) {
+                this.#emitChange(action.type, action.table, {
+                    sql,
+                    params,
+                    rowsModified,
+                    id: lastInsertRowId
+                });
             }
 
             return {
@@ -803,7 +913,11 @@ export class NSql {
 
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('insert', { tableName, data });
-            return res?.data ?? res ?? false;
+            const resultId = res?.data ?? res ?? false;
+            if (resultId !== false) {
+                this.#emitChange('insert', tableName, { data, id: resultId });
+            }
+            return resultId;
         }
 
         if (!this.#ensureDbReady()) return false;
@@ -822,11 +936,14 @@ export class NSql {
             stmt.step();
 
             // Récupération de l'identifiant généré
+            let generatedId = true;
             const lastIdRes = this.#db.exec('SELECT last_insert_rowid() AS lastId');
             if (lastIdRes && lastIdRes.length > 0 && lastIdRes[0].values?.length > 0) {
-                return lastIdRes[0].values[0][0];
+                generatedId = lastIdRes[0].values[0][0];
             }
-            return true;
+
+            this.#emitChange('insert', tableName, { data, id: generatedId });
+            return generatedId;
         } catch (err) {
             NUtil.log.error(`NSql.insert : Échec d'insertion dans "${tableName}".`, {
                 code: 'ERR_SQL_INSERT',
@@ -872,7 +989,9 @@ export class NSql {
 
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('update', { tableName, data, condition, params });
-            return typeof res?.data === 'number' ? res.data : (typeof res === 'number' ? res : 0);
+            const rowsCount = typeof res?.data === 'number' ? res.data : (typeof res === 'number' ? res : 0);
+            this.#emitChange('update', tableName, { data, condition, params, rowsModified: rowsCount });
+            return rowsCount;
         }
 
         if (!this.#ensureDbReady()) return 0;
@@ -891,7 +1010,9 @@ export class NSql {
             stmt.bind([...values, ...condParams]);
             stmt.step();
 
-            return typeof this.#db.getRowsModified === 'function' ? this.#db.getRowsModified() : 0;
+            const rowsModified = typeof this.#db.getRowsModified === 'function' ? this.#db.getRowsModified() : 0;
+            this.#emitChange('update', tableName, { data, condition, params, rowsModified });
+            return rowsModified;
         } catch (err) {
             NUtil.log.error(`NSql.update : Échec de mise à jour de "${tableName}".`, {
                 code: 'ERR_SQL_UPDATE',
@@ -938,7 +1059,9 @@ export class NSql {
 
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('delete', { tableName, condition, params });
-            return typeof res?.data === 'number' ? res.data : (typeof res === 'number' ? res : 0);
+            const rowsCount = typeof res?.data === 'number' ? res.data : (typeof res === 'number' ? res : 0);
+            this.#emitChange('delete', tableName, { condition, params, rowsModified: rowsCount });
+            return rowsCount;
         }
 
         if (!this.#ensureDbReady()) return 0;
@@ -953,7 +1076,9 @@ export class NSql {
             stmt.bind(condParams);
             stmt.step();
 
-            return typeof this.#db.getRowsModified === 'function' ? this.#db.getRowsModified() : 0;
+            const rowsModified = typeof this.#db.getRowsModified === 'function' ? this.#db.getRowsModified() : 0;
+            this.#emitChange('delete', tableName, { condition, params, rowsModified });
+            return rowsModified;
         } catch (err) {
             NUtil.log.error(`NSql.delete : Échec de suppression dans "${tableName}".`, {
                 code: 'ERR_SQL_DELETE',
@@ -1344,7 +1469,11 @@ export class NSql {
     async clear() {
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('clear');
-            return Boolean(res?.ok ?? res);
+            const ok = Boolean(res?.ok ?? res);
+            if (ok) {
+                this.#emitChange('clear', '*', { action: 'clear' });
+            }
+            return ok;
         }
 
         if (!this.#ensureDbReady()) return false;
@@ -1367,6 +1496,10 @@ export class NSql {
             return true;
         });
 
+        if (txRes.ok) {
+            this.#emitChange('clear', '*', { action: 'clear' });
+        }
+
         return txRes.ok;
     }
 
@@ -1388,7 +1521,11 @@ export class NSql {
     async deleteDb() {
         if (this.#isNativeApp()) {
             const res = await this.#requestNative('deleteDb');
-            return Boolean(res?.ok ?? res);
+            const ok = Boolean(res?.ok ?? res);
+            if (ok) {
+                this.#emitChange('deleteDb', '*', { action: 'deleteDb' });
+            }
+            return ok;
         }
 
         if (!this.#ensureDbReady()) return false;
@@ -1405,12 +1542,101 @@ export class NSql {
             return true;
         });
 
+        if (txRes.ok) {
+            this.#emitChange('deleteDb', '*', { action: 'deleteDb' });
+        }
+
         return txRes.ok;
     }
 
     // =========================================================================
     // Méthodes Privées Internes
     // =========================================================================
+
+    /**
+     * Émet les événements de changement sur le gestionnaire d'événements s'il est initialisé et actif.
+     * Déclenche à la fois :
+     * 1. L'événement général `'change'`
+     * 2. L'événement d'action spécifique `type` ('insert', 'update', 'delete', 'createTable', etc.)
+     * 3. L'événement ciblé par table `${type}:${table}` (ex: 'insert:users')
+     * 4. Le canal complet de la table `${table}:change` (ex: 'users:change')
+     *
+     * @private
+     * @param {string} type - Type d'action ('insert', 'update', 'delete', 'createTable', 'dropTable', 'clear', etc.).
+     * @param {string} [table=''] - Nom de la table impactée.
+     * @param {Object} [details={}] - Métadonnées associées au changement.
+     */
+    #emitChange(type, table = '', details = {}) {
+        if (!this.#event || this.#event.isEmpty) {
+            return;
+        }
+
+        const eventPayload = {
+            type,
+            table,
+            database: this.#name,
+            timestamp: Date.now(),
+            ...details
+        };
+
+        this.#event.emit('change', eventPayload);
+        this.#event.emit(type, eventPayload);
+
+        if (table && table !== '*') {
+            this.#event.emit(`${type}:${table}`, eventPayload);
+            this.#event.emit(`${table}:change`, eventPayload);
+        }
+    }
+
+    /**
+     * Inspecte une requête SQL textuelle pour détecter son type d'action d'écriture et la table ciblée.
+     *
+     * @private
+     * @param {string} sql - Requête SQL brute.
+     * @returns {{ type: string, table: string }|null} Description de l'action ou `null` si requête en lecture seule.
+     */
+    #inspectSqlAction(sql) {
+        if (!sql || typeof sql !== 'string') return null;
+        const trimmed = sql.trim();
+
+        // INSERT [OR REPLACE|IGNORE...] INTO `table`
+        const insertMatch = trimmed.match(/^INSERT\s+(?:OR\s+\w+\s+)?INTO\s+[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+        if (insertMatch) {
+            return { type: 'insert', table: insertMatch[1] };
+        }
+
+        // UPDATE [OR ...] `table`
+        const updateMatch = trimmed.match(/^UPDATE\s+(?:OR\s+\w+\s+)?[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+        if (updateMatch) {
+            return { type: 'update', table: updateMatch[1] };
+        }
+
+        // DELETE FROM `table`
+        const deleteMatch = trimmed.match(/^DELETE\s+FROM\s+[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+        if (deleteMatch) {
+            return { type: 'delete', table: deleteMatch[1] };
+        }
+
+        // CREATE TABLE [IF NOT EXISTS] `table`
+        const createMatch = trimmed.match(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+        if (createMatch) {
+            return { type: 'createTable', table: createMatch[1] };
+        }
+
+        // DROP TABLE [IF EXISTS] `table`
+        const dropMatch = trimmed.match(/^DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+        if (dropMatch) {
+            return { type: 'dropTable', table: dropMatch[1] };
+        }
+
+        // ALTER TABLE `table`
+        const alterMatch = trimmed.match(/^ALTER\s+TABLE\s+[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+        if (alterMatch) {
+            return { type: 'alterTable', table: alterMatch[1] };
+        }
+
+        return null;
+    }
 
     /**
      * Vérifie si le contexte actif est une application native (WebView / conteneur).
@@ -1430,8 +1656,7 @@ export class NSql {
      */
     async #requestNative(actionType, extraParams = {}) {
         return await NUtil.sys.invokeNative({
-            typeg: ['app', 'sql'],
-            type: actionType,
+            type: ['app', 'sql', actionType],
             params: extraParams
         });
     }
