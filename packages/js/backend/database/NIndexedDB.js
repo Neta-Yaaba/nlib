@@ -1409,7 +1409,7 @@ export class NIndexedDB {
 
         // Cas 2 : Store avec keyPath (clé interne in-line, ex: 'id')
         if (typeof keyPath === 'string') {
-            const rawPk = (value && typeof value === 'object') ? value[keyPath] : explicitKey;
+            const rawPk = (value && typeof value === 'object' && value[keyPath] !== undefined) ? value[keyPath] : explicitKey;
             let finalPk = rawPk;
 
             if (shouldEncryptKey && rawPk !== undefined && rawPk !== null) {
@@ -1428,8 +1428,10 @@ export class NIndexedDB {
                 return { value: record, key: undefined };
             }
 
-            if (shouldEncryptKey && value && typeof value === 'object') {
-                const record = { ...value, [keyPath]: finalPk };
+            if (value && typeof value === 'object') {
+                const record = finalPk !== undefined && value[keyPath] !== finalPk
+                    ? { ...value, [keyPath]: finalPk }
+                    : value;
                 return { value: record, key: undefined };
             }
         }

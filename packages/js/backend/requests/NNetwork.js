@@ -105,6 +105,13 @@ export class NNetwork {
     #clientPublicKeyPem = null;
 
     /**
+     * Clé privée RSA du client au format PEM.
+     * @type {string|null}
+     * @private
+     */
+    #clientPrivateKeyPem = null;
+
+    /**
      * Clé publique RSA du serveur pour le chiffrement des requêtes.
      * @type {CryptoKey|null}
      * @private
@@ -117,6 +124,41 @@ export class NNetwork {
      * @private
      */
     #serverPublicKeyPem = null;
+
+    /**
+     * Taille du module RSA en bits pour la génération des clés client (`2048` ou `4096`).
+     * @type {number}
+     * @private
+     */
+    #modulusLength = 4096;
+
+    /**
+     * Algorithme de hachage RSA-OAEP (`'SHA-1'` par défaut pour compatibilité PHP OpenSSL, ou `'SHA-256'`).
+     * @type {'SHA-1'|'SHA-256'}
+     * @private
+     */
+    #cryptoHash = 'SHA-1';
+
+    /**
+     * Secret partagé optionnel utilisé par `NCryptography` (`fallbackSecret` ou `encryptSymmetric`).
+     * @type {string}
+     * @private
+     */
+    #fallbackSecret = '';
+
+    /**
+     * Active ou non le chiffrement de bout-en-bout par défaut sur toutes les requêtes.
+     * @type {boolean}
+     * @private
+     */
+    #defaultEncrypt = false;
+
+    /**
+     * URL par défaut pour la négociation d'authentification cryptographique (`requestAuthentication`).
+     * @type {string|null}
+     * @private
+     */
+    #authUrl = null;
 
     /**
      * Indique si un échange d'authentification cryptographique est actuellement en cours.
@@ -145,7 +187,14 @@ export class NNetwork {
      * @param {string} [options.baseUrl] - URL de base optionnelle.
      * @param {number} [options.timeout=0] - Délai maximum en millisecondes.
      * @param {Object<string, string>} [options.headers={}] - En-têtes HTTP par défaut.
-     * @param {string} [options.serverPublicKey] - Clé publique PEM du serveur optionnelle.
+     * @param {string|CryptoKey} [options.serverPublicKey] - Clé publique PEM ou CryptoKey du serveur optionnelle.
+     * @param {string|CryptoKey} [options.clientPublicKey] - Clé publique PEM ou CryptoKey du client optionnelle.
+     * @param {string|CryptoKey} [options.clientPrivateKey] - Clé privée PEM ou CryptoKey du client optionnelle.
+     * @param {number} [options.modulusLength=4096] - Taille de clé RSA générée via `NCryptography.generateKeyPair` (`2048` ou `4096`).
+     * @param {'SHA-1'|'SHA-256'} [options.hash='SHA-1'] - Algorithme de hachage RSA-OAEP (`'SHA-1'` ou `'SHA-256'`).
+     * @param {string} [options.fallbackSecret=''] - Secret partagé de repli pour `NCryptography.encrypt` / `decrypt`.
+     * @param {boolean} [options.encrypt=false] - Active le chiffrement par défaut pour toutes les requêtes.
+     * @param {string} [options.authUrl] - URL par défaut de négociation cryptographique.
      *
      * @example <caption>Exemple 1 : Instanciation avec options par défaut (mode auto)</caption>
      * const net = new NNetwork();
@@ -153,8 +202,12 @@ export class NNetwork {
      * @example <caption>Exemple 2 : Instanciation avec driver forcé en XMLHttpRequest et timeout</caption>
      * const netXhr = new NNetwork({ driver: 'xhr', timeout: 15000, baseUrl: 'https://api.example.com' });
      *
-     * @example <caption>Exemple 3 : Instanciation avec clé publique serveur pré-configurée</caption>
-     * const netSec = new NNetwork({ serverPublicKey: '-----BEGIN PUBLIC KEY-----\n...' });
+     * @example <caption>Exemple 3 : Instanciation avec clé publique serveur et options cryptographiques</caption>
+     * const netSec = new NNetwork({
+     *     serverPublicKey: '-----BEGIN PUBLIC KEY-----\n...',
+     *     modulusLength: 4096,
+     *     hash: 'SHA-1'
+     * });
      */
     constructor(options = {}) {
         if (options && typeof options === 'object') {
@@ -172,6 +225,35 @@ export class NNetwork {
             }
             if (typeof options.serverPublicKey === 'string' && options.serverPublicKey.trim()) {
                 this.#serverPublicKeyPem = options.serverPublicKey.trim();
+            } else if (options.serverPublicKey && typeof options.serverPublicKey === 'object') {
+                this.#serverPublicKey = options.serverPublicKey;
+            }
+            if (typeof options.clientPublicKey === 'string' && options.clientPublicKey.trim()) {
+                this.#clientPublicKeyPem = options.clientPublicKey.trim();
+            } else if (options.clientPublicKey && typeof options.clientPublicKey === 'object') {
+                this.#clientPublicKey = options.clientPublicKey;
+            }
+            if (typeof options.clientPrivateKey === 'string' && options.clientPrivateKey.trim()) {
+                this.#clientPrivateKeyPem = options.clientPrivateKey.trim();
+            } else if (options.clientPrivateKey && typeof options.clientPrivateKey === 'object') {
+                this.#clientPrivateKey = options.clientPrivateKey;
+            }
+            if (options.modulusLength === 2048 || options.modulusLength === 4096) {
+                this.#modulusLength = options.modulusLength;
+            }
+            const hashOpt = options.hash || options.cryptoHash;
+            if (hashOpt === 'SHA-1' || hashOpt === 'SHA-256') {
+                this.#cryptoHash = hashOpt;
+            }
+            const secretOpt = options.fallbackSecret ?? options.secretKey;
+            if (typeof secretOpt === 'string') {
+                this.#fallbackSecret = secretOpt;
+            }
+            if (typeof options.encrypt === 'boolean' || typeof options.encrypted === 'boolean') {
+                this.#defaultEncrypt = Boolean(options.encrypt ?? options.encrypted);
+            }
+            if (typeof options.authUrl === 'string' && options.authUrl.trim()) {
+                this.#authUrl = options.authUrl.trim();
             }
         }
     }
@@ -311,7 +393,7 @@ export class NNetwork {
         const timeout = typeof options.timeout === 'number' ? options.timeout : this.#defaultTimeout;
         const responseType = options.responseType || 'json';
 
-        const isEncrypted = Boolean(options.encrypt ?? options.encrypted);
+        const isEncrypted = Boolean(options.encrypt ?? options.encrypted ?? this.#defaultEncrypt);
         let requestBody = options.body;
         const requestHeaders = { ...(this.#defaultHeaders || {}), ...(options.headers || {}) };
 
@@ -328,9 +410,13 @@ export class NNetwork {
             };
         }
 
-        // 1. Chiffrement préalable du corps si options.encrypt ou options.encrypted est vrai
+        // 1. Chiffrement préalable du corps via NCryptography si options.encrypt / encrypted est actif
         if (isEncrypted) {
-            const ready = await this.#ensureEncryptionReady(options.authUrl || fullUrl, options.serverPublicKey);
+            const ready = await this.#ensureEncryptionReady(
+                options.authUrl || this.#authUrl || fullUrl,
+                options.serverPublicKey,
+                options
+            );
             if (!ready) {
                 return {
                     status: 0,
@@ -344,14 +430,25 @@ export class NNetwork {
             }
 
             if (requestBody !== undefined && requestBody !== null && method !== 'GET' && method !== 'HEAD') {
-                const encryptedEnvelope = await NUtil.crypto.encrypt(requestBody, this.#serverPublicKey);
-
                 if (typeof FormData !== 'undefined' && requestBody instanceof FormData) {
+                    const plainFields = {};
+                    const binaryEntries = [];
+                    requestBody.forEach((val, key) => {
+                        if (typeof Blob !== 'undefined' && val instanceof Blob) {
+                            binaryEntries.push([key, val]);
+                        } else {
+                            plainFields[key] = val;
+                        }
+                    });
+                    const encryptedEnvelope = await this.encryptPayload(plainFields, options);
                     const fd = new FormData();
                     fd.append('ENCRYPTED', typeof encryptedEnvelope === 'object' ? JSON.stringify(encryptedEnvelope) : String(encryptedEnvelope));
+                    for (const [k, blobVal] of binaryEntries) {
+                        fd.append(k, blobVal);
+                    }
                     requestBody = fd;
                 } else {
-                    requestBody = encryptedEnvelope;
+                    requestBody = await this.encryptPayload(requestBody, options);
                     requestHeaders['X-Encrypted'] = '1';
                 }
             }
@@ -392,9 +489,14 @@ export class NNetwork {
             });
         }
 
-        // 2. Déchiffrement automatique de la réponse si la requête était chiffrée
-        if (isEncrypted && response && response.data !== null && response.data !== undefined) {
-            response.data = await this.#decryptResponseData(response.data);
+        // 2. Déchiffrement automatique de la réponse via NCryptography si la requête ou la réponse est chiffrée
+        if (
+            response &&
+            response.data !== null &&
+            response.data !== undefined &&
+            (isEncrypted || response.headers?.['x-encrypted'] === '1' || this.#isEncryptedEnvelope(response.data))
+        ) {
+            response.data = await this.#decryptResponseData(response.data, options);
         }
 
         return response;
@@ -535,16 +637,17 @@ export class NNetwork {
     // =========================================================================
 
     /**
-     * Effectue la négociation d'authentification asymétrique avec le serveur distant :
+     * Effectue la négociation d'authentification asymétrique avec le serveur distant via `NCryptography` :
      * 1. Vérifie si la clé publique du serveur est déjà présente en mémoire ou dans le stockage persistant.
-     * 2. Génère ou charge la paire de clés RSA du client (`kp_client`).
-     * 3. Transmet la clé publique du client au serveur (`client_public_key`) via le champ 'AUTHENTIFICATION'.
-     * 4. Déchiffre la réponse du serveur avec la clé privée du client pour extraire `server_public_key`.
-     * 5. Mémorise et sauvegarde la clé publique du serveur pour les requêtes chiffrées suivantes.
+     * 2. Génère ou importe la paire de clés RSA du client (`generateKeyPair` / `importPublicKeyFromPem` / `importPrivateKeyFromPem`).
+     * 3. Transmet la clé publique PEM du client au serveur (`client_public_key`) via le champ `'AUTHENTIFICATION'`.
+     * 4. Déchiffre la réponse du serveur avec la clé privée du client via `NUtil.crypto.decrypt` pour extraire `server_public_key`.
+     * 5. Importe (`NUtil.crypto.importPublicKeyFromPem`) et sauvegarde la clé publique du serveur pour les requêtes chiffrées suivantes.
      *
      * @async
      * @method requestAuthentication
-     * @param {string} [url=null] - URL de négociation d'authentification (par défaut baseUrl + '/').
+     * @param {string} [url=null] - URL de négociation d'authentification (par défaut `authUrl` ou `baseUrl + '/'`).
+     * @param {Object} [options={}] - Options optionnelles (`{ force: false, hash, fallbackSecret }`).
      * @returns {Promise<Object|boolean>} Données de négociation déchiffrées ou `false` en cas d'échec.
      *
      * @example <caption>Exemple 1 : Négocier l'authentification cryptographique avec le serveur</caption>
@@ -555,8 +658,8 @@ export class NNetwork {
      * const auth = await net.requestAuthentication('https://api.example.com/auth');
      * if (auth) { console.log('Clé serveur reçue :', auth.server_public_key); }
      */
-    async requestAuthentication(url = null) {
-        if (await this.#ensureServerPublicKey()) {
+    async requestAuthentication(url = null, options = {}) {
+        if (!options?.force && await this.#ensureServerPublicKey()) {
             return true;
         }
 
@@ -569,12 +672,12 @@ export class NNetwork {
         this.#isAuthenticating = true;
 
         try {
-            // 1. Initialiser la paire de clés client RSA
-            await this.#ensureClientKeyPair();
+            // 1. Initialiser la paire de clés client RSA via NCryptography
+            await this.#ensureClientKeyPair(options);
 
-            const clientPublicKeyPem = this.#clientPublicKeyPem;
+            const clientPublicKeyPem = this.#clientPublicKeyPem || '';
             const authRequest = { client_public_key: clientPublicKeyPem };
-            const targetUrl = url || (this.#baseUrl ? `${this.#baseUrl}/` : '/');
+            const targetUrl = url || this.#authUrl || (this.#baseUrl ? `${this.#baseUrl}/` : '/');
 
             // 2. Préparation du payload sous la clé 'AUTHENTIFICATION'
             let authBody;
@@ -585,35 +688,35 @@ export class NNetwork {
                 authBody = { AUTHENTIFICATION: JSON.stringify(authRequest) };
             }
 
-            // 3. Appel réseau en POST
+            // 3. Appel réseau en POST (sans sur-chiffrement car il s'agit du handshake initial)
             const result = await this.request(targetUrl, {
                 method: 'POST',
                 body: authBody,
                 responseType: 'text',
-                encrypt: false // Ne pas sur-chiffrer la négociation d'échange de clés
+                encrypt: false
             });
 
             if (result && result.data) {
-                const decryptedString = await NUtil.crypto.decrypt(result.data, this.#clientPrivateKey);
-                if (decryptedString) {
-                    let val = null;
+                const decryptedVal = await this.decryptPayload(result.data, options);
+                let val = decryptedVal;
+                if (typeof val === 'string' && val.trim()) {
                     try {
-                        val = JSON.parse(decryptedString);
+                        val = JSON.parse(val);
                     } catch {
-                        val = decryptedString;
+                        // Conserver la chaîne telle quelle
                     }
+                }
 
-                    const serverKeyPem = typeof val === 'object' && val !== null
-                        ? (val.server_public_key || val.serverPublicKey)
-                        : null;
+                const serverKeyPem = typeof val === 'object' && val !== null
+                    ? (val.server_public_key || val.serverPublicKey || val.publicKey)
+                    : (typeof val === 'string' && val.includes('BEGIN PUBLIC KEY') ? val : null);
 
-                    if (serverKeyPem && typeof serverKeyPem === 'string') {
-                        await this.setServerPublicKey(serverKeyPem);
-                        this.#isAuthenticating = false;
-                        const waiters = this.#authWaiters.splice(0);
-                        waiters.forEach(({ resolve }) => resolve(val));
-                        return val;
-                    }
+                if (serverKeyPem && typeof serverKeyPem === 'string') {
+                    await this.setServerPublicKey(serverKeyPem, options?.hash);
+                    this.#isAuthenticating = false;
+                    const waiters = this.#authWaiters.splice(0);
+                    waiters.forEach(({ resolve }) => resolve(val));
+                    return val;
                 }
             }
 
@@ -632,12 +735,122 @@ export class NNetwork {
     }
 
     /**
-     * Assigne la clé publique du serveur (au format PEM ou CryptoKey).
+     * Génère une nouvelle paire de clés RSA client via `NUtil.crypto.generateKeyPair`,
+     * exporte les clés publique et privée au format PEM (`exportPublicKeyToPem` / `exportPrivateKeyToPem`),
+     * et les persiste de manière sécurisée dans IndexedDB.
+     *
+     * @async
+     * @method generateClientKeyPair
+     * @param {Object} [options={}] - Options RSA (`{ modulusLength: 4096, hash: 'SHA-1' }`).
+     * @returns {Promise<{ publicKey: CryptoKey, privateKey: CryptoKey, publicPem: string, privatePem: string }|null>}
+     *
+     * @example <caption>Exemple 1 : Générer une paire de clés RSA 4096 bits client</caption>
+     * const kp = await net.generateClientKeyPair();
+     * console.log(kp?.publicPem);
+     *
+     * @example <caption>Exemple 2 : Générer une paire RSA 2048 bits avec SHA-256</caption>
+     * const kp = await net.generateClientKeyPair({ modulusLength: 2048, hash: 'SHA-256' });
+     */
+    async generateClientKeyPair(options = {}) {
+        const modulusLength = options?.modulusLength ?? this.#modulusLength;
+        const hash = options?.hash ?? options?.cryptoHash ?? this.#cryptoHash;
+
+        const newKp = await NUtil.crypto.generateKeyPair({ modulusLength, hash });
+        if (!newKp || !newKp.publicKey || !newKp.privateKey) {
+            return null;
+        }
+
+        const pubPem = await NUtil.crypto.exportPublicKeyToPem(newKp.publicKey);
+        const privPem = await NUtil.crypto.exportPrivateKeyToPem(newKp.privateKey);
+
+        this.#clientPublicKey = newKp.publicKey;
+        this.#clientPrivateKey = newKp.privateKey;
+        this.#clientPublicKeyPem = pubPem;
+        this.#clientPrivateKeyPem = privPem;
+        this.#clientKeyPair = {
+            publicKey: newKp.publicKey,
+            privateKey: newKp.privateKey,
+            publicPem: pubPem,
+            privatePem: privPem
+        };
+
+        await this.#idbPut('kp_client', {
+            publicKey: pubPem,
+            privateKey: privPem,
+            hash
+        });
+
+        return this.#clientKeyPair;
+    }
+
+    /**
+     * Importe et configure manuellement la paire de clés RSA du client (PEM ou `CryptoKey`)
+     * en utilisant `NUtil.crypto.importPublicKeyFromPem`, `importPrivateKeyFromPem`,
+     * `exportPublicKeyToPem` et `exportPrivateKeyToPem`.
+     *
+     * @async
+     * @method setClientKeyPair
+     * @param {string|CryptoKey} publicKey - Clé publique du client (PEM ou CryptoKey).
+     * @param {string|CryptoKey} privateKey - Clé privée du client (PEM ou CryptoKey).
+     * @param {'SHA-1'|'SHA-256'} [hash] - Algorithme de hachage OAEP.
+     * @returns {Promise<boolean>} `true` si la paire de clés est configurée avec succès.
+     *
+     * @example <caption>Exemple 1 : Importer une paire de clés client PEM</caption>
+     * await net.setClientKeyPair(clientPublicPem, clientPrivatePem);
+     *
+     * @example <caption>Exemple 2 : Importer avec SHA-256</caption>
+     * await net.setClientKeyPair(clientPublicPem, clientPrivatePem, 'SHA-256');
+     */
+    async setClientKeyPair(publicKey, privateKey, hash = this.#cryptoHash) {
+        if (!publicKey || !privateKey) return false;
+
+        let pubCrypto = null;
+        let pubPem = null;
+        if (typeof publicKey === 'string') {
+            pubPem = publicKey.trim();
+            pubCrypto = await NUtil.crypto.importPublicKeyFromPem(pubPem, hash);
+        } else if (typeof publicKey === 'object') {
+            pubCrypto = publicKey;
+            pubPem = await NUtil.crypto.exportPublicKeyToPem(publicKey);
+        }
+
+        let privCrypto = null;
+        let privPem = null;
+        if (typeof privateKey === 'string') {
+            privPem = privateKey.trim();
+            privCrypto = await NUtil.crypto.importPrivateKeyFromPem(privPem, hash);
+        } else if (typeof privateKey === 'object') {
+            privCrypto = privateKey;
+            privPem = await NUtil.crypto.exportPrivateKeyToPem(privateKey);
+        }
+
+        this.#clientPublicKey = pubCrypto;
+        this.#clientPrivateKey = privCrypto;
+        this.#clientPublicKeyPem = pubPem;
+        this.#clientPrivateKeyPem = privPem;
+        this.#clientKeyPair = {
+            publicKey: pubCrypto,
+            privateKey: privCrypto,
+            publicPem: pubPem || '',
+            privatePem: privPem || ''
+        };
+
+        if (pubPem && privPem) {
+            await this.#idbPut('kp_client', { publicKey: pubPem, privateKey: privPem, hash });
+        }
+
+        return Boolean((pubCrypto && privCrypto) || (pubPem && privPem));
+    }
+
+    /**
+     * Assigne la clé publique du serveur (au format PEM ou `CryptoKey`) via `NUtil.crypto.importPublicKeyFromPem`
+     * ou `NUtil.crypto.exportPublicKeyToPem`.
      *
      * @async
      * @method setServerPublicKey
      * @param {string|CryptoKey} publicKey - Clé publique PEM ou CryptoKey du serveur.
-     * @returns {Promise<boolean>} `true` si la clé a été importée avec succès, `false` sinon.
+     * @param {'SHA-1'|'SHA-256'} [hash] - Algorithme de hachage OAEP (`'SHA-1'` par défaut).
+     * @returns {Promise<boolean>} `true` si la clé a été configurée avec succès, `false` sinon.
      *
      * @example <caption>Exemple 1 : Assigner une clé publique PEM reçue hors-bande</caption>
      * await net.setServerPublicKey('-----BEGIN PUBLIC KEY-----\n...');
@@ -646,16 +859,107 @@ export class NNetwork {
      * const ok = await net.setServerPublicKey(serverPem);
      * if (ok) { console.log('Clé serveur active'); }
      */
-    async setServerPublicKey(publicKey) {
+    async setServerPublicKey(publicKey, hash = this.#cryptoHash) {
         if (!publicKey) return false;
         if (typeof publicKey === 'string') {
             this.#serverPublicKeyPem = publicKey.trim();
-            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(this.#serverPublicKeyPem);
+            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(this.#serverPublicKeyPem, hash);
             await this.#idbPut('server_public_key', this.#serverPublicKeyPem);
-            return Boolean(this.#serverPublicKey);
+            return Boolean(this.#serverPublicKey || this.#serverPublicKeyPem);
         }
-        this.#serverPublicKey = publicKey;
-        return true;
+        if (typeof publicKey === 'object') {
+            this.#serverPublicKey = publicKey;
+            const exportedPem = await NUtil.crypto.exportPublicKeyToPem(publicKey);
+            if (exportedPem) {
+                this.#serverPublicKeyPem = exportedPem;
+                await this.#idbPut('server_public_key', exportedPem);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Chiffre un payload à destination du serveur en utilisant le système de cryptage
+     * `NUtil.crypto.encrypt` (asymétrique RSA-OAEP <= 256 octets, hybride RSA-OAEP + AES-256-CBC > 256 octets,
+     * ou repli `nlib-fallback` / `nlib`) ou `NUtil.crypto.encryptSymmetric` si `options.symmetric === true`.
+     *
+     * @async
+     * @method encryptPayload
+     * @param {any} data - Données à chiffrer pour le serveur.
+     * @param {Object} [options={}] - Options cryptographiques (`serverPublicKey`, `fallbackSecret`, `hash`, `symmetric`, `secretKey`).
+     * @returns {Promise<{ type: string, data: string, key?: string, iv?: string }>} Enveloppe chiffrée prête à transmettre.
+     *
+     * @example <caption>Exemple 1 : Chiffrer un objet pour le serveur avec la clé publique active</caption>
+     * const envelope = await net.encryptPayload({ action: 'TRANSFER', amount: 5000 });
+     *
+     * @example <caption>Exemple 2 : Chiffrer en mode symétrique partagé (AES-256-CBC)</caption>
+     * const symEnvelope = await net.encryptPayload('Message', { symmetric: true, secretKey: 'SecretPartage' });
+     */
+    async encryptPayload(data, options = {}) {
+        const hash = options?.hash ?? options?.cryptoHash ?? this.#cryptoHash;
+        const fallbackSecret = options?.fallbackSecret ?? options?.secretKey ?? this.#fallbackSecret;
+
+        if (options?.symmetric && fallbackSecret) {
+            const plainString = typeof data === 'string' ? data : JSON.stringify(data);
+            const symRes = await NUtil.crypto.encryptSymmetric(plainString, fallbackSecret);
+            if (symRes) {
+                return symRes;
+            }
+        }
+
+        const serverKey = options?.serverPublicKey || this.#serverPublicKey || this.#serverPublicKeyPem;
+        return await NUtil.crypto.encrypt(data, serverKey, {
+            fallbackSecret,
+            hash
+        });
+    }
+
+    /**
+     * Déchiffre une enveloppe reçue du serveur en utilisant `NUtil.crypto.decrypt`
+     * (supporte `'hybrid'`, `'asymmetric'`, `'nlib-fallback'`, `'nlib'`) ou `NUtil.crypto.decryptSymmetric`
+     * (pour `'aes-256-cbc'`).
+     *
+     * @async
+     * @method decryptPayload
+     * @param {Object|string} encryptedPayload - Enveloppe chiffrée ou chaîne JSON reçue du serveur.
+     * @param {Object} [options={}] - Options cryptographiques (`clientPrivateKey`, `fallbackSecret`, `hash`, `secretKey`).
+     * @returns {Promise<string>} Chaîne déchiffrée en clair (ou `''` en cas d'échec).
+     *
+     * @example <caption>Exemple 1 : Déchiffrer une réponse serveur</caption>
+     * const clearText = await net.decryptPayload(response.data);
+     *
+     * @example <caption>Exemple 2 : Déchiffrer une réponse symétrique</caption>
+     * const clearSym = await net.decryptPayload(symPayload, { secretKey: 'SecretPartage' });
+     */
+    async decryptPayload(encryptedPayload, options = {}) {
+        if (!encryptedPayload) return '';
+
+        const hash = options?.hash ?? options?.cryptoHash ?? this.#cryptoHash;
+        const fallbackSecret = options?.fallbackSecret ?? options?.secretKey ?? this.#fallbackSecret;
+
+        let parsed = encryptedPayload;
+        if (typeof encryptedPayload === 'string') {
+            try {
+                parsed = JSON.parse(encryptedPayload);
+            } catch {
+                return '';
+            }
+        }
+
+        if (parsed && typeof parsed === 'object' && parsed.type === 'aes-256-cbc' && fallbackSecret) {
+            return await NUtil.crypto.decryptSymmetric(parsed, fallbackSecret);
+        }
+
+        if (!this.#clientPrivateKey && !this.#clientPrivateKeyPem) {
+            await this.#ensureClientKeyPair(options);
+        }
+
+        const privateKey = options?.clientPrivateKey || this.#clientPrivateKey || this.#clientPrivateKeyPem;
+        return await NUtil.crypto.decrypt(parsed, privateKey, {
+            fallbackSecret,
+            hash
+        });
     }
 
     /**
@@ -671,7 +975,7 @@ export class NNetwork {
      * console.log('Prêt pour chiffrer :', net.hasServerPublicKey());
      */
     hasServerPublicKey() {
-        return Boolean(this.#serverPublicKey);
+        return Boolean(this.#serverPublicKey || this.#serverPublicKeyPem);
     }
 
     /**
@@ -715,13 +1019,13 @@ export class NNetwork {
      * Réinitialise la session cryptographique en mémoire et dans le stockage local persistant.
      *
      * @method clearCryptoSession
-     * @returns {void}
+     * @returns {Promise<void>}
      *
      * @example <caption>Exemple 1 : Réinitialiser la session crypto après déconnexion</caption>
-     * net.clearCryptoSession();
+     * await net.clearCryptoSession();
      *
      * @example <caption>Exemple 2 : Forcer une nouvelle négociation de clés</caption>
-     * net.clearCryptoSession();
+     * await net.clearCryptoSession();
      * await net.requestAuthentication();
      */
     async clearCryptoSession() {
@@ -729,6 +1033,7 @@ export class NNetwork {
         this.#serverPublicKeyPem = null;
         this.#clientKeyPair = null;
         this.#clientPrivateKey = null;
+        this.#clientPrivateKeyPem = null;
         this.#clientPublicKey = null;
         this.#clientPublicKeyPem = null;
         this.#isAuthenticating = false;
@@ -1303,7 +1608,7 @@ export class NNetwork {
 
         try {
             const nativeRes = await NUtil.sys.invokeNative({
-                type: ['network', 'request'],
+                type: ['app', 'network', 'request'],
                 params: {
                     url,
                     method,
@@ -2197,19 +2502,32 @@ export class NNetwork {
     /**
      * S'assure que la clé publique du serveur et la paire client sont prêtes avant une requête chiffrée.
      * Si la clé publique du serveur n'est pas encore connue, déclenche automatiquement `requestAuthentication()`.
+     * En mode symétrique ou si `crypto.subtle` est indisponible (repli `nlib-fallback` / `nlib`), autorise
+     * le chiffrement sans bloquer la requête.
      * @private
      */
-    async #ensureEncryptionReady(authUrl, serverPublicKeyParam) {
-        if (serverPublicKeyParam) {
-            await this.setServerPublicKey(serverPublicKeyParam);
+    async #ensureEncryptionReady(authUrl, serverPublicKeyParam, options = {}) {
+        const hash = options?.hash ?? options?.cryptoHash ?? this.#cryptoHash;
+        const fallbackSecret = options?.fallbackSecret ?? options?.secretKey ?? this.#fallbackSecret;
+
+        if (options?.symmetric && fallbackSecret) {
+            return true;
         }
 
-        await this.#ensureClientKeyPair();
+        if (serverPublicKeyParam) {
+            await this.setServerPublicKey(serverPublicKeyParam, hash);
+        }
 
-        const hasKey = await this.#ensureServerPublicKey();
+        await this.#ensureClientKeyPair(options);
+
+        const hasKey = await this.#ensureServerPublicKey(hash);
         if (!hasKey) {
-            const authOk = await this.requestAuthentication(authUrl);
+            const authOk = await this.requestAuthentication(authUrl, options);
             if (!authOk) {
+                // Si Web Crypto est indisponible ou si un fallbackSecret est fourni, NCryptography.encrypt basculera en mode repli
+                if (!NUtil.crypto.isWebCryptoAvailable() || fallbackSecret) {
+                    return true;
+                }
                 NUtil.log.error('NNetwork : échec de l\'authentification et de l\'échange de clés asymétriques avec le serveur.', {
                     code: 'CRYPTO_AUTH_FAILED',
                     authUrl
@@ -2221,13 +2539,28 @@ export class NNetwork {
     }
 
     /**
-     * Charge ou génère la paire de clés client RSA avec persistance partagée via IndexedDB 'ntable' ({ id, data }).
-     * Permet le partage direct des clés entre le thread principal (DOM) et les Web Workers.
+     * Charge, importe ou génère la paire de clés client RSA via `NCryptography` (`importPublicKeyFromPem`,
+     * `importPrivateKeyFromPem`, `exportPublicKeyToPem`, `exportPrivateKeyToPem`, `generateKeyPair`),
+     * avec persistance chiffrée via IndexedDB `'ntable'`.
      * @private
      */
-    async #ensureClientKeyPair() {
-        if (this.#clientKeyPair && this.#clientPrivateKey && this.#clientPublicKey) {
+    async #ensureClientKeyPair(options = {}) {
+        const hash = options?.hash ?? options?.cryptoHash ?? this.#cryptoHash;
+
+        if (this.#clientKeyPair && (this.#clientPrivateKey || this.#clientPrivateKeyPem) && (this.#clientPublicKey || this.#clientPublicKeyPem)) {
             return this.#clientKeyPair;
+        }
+
+        // 0. Si des clés PEM ou CryptoKey ont été passées au constructeur, les importer / exporter via NCryptography
+        if ((this.#clientPublicKey || this.#clientPublicKeyPem) && (this.#clientPrivateKey || this.#clientPrivateKeyPem)) {
+            await this.setClientKeyPair(
+                this.#clientPublicKey || this.#clientPublicKeyPem,
+                this.#clientPrivateKey || this.#clientPrivateKeyPem,
+                hash
+            );
+            if (this.#clientKeyPair) {
+                return this.#clientKeyPair;
+            }
         }
 
         // 1. Tenter de récupérer les clés persistées dans le store partagé IndexedDB
@@ -2235,12 +2568,14 @@ export class NNetwork {
 
         if (savedKp && savedKp.publicKey && savedKp.privateKey) {
             try {
-                const pubKey = await NUtil.crypto.importPublicKeyFromPem(savedKp.publicKey);
-                const privKey = await NUtil.crypto.importPrivateKeyFromPem(savedKp.privateKey);
-                if (pubKey && privKey) {
+                const savedHash = savedKp.hash || hash;
+                const pubKey = await NUtil.crypto.importPublicKeyFromPem(savedKp.publicKey, savedHash);
+                const privKey = await NUtil.crypto.importPrivateKeyFromPem(savedKp.privateKey, savedHash);
+                if ((pubKey && privKey) || !NUtil.crypto.isWebCryptoAvailable()) {
                     this.#clientPublicKey = pubKey;
                     this.#clientPrivateKey = privKey;
                     this.#clientPublicKeyPem = savedKp.publicKey;
+                    this.#clientPrivateKeyPem = savedKp.privateKey;
                     this.#clientKeyPair = {
                         publicKey: pubKey,
                         privateKey: privKey,
@@ -2254,42 +2589,26 @@ export class NNetwork {
             }
         }
 
-        // 2. Générer une nouvelle paire de clés RSA via NCryptography
-        const newKp = await NUtil.crypto.generateKeyPair();
-        if (newKp && newKp.publicKey && newKp.privateKey) {
-            const pubPem = await NUtil.crypto.exportPublicKeyToPem(newKp.publicKey);
-            const privPem = await NUtil.crypto.exportPrivateKeyToPem(newKp.privateKey);
-
-            this.#clientPublicKey = newKp.publicKey;
-            this.#clientPrivateKey = newKp.privateKey;
-            this.#clientPublicKeyPem = pubPem;
-            this.#clientKeyPair = {
-                publicKey: newKp.publicKey,
-                privateKey: newKp.privateKey,
-                publicPem: pubPem,
-                privatePem: privPem
-            };
-
-            await this.#idbPut('kp_client', { publicKey: pubPem, privateKey: privPem });
-
-            return this.#clientKeyPair;
-        }
-
-        return null;
+        // 2. Générer une nouvelle paire de clés RSA via NCryptography.generateKeyPair
+        return await this.generateClientKeyPair(options);
     }
 
     /**
-     * Tente de charger la clé publique du serveur depuis la mémoire ou le stockage persistant IndexedDB.
+     * Tente de charger et d'importer la clé publique du serveur via `NUtil.crypto.importPublicKeyFromPem`
+     * depuis la mémoire ou le stockage persistant IndexedDB.
      * @private
      */
-    async #ensureServerPublicKey() {
+    async #ensureServerPublicKey(hash = this.#cryptoHash) {
         if (this.#serverPublicKey) {
+            if (!this.#serverPublicKeyPem) {
+                this.#serverPublicKeyPem = await NUtil.crypto.exportPublicKeyToPem(this.#serverPublicKey);
+            }
             return this.#serverPublicKey;
         }
 
         if (this.#serverPublicKeyPem) {
-            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(this.#serverPublicKeyPem);
-            return this.#serverPublicKey;
+            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(this.#serverPublicKeyPem, hash);
+            return this.#serverPublicKey || this.#serverPublicKeyPem;
         }
 
         const savedServer = await this.#idbGet('server_public_key');
@@ -2297,15 +2616,46 @@ export class NNetwork {
 
         if (savedPem && typeof savedPem === 'string') {
             this.#serverPublicKeyPem = savedPem;
-            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(savedPem);
-            return this.#serverPublicKey;
+            this.#serverPublicKey = await NUtil.crypto.importPublicKeyFromPem(savedPem, hash);
+            return this.#serverPublicKey || this.#serverPublicKeyPem;
         }
 
         return null;
     }
 
     /**
-     * Lit un enregistrement depuis le magasin partagé IndexedDB 'ntable' ({ id, data }).
+     * Vérifie si une donnée de réponse correspond à une enveloppe chiffrée par `NCryptography`.
+     * @private
+     */
+    #isEncryptedEnvelope(data) {
+        if (!data) return false;
+        let obj = data;
+        if (typeof data === 'string') {
+            const trimmed = data.trim();
+            if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+                return false;
+            }
+            try {
+                obj = JSON.parse(trimmed);
+            } catch {
+                return false;
+            }
+        }
+        return Boolean(
+            obj &&
+            typeof obj === 'object' &&
+            typeof obj.data === 'string' &&
+            (obj.type === 'hybrid' ||
+                obj.type === 'asymmetric' ||
+                obj.type === 'nlib-fallback' ||
+                obj.type === 'nlib' ||
+                obj.type === 'aes-256-cbc')
+        );
+    }
+
+    /**
+     * Lit un enregistrement depuis le magasin partagé IndexedDB `'ntable'` (`{ id, data }`)
+     * avec déchiffrement local automatique (`NIndexedDB` -> `NUtil.crypto.decryptLocal`).
      * @private
      */
     async #idbGet(key) {
@@ -2314,9 +2664,14 @@ export class NNetwork {
             if (idb) {
                 const storeNames = idb.storeNames;
                 const storeName = storeNames.includes('ntable') ? 'ntable' : (storeNames.includes('default') ? 'default' : (storeNames[0] || 'ntable'));
-                const res = await idb.get(storeName, key);
-                if (res && res.ok && res.data !== undefined) {
+                const res = await idb.get(storeName, key, { encryptKey: true, encryptData: true });
+                if (res && res.ok && res.data !== undefined && res.data !== null) {
                     return res.data?.data !== undefined ? res.data.data : res.data;
+                }
+                // Rétrocompatibilité si l'entrée avait été enregistrée en clair auparavant
+                const fallbackRes = await idb.get(storeName, key, { encryptKey: false, encryptData: false });
+                if (fallbackRes && fallbackRes.ok && fallbackRes.data !== undefined && fallbackRes.data !== null) {
+                    return fallbackRes.data?.data !== undefined ? fallbackRes.data.data : fallbackRes.data;
                 }
             }
         } catch (err) {
@@ -2326,7 +2681,8 @@ export class NNetwork {
     }
 
     /**
-     * Enregistre un enregistrement dans le magasin partagé IndexedDB 'ntable' ({ id, data }).
+     * Enregistre un enregistrement dans le magasin partagé IndexedDB `'ntable'` (`{ id, data }`)
+     * avec chiffrement local automatique (`NIndexedDB` -> `NUtil.crypto.encryptLocal`).
      * @private
      */
     async #idbPut(key, value) {
@@ -2336,7 +2692,7 @@ export class NNetwork {
                 const storeNames = idb.storeNames;
                 const storeName = storeNames.includes('ntable') ? 'ntable' : (storeNames.includes('default') ? 'default' : (storeNames[0] || 'ntable'));
                 const payload = { id: key, data: value };
-                const res = await idb.put(storeName, payload, key);
+                const res = await idb.put(storeName, payload, { encryptKey: true, encryptData: true });
                 return Boolean(res?.ok);
             }
         } catch (err) {
@@ -2355,8 +2711,9 @@ export class NNetwork {
             if (idb) {
                 const storeNames = idb.storeNames;
                 const storeName = storeNames.includes('ntable') ? 'ntable' : (storeNames.includes('default') ? 'default' : (storeNames[0] || 'ntable'));
-                const res = await idb.delete(storeName, key);
-                return Boolean(res?.ok);
+                await idb.delete(storeName, key, { encryptKey: true });
+                await idb.delete(storeName, key, { encryptKey: false });
+                return true;
             }
         } catch (err) {
             NUtil.log.warn(`NNetwork (idb) : échec de suppression pour "${key}".`, { error: err?.message || String(err) });
@@ -2365,20 +2722,12 @@ export class NNetwork {
     }
 
     /**
-     * Tente de déchiffrer les données reçues d'une réponse chiffrée avec la clé privée du client.
+     * Tente de déchiffrer les données reçues d'une réponse chiffrée via `decryptPayload` (`NUtil.crypto.decrypt` / `decryptSymmetric`).
      * @private
      */
-    async #decryptResponseData(data) {
-        if (!this.#clientPrivateKey) {
-            await this.#ensureClientKeyPair();
-        }
-
-        if (!this.#clientPrivateKey) {
-            return data;
-        }
-
+    async #decryptResponseData(data, options = {}) {
         try {
-            const decryptedString = await NUtil.crypto.decrypt(data, this.#clientPrivateKey);
+            const decryptedString = await this.decryptPayload(data, options);
             if (decryptedString) {
                 try {
                     return JSON.parse(decryptedString);
