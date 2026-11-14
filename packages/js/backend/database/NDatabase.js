@@ -869,6 +869,7 @@ export class NDatabase {
      */
     close() {
         this.cancelAutoSave();
+        this.saveSql();
 
         if (this.#indexedInstance) {
             try {

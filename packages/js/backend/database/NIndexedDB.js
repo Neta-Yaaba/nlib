@@ -438,14 +438,20 @@ export class NIndexedDB {
             explicitKey = undefined;
         }
 
+        const db = await this.#ensureConnection();
+        if (!db) {
+            return this.#fail('IndexedDB n\'est pas supporté ou accessible dans cet environnement.', 'IDB_NOT_SUPPORTED');
+        }
+        const keyPath = this.#getStoreKeyPath(db, storeName);
+        const prepared = await this.#prepareRecordForWrite(keyPath, value, explicitKey, opts);
+
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
-            const prepared = this.#prepareRecordForWrite(store, value, explicitKey, opts);
             return prepared.key !== undefined
                 ? store.add(prepared.value, prepared.key)
                 : store.add(prepared.value);
-        }, (result) => {
+        }, async (result) => {
             const secretKey = this.#getEffectiveSecretKey(opts?.secretKey);
-            return this.#isEncryptedKey(result) ? this.#decryptKey(result, secretKey) : result;
+            return this.#isEncryptedKey(result) ? await this.#decryptKey(result, secretKey) : result;
         });
     }
 
@@ -477,14 +483,20 @@ export class NIndexedDB {
             explicitKey = undefined;
         }
 
+        const db = await this.#ensureConnection();
+        if (!db) {
+            return this.#fail('IndexedDB n\'est pas supporté ou accessible dans cet environnement.', 'IDB_NOT_SUPPORTED');
+        }
+        const keyPath = this.#getStoreKeyPath(db, storeName);
+        const prepared = await this.#prepareRecordForWrite(keyPath, value, explicitKey, opts);
+
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
-            const prepared = this.#prepareRecordForWrite(store, value, explicitKey, opts);
             return prepared.key !== undefined
                 ? store.put(prepared.value, prepared.key)
                 : store.put(prepared.value);
-        }, (result) => {
+        }, async (result) => {
             const secretKey = this.#getEffectiveSecretKey(opts?.secretKey);
-            return this.#isEncryptedKey(result) ? this.#decryptKey(result, secretKey) : result;
+            return this.#isEncryptedKey(result) ? await this.#decryptKey(result, secretKey) : result;
         });
     }
 
@@ -515,14 +527,14 @@ export class NIndexedDB {
         const opts = options && typeof options === 'object' ? options : {};
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
         const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
+        const lookupKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
+            ? await this.#encryptKey(String(key), secretKey)
+            : key;
 
         return this.#executeStoreRequest(storeName, 'readonly', (store) => {
-            const lookupKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-                ? this.#encryptKey(String(key), secretKey)
-                : key;
             return store.get(lookupKey);
-        }, (result, store) => {
-            return this.#restoreRecordAfterRead(store, result, opts);
+        }, async (result, keyPath) => {
+            return await this.#restoreRecordAfterRead(keyPath, result, opts);
         });
     }
 
@@ -563,9 +575,13 @@ export class NIndexedDB {
             return q !== undefined || cnt !== undefined
                 ? store.getAll(q, cnt)
                 : store.getAll();
-        }, (result, store) => {
+        }, async (result, keyPath) => {
             if (!Array.isArray(result)) return result;
-            return result.map((item) => this.#restoreRecordAfterRead(store, item, opts));
+            const restored = [];
+            for (const item of result) {
+                restored.push(await this.#restoreRecordAfterRead(keyPath, item, opts));
+            }
+            return restored;
         });
     }
 
@@ -608,9 +624,13 @@ export class NIndexedDB {
             return q !== undefined || cnt !== undefined
                 ? store.getAllKeys(q, cnt)
                 : store.getAllKeys();
-        }, (result) => {
+        }, async (result) => {
             if (!Array.isArray(result)) return result;
-            return result.map((k) => (this.#isEncryptedKey(k) ? this.#decryptKey(k, secretKey) : k));
+            const clearKeys = [];
+            for (const k of result) {
+                clearKeys.push(this.#isEncryptedKey(k) ? await this.#decryptKey(k, secretKey) : k);
+            }
+            return clearKeys;
         });
     }
 
@@ -640,7 +660,7 @@ export class NIndexedDB {
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
         const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
         const targetKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? this.#encryptKey(String(key), secretKey)
+            ? await this.#encryptKey(String(key), secretKey)
             : key;
 
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
@@ -718,8 +738,8 @@ export class NIndexedDB {
         const opts = options && typeof options === 'object' ? options : {};
         return this.#executeIndexRequest(storeName, indexName, (index) => {
             return index.get(key);
-        }, (result, store) => {
-            return this.#restoreRecordAfterRead(store, result, opts);
+        }, async (result, keyPath) => {
+            return await this.#restoreRecordAfterRead(keyPath, result, opts);
         });
     }
 
@@ -760,9 +780,13 @@ export class NIndexedDB {
             return q !== undefined || cnt !== undefined
                 ? index.getAll(q, cnt)
                 : index.getAll();
-        }, (result, store) => {
+        }, async (result, keyPath) => {
             if (!Array.isArray(result)) return result;
-            return result.map((item) => this.#restoreRecordAfterRead(store, item, opts));
+            const restored = [];
+            for (const item of result) {
+                restored.push(await this.#restoreRecordAfterRead(keyPath, item, opts));
+            }
+            return restored;
         });
     }
 
@@ -805,9 +829,13 @@ export class NIndexedDB {
             return q !== undefined || cnt !== undefined
                 ? index.getAllKeys(q, cnt)
                 : index.getAllKeys();
-        }, (result) => {
+        }, async (result) => {
             if (!Array.isArray(result)) return result;
-            return result.map((k) => (this.#isEncryptedKey(k) ? this.#decryptKey(k, secretKey) : k));
+            const clearKeys = [];
+            for (const k of result) {
+                clearKeys.push(this.#isEncryptedKey(k) ? await this.#decryptKey(k, secretKey) : k);
+            }
+            return clearKeys;
         });
     }
 
@@ -879,6 +907,13 @@ export class NIndexedDB {
                 return this.#fail(`L'Object Store "${storeName}" n'existe pas dans la base "${this.#name}".`, 'IDB_STORE_NOT_FOUND');
             }
 
+            // Préparation asynchrone des enregistrements via encryptLocal AVANT l'ouverture de la transaction
+            const keyPath = this.#getStoreKeyPath(db, storeName);
+            const preparedItems = [];
+            for (const item of items) {
+                preparedItems.push(await this.#prepareRecordForWrite(keyPath, item, undefined, options));
+            }
+
             return new Promise((resolve) => {
                 let tx;
                 try {
@@ -904,9 +939,8 @@ export class NIndexedDB {
 
                 try {
                     const store = tx.objectStore(storeName);
-                    for (const item of items) {
+                    for (const prepared of preparedItems) {
                         if (hasAborted) break;
-                        const prepared = this.#prepareRecordForWrite(store, item, undefined, options);
                         const req = prepared.key !== undefined
                             ? store.put(prepared.value, prepared.key)
                             : store.put(prepared.value);
@@ -974,6 +1008,16 @@ export class NIndexedDB {
                 return this.#fail(`L'Object Store "${storeName}" n'existe pas dans la base "${this.#name}".`, 'IDB_STORE_NOT_FOUND');
             }
 
+            // Chiffrement asynchrone des clés via encryptLocal AVANT l'ouverture de la transaction
+            const targetKeys = [];
+            for (const key of keys) {
+                targetKeys.push(
+                    shouldEncryptKey && !this.#isEncryptedKey(key)
+                        ? await this.#encryptKey(String(key), secretKey)
+                        : key
+                );
+            }
+
             return new Promise((resolve) => {
                 let tx;
                 try {
@@ -998,10 +1042,7 @@ export class NIndexedDB {
 
                 try {
                     const store = tx.objectStore(storeName);
-                    for (const key of keys) {
-                        const targetKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-                            ? this.#encryptKey(String(key), secretKey)
-                            : key;
+                    for (const targetKey of targetKeys) {
                         const req = store.delete(targetKey);
                         req.onsuccess = () => {
                             count++;
@@ -1032,8 +1073,8 @@ export class NIndexedDB {
      * - Gestion d'erreur protégée : toute exception dans le callback interrompt proprement la transaction (`tx.abort()`)
      *   et résout la promesse avec une structure d'erreur standard sans bloquer le thread.
      * - Arrêt anticipé : si le callback retourne explicitement `false`, le parcours s'arrête immédiatement.
-     * - Prise en charge des callbacks asynchrones (Promesses) : attend la fin de la promesse avant de poursuivre (`cursor.continue()`),
-     *   respectant le cycle d'activité d'IndexedDB.
+     * - Prise en charge des callbacks asynchrones (Promesses) et du déchiffrement `decryptLocal` :
+     *   respecte le cycle d'activité d'IndexedDB.
      * - Déchiffrement transparent : les clés et données transmises au callback sont automatiquement déchiffrées.
      *
      * @async
@@ -1083,6 +1124,7 @@ export class NIndexedDB {
             const direction = options.direction || 'next';
             const query = options.query;
             const secretKey = this.#getEffectiveSecretKey(options.secretKey);
+            const keyPath = this.#getStoreKeyPath(db, storeName);
 
             return new Promise((resolve) => {
                 let tx;
@@ -1133,25 +1175,25 @@ export class NIndexedDB {
 
                         const rawKey = cursorInstance.key;
                         const rawVal = cursorInstance.value;
-                        const clearKey = this.#isEncryptedKey(rawKey) ? this.#decryptKey(rawKey, secretKey) : rawKey;
-                        const clearVal = this.#restoreRecordAfterRead(store, rawVal, options);
 
-                        let stepResult;
-                        try {
-                            stepResult = callback(clearVal, clearKey, cursorInstance);
-                        } catch (callbackErr) {
-                            try {
-                                tx.abort();
-                            } catch {
-                                // Ignore
-                            }
-                            return finish(this.#fail(callbackErr, 'IDB_CURSOR_CALLBACK_ERROR'));
-                        }
+                        Promise.all([
+                            this.#isEncryptedKey(rawKey) ? this.#decryptKey(rawKey, secretKey) : Promise.resolve(rawKey),
+                            this.#restoreRecordAfterRead(keyPath, rawVal, options)
+                        ])
+                            .then(([clearKey, clearVal]) => {
+                                let stepResult;
+                                try {
+                                    stepResult = callback(clearVal, clearKey, cursorInstance);
+                                } catch (callbackErr) {
+                                    try {
+                                        tx.abort();
+                                    } catch {
+                                        // Ignore
+                                    }
+                                    return finish(this.#fail(callbackErr, 'IDB_CURSOR_CALLBACK_ERROR'));
+                                }
 
-                        // Support des callbacks asynchrones (Promesses)
-                        if (stepResult && typeof stepResult.then === 'function') {
-                            stepResult
-                                .then((asyncRes) => {
+                                return Promise.resolve(stepResult).then((asyncRes) => {
                                     if (asyncRes === false) {
                                         isStopped = true;
                                         return finish(this.#success(visitedCount));
@@ -1161,28 +1203,16 @@ export class NIndexedDB {
                                     } catch (continueErr) {
                                         finish(this.#fail(continueErr, 'IDB_CURSOR_CONTINUE_ERROR'));
                                     }
-                                })
-                                .catch((asyncErr) => {
-                                    try {
-                                        tx.abort();
-                                    } catch {
-                                        // Ignore
-                                    }
-                                    finish(this.#fail(asyncErr, 'IDB_CURSOR_CALLBACK_ERROR'));
                                 });
-                        } else {
-                            // Callback synchrone
-                            if (stepResult === false) {
-                                isStopped = true;
-                                return finish(this.#success(visitedCount));
-                            }
-
-                            try {
-                                cursorInstance.continue();
-                            } catch (continueErr) {
-                                finish(this.#fail(continueErr, 'IDB_CURSOR_CONTINUE_ERROR'));
-                            }
-                        }
+                            })
+                            .catch((asyncErr) => {
+                                try {
+                                    tx.abort();
+                                } catch {
+                                    // Ignore
+                                }
+                                finish(this.#fail(asyncErr, 'IDB_CURSOR_CALLBACK_ERROR'));
+                            });
                     };
 
                     req.onerror = () => {
@@ -1203,7 +1233,7 @@ export class NIndexedDB {
     }
 
     // =========================================================================
-    // Méthodes Internes Privées de Chiffrement et Transformation
+    // Méthodes Internes Privées de Chiffrement et Transformation (via encryptLocal / decryptLocal)
     // =========================================================================
 
     /**
@@ -1220,19 +1250,36 @@ export class NIndexedDB {
     }
 
     /**
-     * Retourne la clé secrète effective (surcharge passée en paramètre, clé d'instance ou clé par défaut).
+     * Retourne le `keyPath` d'un Object Store de manière synchrone.
+     * @private
+     * @param {IDBDatabase} db - Instance de la base ouverte.
+     * @param {string} storeName - Nom de l'Object Store.
+     * @returns {string|string[]|null}
+     */
+    #getStoreKeyPath(db, storeName) {
+        try {
+            if (!db || !db.objectStoreNames.contains(storeName)) {
+                return null;
+            }
+            const tx = db.transaction(storeName, 'readonly');
+            return tx.objectStore(storeName).keyPath || null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Retourne la clé secrète effective (surcharge passée en paramètre ou clé d'instance ;
+     * si vide, `NUtil.crypto.encryptLocal` utilise automatiquement l'empreinte du navigateur courant).
      * @private
      * @param {string} [customSecret] - Clé secrète ponctuelle optionnelle.
-     * @returns {string} Clé secrète résolue.
+     * @returns {string} Clé secrète résolue (ou `''` pour utiliser la clé du navigateur).
      */
     #getEffectiveSecretKey(customSecret) {
         if (typeof customSecret === 'string' && customSecret.trim()) {
             return customSecret.trim();
         }
-        if (this.#secretKey) {
-            return this.#secretKey;
-        }
-        return '__nlib_default_indexeddb_secret__';
+        return this.#secretKey || '';
     }
 
     /**
@@ -1246,107 +1293,74 @@ export class NIndexedDB {
     }
 
     /**
-     * Chiffre une clé de manière déterministe et réversible.
+     * Chiffre une clé de manière déterministe et réversible via `NUtil.crypto.encryptLocal`.
      * Permet la recherche directe en O(1) sans scanner l'espace de stockage.
      *
      * @private
      * @param {string} plainKey - Clé en clair.
-     * @param {string} secretKey - Clé secrète.
-     * @returns {string} Clé chiffrée préfixée (`enck:...`).
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
+     * @returns {Promise<string>} Clé chiffrée préfixée (`enck:...`).
      */
-    #encryptKey(plainKey, secretKey) {
+    async #encryptKey(plainKey, secretKey) {
         if (this.#isEncryptedKey(plainKey)) {
             return plainKey;
         }
-        const keyBytes = this.#utf8Encode(String(plainKey));
-        const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-        const ivMaterial = this.#sha256Bytes(this.#utf8Encode(`${plainKey}:${secretKey}`)).slice(0, 16);
-        const cipherBytes = this.#streamCipher(keyBytes, keyMaterial, ivMaterial);
-
-        const combined = new Uint8Array(16 + cipherBytes.length);
-        combined.set(ivMaterial, 0);
-        combined.set(cipherBytes, 16);
-
-        return `enck:${this.#bytesToBase64(combined)}`;
+        const cipherB64 = await NUtil.crypto.encryptLocal(String(plainKey), {
+            secretKey,
+            deterministic: true
+        });
+        return cipherB64 ? `enck:${cipherB64}` : String(plainKey);
     }
 
     /**
-     * Déchiffre une clé chiffrée pour restituer son nom en clair.
+     * Déchiffre une clé chiffrée via `NUtil.crypto.decryptLocal` pour restituer son nom en clair.
      *
      * @private
      * @param {string} encryptedKey - Clé chiffrée (`enck:...`).
-     * @param {string} secretKey - Clé secrète.
-     * @returns {string} Nom de clé en clair.
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
+     * @returns {Promise<string>} Nom de clé en clair.
      */
-    #decryptKey(encryptedKey, secretKey) {
+    async #decryptKey(encryptedKey, secretKey) {
         if (!this.#isEncryptedKey(encryptedKey)) {
             return encryptedKey;
         }
-        try {
-            const rawBase64 = encryptedKey.slice(5);
-            const combined = this.#base64ToBytes(rawBase64);
-            if (combined.length <= 16) {
-                return encryptedKey;
-            }
-
-            const iv = combined.slice(0, 16);
-            const cipherBytes = combined.slice(16);
-            const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-            const plainBytes = this.#streamCipher(cipherBytes, keyMaterial, iv);
-
-            return this.#utf8Decode(plainBytes);
-        } catch {
-            return encryptedKey;
-        }
+        const rawBase64 = encryptedKey.slice(5);
+        const plain = await NUtil.crypto.decryptLocal(rawBase64, secretKey);
+        return plain || encryptedKey;
     }
 
     /**
-     * Chiffre une valeur quelconque avec un IV aléatoire de 16 octets.
+     * Chiffre une valeur quelconque via `NUtil.crypto.encryptLocal`.
      *
      * @private
      * @param {any} value - Valeur à protéger.
-     * @param {string} secretKey - Clé secrète.
-     * @returns {string} Chaîne chiffrée Base64 préfixée (`encd:...`).
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
+     * @returns {Promise<string>} Chaîne chiffrée Base64 préfixée (`encd:...`).
      */
-    #encryptData(value, secretKey) {
+    async #encryptData(value, secretKey) {
         const jsonStr = JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
-        const dataBytes = this.#utf8Encode(jsonStr);
-        const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-        const iv = this.#randomBytes(16);
-
-        const cipherBytes = this.#streamCipher(dataBytes, keyMaterial, iv);
-        const combined = new Uint8Array(16 + cipherBytes.length);
-        combined.set(iv, 0);
-        combined.set(cipherBytes, 16);
-
-        return `encd:${this.#bytesToBase64(combined)}`;
+        const cipherB64 = await NUtil.crypto.encryptLocal(jsonStr, secretKey);
+        return `encd:${cipherB64}`;
     }
 
     /**
-     * Déchiffre une chaîne chiffrée `encd:...` et parse son JSON.
+     * Déchiffre une chaîne chiffrée `encd:...` via `NUtil.crypto.decryptLocal` et parse son JSON.
      *
      * @private
      * @param {string} encryptedString - Donnée chiffrée.
-     * @param {string} secretKey - Clé secrète.
-     * @returns {any} Donnée originale déchiffrée et typée.
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
+     * @returns {Promise<any>} Donnée originale déchiffrée et typée.
      */
-    #decryptData(encryptedString, secretKey) {
+    async #decryptData(encryptedString, secretKey) {
         if (typeof encryptedString !== 'string' || !encryptedString.startsWith('encd:')) {
             return encryptedString;
         }
         try {
             const rawBase64 = encryptedString.slice(5);
-            const combined = this.#base64ToBytes(rawBase64);
-            if (combined.length <= 16) {
+            const jsonStr = await NUtil.crypto.decryptLocal(rawBase64, secretKey);
+            if (!jsonStr) {
                 return null;
             }
-
-            const iv = combined.slice(0, 16);
-            const cipherBytes = combined.slice(16);
-            const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-            const plainBytes = this.#streamCipher(cipherBytes, keyMaterial, iv);
-            const jsonStr = this.#utf8Decode(plainBytes);
-
             return JSON.parse(jsonStr);
         } catch (err) {
             NUtil.log.warn('NIndexedDB : Échec du déchiffrement de la donnée.', {
@@ -1358,35 +1372,35 @@ export class NIndexedDB {
     }
 
     /**
-     * Prépare un enregistrement et sa clé pour l'insertion en appliquant les règles de chiffrement.
+     * Prépare un enregistrement et sa clé pour l'insertion en appliquant les règles de chiffrement via `encryptLocal`.
      * Gère avec précision les stores avec clé interne (`keyPath`) ou avec clé externe (`explicitKey`).
      *
      * @private
-     * @param {IDBObjectStore} store - Store cible.
+     * @param {string|string[]|null} keyPath - `keyPath` du Store cible.
      * @param {any} value - Valeur à écrire.
      * @param {IDBValidKey} [explicitKey] - Clé explicite pour store sans keyPath.
      * @param {NIndexedDBOptions} [options={}] - Options de chiffrement.
-     * @returns {{ value: any, key: any }} Objet prêt pour store.put ou store.add.
+     * @returns {Promise<{ value: any, key: any }>} Objet prêt pour store.put ou store.add.
      */
-    #prepareRecordForWrite(store, value, explicitKey, options = {}) {
+    async #prepareRecordForWrite(keyPath, value, explicitKey, options = {}) {
         const shouldEncryptKey = options.encryptKey ?? this.#encryptKey;
         const shouldEncryptData = options.encryptData ?? this.#encryptData;
         const secretKey = this.#getEffectiveSecretKey(options.secretKey);
 
-        const hasKeyPath = Boolean(store && store.keyPath);
+        const hasKeyPath = Boolean(keyPath);
 
         // Cas 1 : Store sans keyPath (clé externe)
         if (!hasKeyPath) {
             let finalKey = explicitKey;
             if (shouldEncryptKey && explicitKey !== undefined && explicitKey !== null) {
-                finalKey = this.#encryptKey(String(explicitKey), secretKey);
+                finalKey = await this.#encryptKey(String(explicitKey), secretKey);
             }
 
             let finalValue = value;
             if (shouldEncryptData) {
                 finalValue = {
                     __nlib_encrypted__: true,
-                    __payload__: this.#encryptData(value, secretKey)
+                    __payload__: await this.#encryptData(value, secretKey)
                 };
             }
 
@@ -1394,17 +1408,16 @@ export class NIndexedDB {
         }
 
         // Cas 2 : Store avec keyPath (clé interne in-line, ex: 'id')
-        const keyPath = store.keyPath;
         if (typeof keyPath === 'string') {
             const rawPk = (value && typeof value === 'object') ? value[keyPath] : explicitKey;
             let finalPk = rawPk;
 
             if (shouldEncryptKey && rawPk !== undefined && rawPk !== null) {
-                finalPk = this.#encryptKey(String(rawPk), secretKey);
+                finalPk = await this.#encryptKey(String(rawPk), secretKey);
             }
 
             if (shouldEncryptData) {
-                const encryptedPayload = this.#encryptData(value, secretKey);
+                const encryptedPayload = await this.#encryptData(value, secretKey);
                 const record = {
                     __nlib_encrypted__: true,
                     __payload__: encryptedPayload
@@ -1425,16 +1438,16 @@ export class NIndexedDB {
     }
 
     /**
-     * Restaure un enregistrement lu depuis IndexedDB en le déchiffrant si nécessaire.
+     * Restaure un enregistrement lu depuis IndexedDB en le déchiffrant via `decryptLocal` si nécessaire.
      * Rétrocompatible : retourne la donnée telle quelle si elle n'est pas chiffrée.
      *
      * @private
-     * @param {IDBObjectStore} store - Store source.
+     * @param {string|string[]|null} keyPath - `keyPath` du Store source.
      * @param {any} record - Enregistrement brut extrait d'IndexedDB.
      * @param {NIndexedDBOptions} [options={}] - Options de déchiffrement.
-     * @returns {any} Donnée en clair restaurée.
+     * @returns {Promise<any>} Donnée en clair restaurée.
      */
-    #restoreRecordAfterRead(store, record, options = {}) {
+    async #restoreRecordAfterRead(keyPath, record, options = {}) {
         if (record === null || record === undefined) {
             return record;
         }
@@ -1443,242 +1456,25 @@ export class NIndexedDB {
 
         // A. Donnée enveloppée dans un payload chiffré
         if (record && typeof record === 'object' && record.__nlib_encrypted__ === true && typeof record.__payload__ === 'string') {
-            const decrypted = this.#decryptData(record.__payload__, secretKey);
-            if (decrypted && typeof decrypted === 'object' && store && typeof store.keyPath === 'string') {
-                const kp = store.keyPath;
+            const decrypted = await this.#decryptData(record.__payload__, secretKey);
+            if (decrypted && typeof decrypted === 'object' && typeof keyPath === 'string') {
                 // Si la clé dans l'enveloppe était chiffrée, veiller à ce que la clé de l'objet soit en clair
-                if (this.#isEncryptedKey(record[kp])) {
-                    decrypted[kp] = this.#decryptKey(record[kp], secretKey);
+                if (this.#isEncryptedKey(record[keyPath])) {
+                    decrypted[keyPath] = await this.#decryptKey(record[keyPath], secretKey);
                 }
             }
             return decrypted;
         }
 
         // B. Enregistrement avec clé seule chiffrée (sans payload crypté)
-        if (record && typeof record === 'object' && store && typeof store.keyPath === 'string') {
-            const kp = store.keyPath;
-            if (this.#isEncryptedKey(record[kp])) {
-                const clearPk = this.#decryptKey(record[kp], secretKey);
-                return { ...record, [kp]: clearPk };
+        if (record && typeof record === 'object' && typeof keyPath === 'string') {
+            if (this.#isEncryptedKey(record[keyPath])) {
+                const clearPk = await this.#decryptKey(record[keyPath], secretKey);
+                return { ...record, [keyPath]: clearPk };
             }
         }
 
         return record;
-    }
-
-    /**
-     * Chiffrement par flot synchrone symétrique (KSA/PRGA 256 bits avec IV) en pur JS.
-     * @private
-     */
-    #streamCipher(dataBytes, keyBytes, ivBytes) {
-        const combined = new Uint8Array(keyBytes.length + ivBytes.length);
-        combined.set(keyBytes, 0);
-        combined.set(ivBytes, keyBytes.length);
-        const derivedKey = this.#sha256Bytes(combined);
-
-        const S = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) {
-            S[i] = i;
-        }
-        let j = 0;
-        for (let i = 0; i < 256; i++) {
-            j = (j + S[i] + derivedKey[i % derivedKey.length]) & 0xff;
-            const tmp = S[i];
-            S[i] = S[j];
-            S[j] = tmp;
-        }
-
-        const result = new Uint8Array(dataBytes.length);
-        let x = 0;
-        let y = 0;
-        for (let k = 0; k < dataBytes.length; k++) {
-            x = (x + 1) & 0xff;
-            y = (y + S[x]) & 0xff;
-            const tmp = S[x];
-            S[x] = S[y];
-            S[y] = tmp;
-            const rnd = S[(S[x] + S[y]) & 0xff];
-            result[k] = dataBytes[k] ^ rnd;
-        }
-        return result;
-    }
-
-    /**
-     * Hachage SHA-256 synchrone pur JS retournant un Uint8Array de 32 octets.
-     * @private
-     */
-    #sha256Bytes(messageBytes) {
-        const K = [
-            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-        ];
-
-        let h0 = 0x6a09e667;
-        let h1 = 0xbb67ae85;
-        let h2 = 0x3c6ef372;
-        let h3 = 0xa54ff53a;
-        let h4 = 0x510e527f;
-        let h5 = 0x9b05688c;
-        let h6 = 0x1f83d9ab;
-        let h7 = 0x5be0cd19;
-
-        const bitLength = messageBytes.length * 8;
-        const paddedLength = Math.ceil((messageBytes.length + 9) / 64) * 64;
-        const padded = new Uint8Array(paddedLength);
-        padded.set(messageBytes);
-        padded[messageBytes.length] = 0x80;
-
-        const view = new DataView(padded.buffer);
-        view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
-        view.setUint32(paddedLength - 4, bitLength >>> 0, false);
-
-        const W = new Uint32Array(64);
-        const rotr = (n, x) => (x >>> n) | (x << (32 - n));
-
-        for (let offset = 0; offset < paddedLength; offset += 64) {
-            for (let i = 0; i < 16; i++) {
-                W[i] = view.getUint32(offset + i * 4, false);
-            }
-            for (let i = 16; i < 64; i++) {
-                const s0 = rotr(7, W[i - 15]) ^ rotr(18, W[i - 15]) ^ (W[i - 15] >>> 3);
-                const s1 = rotr(17, W[i - 2]) ^ rotr(19, W[i - 2]) ^ (W[i - 2] >>> 10);
-                W[i] = (W[i - 16] + s0 + W[i - 7] + s1) >>> 0;
-            }
-
-            let a = h0;
-            let b = h1;
-            let c = h2;
-            let d = h3;
-            let e = h4;
-            let f = h5;
-            let g = h6;
-            let h = h7;
-
-            for (let i = 0; i < 64; i++) {
-                const S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
-                const ch = (e & f) ^ (~e & g);
-                const temp1 = (h + S1 + ch + K[i] + W[i]) >>> 0;
-                const S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
-                const maj = (a & b) ^ (a & c) ^ (b & c);
-                const temp2 = (S0 + maj) >>> 0;
-
-                h = g;
-                g = f;
-                f = e;
-                e = (d + temp1) >>> 0;
-                d = c;
-                c = b;
-                b = a;
-                a = (temp1 + temp2) >>> 0;
-            }
-
-            h0 = (h0 + a) >>> 0;
-            h1 = (h1 + b) >>> 0;
-            h2 = (h2 + c) >>> 0;
-            h3 = (h3 + d) >>> 0;
-            h4 = (h4 + e) >>> 0;
-            h5 = (h5 + f) >>> 0;
-            h6 = (h6 + g) >>> 0;
-            h7 = (h7 + h) >>> 0;
-        }
-
-        const out = new Uint8Array(32);
-        const outView = new DataView(out.buffer);
-        outView.setUint32(0, h0, false);
-        outView.setUint32(4, h1, false);
-        outView.setUint32(8, h2, false);
-        outView.setUint32(12, h3, false);
-        outView.setUint32(16, h4, false);
-        outView.setUint32(20, h5, false);
-        outView.setUint32(24, h6, false);
-        outView.setUint32(28, h7, false);
-
-        return out;
-    }
-
-    /**
-     * Génère des octets aléatoires cryptographiques sécurisés.
-     * @private
-     */
-    #randomBytes(length) {
-        const bytes = new Uint8Array(length);
-        if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-            crypto.getRandomValues(bytes);
-        } else {
-            for (let i = 0; i < length; i++) {
-                bytes[i] = Math.floor(Math.random() * 256);
-            }
-        }
-        return bytes;
-    }
-
-    /**
-     * Encode une chaîne UTF-8 en Uint8Array.
-     * @private
-     */
-    #utf8Encode(str) {
-        if (typeof TextEncoder !== 'undefined') {
-            return new TextEncoder().encode(str);
-        }
-        const utf8 = unescape(encodeURIComponent(str));
-        const arr = new Uint8Array(utf8.length);
-        for (let i = 0; i < utf8.length; i++) {
-            arr[i] = utf8.charCodeAt(i);
-        }
-        return arr;
-    }
-
-    /**
-     * Décode un Uint8Array en chaîne UTF-8.
-     * @private
-     */
-    #utf8Decode(bytes) {
-        if (typeof TextDecoder !== 'undefined') {
-            return new TextDecoder().decode(bytes);
-        }
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return decodeURIComponent(escape(binary));
-    }
-
-    /**
-     * Encode un Uint8Array en chaîne Base64 sûre.
-     * @private
-     */
-    #bytesToBase64(bytes) {
-        if (typeof Buffer !== 'undefined') {
-            return Buffer.from(bytes).toString('base64');
-        }
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return btoa(binary);
-    }
-
-    /**
-     * Décode une chaîne Base64 en Uint8Array.
-     * @private
-     */
-    #base64ToBytes(base64) {
-        if (typeof Buffer !== 'undefined') {
-            return new Uint8Array(Buffer.from(base64, 'base64'));
-        }
-        const binary = atob(base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-        }
-        return bytes;
     }
 
     // =========================================================================
@@ -1877,6 +1673,7 @@ export class NIndexedDB {
                 }
 
                 let reqResult = undefined;
+                let storeKeyPath = null;
                 let hasFinished = false;
 
                 const finish = (result) => {
@@ -1886,9 +1683,20 @@ export class NIndexedDB {
                     }
                 };
 
+                const finishWithTransform = async (rawRes, kp) => {
+                    if (hasFinished) return;
+                    try {
+                        const finalData = typeof transformResult === 'function'
+                            ? await transformResult(rawRes, kp)
+                            : rawRes;
+                        finish(this.#success(finalData));
+                    } catch (err) {
+                        finish(this.#fail(err, 'IDB_TRANSFORM_ERROR'));
+                    }
+                };
+
                 tx.oncomplete = () => {
-                    const finalData = typeof transformResult === 'function' ? transformResult(reqResult, tx.objectStore(storeName)) : reqResult;
-                    finish(this.#success(finalData));
+                    finishWithTransform(reqResult, storeKeyPath);
                 };
 
                 tx.onerror = () => {
@@ -1901,14 +1709,14 @@ export class NIndexedDB {
 
                 try {
                     const store = tx.objectStore(storeName);
+                    storeKeyPath = store.keyPath || null;
                     const req = callback(store, tx);
 
                     if (req && typeof req === 'object' && 'onsuccess' in req) {
                         req.onsuccess = () => {
                             reqResult = req.result;
                             if (mode === 'readonly') {
-                                const finalData = typeof transformResult === 'function' ? transformResult(reqResult, store) : reqResult;
-                                finish(this.#success(finalData));
+                                finishWithTransform(reqResult, storeKeyPath);
                             }
                         };
 
@@ -1918,8 +1726,7 @@ export class NIndexedDB {
                     } else {
                         reqResult = req;
                         if (mode === 'readonly') {
-                            const finalData = typeof transformResult === 'function' ? transformResult(reqResult, store) : reqResult;
-                            finish(this.#success(finalData));
+                            finishWithTransform(reqResult, storeKeyPath);
                         }
                     }
                 } catch (callbackErr) {
@@ -1991,6 +1798,7 @@ export class NIndexedDB {
 
                 try {
                     const store = tx.objectStore(storeName);
+                    const storeKeyPath = store.keyPath || null;
 
                     if (!store.indexNames.contains(indexName)) {
                         return finish(this.#fail(`L'index "${indexName}" n'existe pas dans le store "${storeName}".`, 'IDB_INDEX_NOT_FOUND'));
@@ -1999,12 +1807,16 @@ export class NIndexedDB {
                     const index = store.index(indexName);
                     const req = callback(index);
 
-                    req.onsuccess = () => {
-                        let res = req.result !== undefined ? req.result : null;
-                        if (typeof transformResult === 'function') {
-                            res = transformResult(res, store);
+                    req.onsuccess = async () => {
+                        try {
+                            let res = req.result !== undefined ? req.result : null;
+                            if (typeof transformResult === 'function') {
+                                res = await transformResult(res, storeKeyPath);
+                            }
+                            finish(this.#success(res));
+                        } catch (err) {
+                            finish(this.#fail(err, 'IDB_INDEX_TRANSFORM_ERROR'));
                         }
-                        finish(this.#success(res));
                     };
 
                     req.onerror = () => {

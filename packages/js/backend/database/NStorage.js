@@ -928,19 +928,17 @@ export class NStorage {
     // =========================================================================
 
     /**
-     * Retourne la clé secrète effective (surcharge passée en paramètre, clé d'instance ou clé par défaut).
+     * Retourne la clé secrète effective (surcharge passée en paramètre ou clé d'instance ;
+     * si vide, `NUtil.crypto` utilise automatiquement l'empreinte du navigateur courant).
      * @private
      * @param {string} [customSecret] - Clé secrète ponctuelle optionnelle.
-     * @returns {string} Clé secrète résolue.
+     * @returns {string} Clé secrète résolue (ou `''` pour utiliser la clé du navigateur).
      */
     #getEffectiveSecretKey(customSecret) {
         if (typeof customSecret === 'string' && customSecret.trim()) {
             return customSecret.trim();
         }
-        if (this.#secretKey) {
-            return this.#secretKey;
-        }
-        return '__nlib_default_storage_secret__';
+        return this.#secretKey || '';
     }
 
     /**
@@ -954,89 +952,62 @@ export class NStorage {
     }
 
     /**
-     * Chiffre une clé de manière déterministe et réversible.
+     * Chiffre une clé de manière déterministe et réversible via `NUtil.crypto.encryptLocalSync`.
      * Permet la recherche directe en O(1) sans scanner l'espace de stockage.
      *
      * @private
      * @param {string} plainKey - Clé en clair.
-     * @param {string} secretKey - Clé secrète.
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {string} Clé chiffrée préfixée (`enck:...`).
      */
     #encryptKey(plainKey, secretKey) {
         if (this.#isEncryptedKey(plainKey)) {
             return plainKey;
         }
-        const keyBytes = this.#utf8Encode(String(plainKey));
-        const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-        // IV déterministe de 16 octets dérivé de la clé et du secret
-        const ivMaterial = this.#sha256Bytes(this.#utf8Encode(`${plainKey}:${secretKey}`)).slice(0, 16);
-        const cipherBytes = this.#streamCipher(keyBytes, keyMaterial, ivMaterial);
-
-        const combined = new Uint8Array(16 + cipherBytes.length);
-        combined.set(ivMaterial, 0);
-        combined.set(cipherBytes, 16);
-
-        return `enck:${this.#bytesToBase64(combined)}`;
+        const cipherB64 = NUtil.crypto.encryptLocalSync(String(plainKey), {
+            secretKey,
+            deterministic: true
+        });
+        return cipherB64 ? `enck:${cipherB64}` : String(plainKey);
     }
 
     /**
-     * Déchiffre une clé chiffrée pour restituer son nom en clair.
+     * Déchiffre une clé chiffrée via `NUtil.crypto.decryptLocalSync` pour restituer son nom en clair.
      *
      * @private
      * @param {string} encryptedKey - Clé chiffrée (`enck:...`).
-     * @param {string} secretKey - Clé secrète.
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {string} Nom de clé en clair.
      */
     #decryptKey(encryptedKey, secretKey) {
         if (!this.#isEncryptedKey(encryptedKey)) {
             return encryptedKey;
         }
-        try {
-            const rawBase64 = encryptedKey.slice(5);
-            const combined = this.#base64ToBytes(rawBase64);
-            if (combined.length <= 16) {
-                return encryptedKey;
-            }
-
-            const iv = combined.slice(0, 16);
-            const cipherBytes = combined.slice(16);
-            const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-            const plainBytes = this.#streamCipher(cipherBytes, keyMaterial, iv);
-
-            return this.#utf8Decode(plainBytes);
-        } catch {
-            return encryptedKey;
-        }
+        const rawBase64 = encryptedKey.slice(5);
+        const plain = NUtil.crypto.decryptLocalSync(rawBase64, secretKey);
+        return plain || encryptedKey;
     }
 
     /**
-     * Chiffre une valeur quelconque avec un IV aléatoire de 16 octets.
+     * Chiffre une valeur quelconque de manière synchrone via `NUtil.crypto.encryptLocalSync`.
      *
      * @private
      * @param {any} value - Valeur à protéger.
-     * @param {string} secretKey - Clé secrète.
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {string} Chaîne chiffrée Base64 préfixée (`encd:...`).
      */
     #encryptData(value, secretKey) {
         const jsonStr = JSON.stringify(value, this.#jsonReplacer);
-        const dataBytes = this.#utf8Encode(jsonStr);
-        const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-        const iv = this.#randomBytes(16);
-
-        const cipherBytes = this.#streamCipher(dataBytes, keyMaterial, iv);
-        const combined = new Uint8Array(16 + cipherBytes.length);
-        combined.set(iv, 0);
-        combined.set(cipherBytes, 16);
-
-        return `encd:${this.#bytesToBase64(combined)}`;
+        const cipherB64 = NUtil.crypto.encryptLocalSync(jsonStr, secretKey);
+        return `encd:${cipherB64}`;
     }
 
     /**
-     * Déchiffre une chaîne chiffrée `encd:...` et parse son JSON.
+     * Déchiffre une chaîne chiffrée `encd:...` via `NUtil.crypto.decryptLocalSync` et parse son JSON.
      *
      * @private
      * @param {string} encryptedString - Donnée chiffrée.
-     * @param {string} secretKey - Clé secrète.
+     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {any} Donnée originale déchiffrée et typée.
      */
     #decryptData(encryptedString, secretKey) {
@@ -1045,17 +1016,10 @@ export class NStorage {
         }
         try {
             const rawBase64 = encryptedString.slice(5);
-            const combined = this.#base64ToBytes(rawBase64);
-            if (combined.length <= 16) {
+            const jsonStr = NUtil.crypto.decryptLocalSync(rawBase64, secretKey);
+            if (!jsonStr) {
                 return null;
             }
-
-            const iv = combined.slice(0, 16);
-            const cipherBytes = combined.slice(16);
-            const keyMaterial = this.#sha256Bytes(this.#utf8Encode(secretKey));
-            const plainBytes = this.#streamCipher(cipherBytes, keyMaterial, iv);
-            const jsonStr = this.#utf8Decode(plainBytes);
-
             return JSON.parse(jsonStr);
         } catch (err) {
             NUtil.log.warn('NStorage : Échec du déchiffrement de la donnée.', {
@@ -1064,251 +1028,6 @@ export class NStorage {
             });
             return null;
         }
-    }
-
-    /**
-     * Chiffrement par flot synchrone symétrique (KSA/PRGA 256 bits avec IV) en pur JS.
-     * @private
-     */
-    #streamCipher(dataBytes, keyBytes, ivBytes) {
-        const combined = new Uint8Array(keyBytes.length + ivBytes.length);
-        combined.set(keyBytes, 0);
-        combined.set(ivBytes, keyBytes.length);
-        const derivedKey = this.#sha256Bytes(combined);
-
-        const S = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) {
-            S[i] = i;
-        }
-        let j = 0;
-        for (let i = 0; i < 256; i++) {
-            j = (j + S[i] + derivedKey[i % derivedKey.length]) & 0xff;
-            const tmp = S[i];
-            S[i] = S[j];
-            S[j] = tmp;
-        }
-
-        const result = new Uint8Array(dataBytes.length);
-        let x = 0;
-        let y = 0;
-        for (let k = 0; k < dataBytes.length; k++) {
-            x = (x + 1) & 0xff;
-            y = (y + S[x]) & 0xff;
-            const tmp = S[x];
-            S[x] = S[y];
-            S[y] = tmp;
-            const rnd = S[(S[x] + S[y]) & 0xff];
-            result[k] = dataBytes[k] ^ rnd;
-        }
-        return result;
-    }
-
-    /**
-     * Hachage SHA-256 synchrone pur JS retournant un Uint8Array de 32 octets.
-     * @private
-     */
-    #sha256Bytes(messageBytes) {
-        const K = [
-            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-        ];
-
-        let h0 = 0x6a09e667;
-        let h1 = 0xbb67ae85;
-        let h2 = 0x3c6ef372;
-        let h3 = 0xa54ff53a;
-        let h4 = 0x510e527f;
-        let h5 = 0x9b05688c;
-        let h6 = 0x1f83d9ab;
-        let h7 = 0x5be0cd19;
-
-        const bitLength = messageBytes.length * 8;
-        const paddedLength = Math.ceil((messageBytes.length + 9) / 64) * 64;
-        const padded = new Uint8Array(paddedLength);
-        padded.set(messageBytes);
-        padded[messageBytes.length] = 0x80;
-
-        const view = new DataView(padded.buffer);
-        view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
-        view.setUint32(paddedLength - 4, bitLength >>> 0, false);
-
-        const W = new Uint32Array(64);
-        const rotr = (n, x) => (x >>> n) | (x << (32 - n));
-
-        for (let offset = 0; offset < paddedLength; offset += 64) {
-            for (let i = 0; i < 16; i++) {
-                W[i] = view.getUint32(offset + i * 4, false);
-            }
-            for (let i = 16; i < 64; i++) {
-                const s0 = rotr(7, W[i - 15]) ^ rotr(18, W[i - 15]) ^ (W[i - 15] >>> 3);
-                const s1 = rotr(17, W[i - 2]) ^ rotr(19, W[i - 2]) ^ (W[i - 2] >>> 10);
-                W[i] = (W[i - 16] + s0 + W[i - 7] + s1) >>> 0;
-            }
-
-            let a = h0;
-            let b = h1;
-            let c = h2;
-            let d = h3;
-            let e = h4;
-            let f = h5;
-            let g = h6;
-            let h = h7;
-
-            for (let i = 0; i < 64; i++) {
-                const S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
-                const ch = (e & f) ^ (~e & g);
-                const temp1 = (h + S1 + ch + K[i] + W[i]) >>> 0;
-                const S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
-                const maj = (a & b) ^ (a & c) ^ (b & c);
-                const temp2 = (S0 + maj) >>> 0;
-
-                h = g;
-                g = f;
-                f = e;
-                e = (d + temp1) >>> 0;
-                d = c;
-                c = b;
-                b = a;
-                a = (temp1 + temp2) >>> 0;
-            }
-
-            h0 = (h0 + a) >>> 0;
-            h1 = (h1 + b) >>> 0;
-            h2 = (h2 + c) >>> 0;
-            h3 = (h3 + d) >>> 0;
-            h4 = (h4 + e) >>> 0;
-            h5 = (h5 + f) >>> 0;
-            h6 = (h6 + g) >>> 0;
-            h7 = (h7 + h) >>> 0;
-        }
-
-        const out = new Uint8Array(32);
-        const outView = new DataView(out.buffer);
-        outView.setUint32(0, h0, false);
-        outView.setUint32(4, h1, false);
-        outView.setUint32(8, h2, false);
-        outView.setUint32(12, h3, false);
-        outView.setUint32(16, h4, false);
-        outView.setUint32(20, h5, false);
-        outView.setUint32(24, h6, false);
-        outView.setUint32(28, h7, false);
-        return out;
-    }
-
-    /**
-     * Génère un tableau d'octets pseudo-aléatoires.
-     * @private
-     */
-    #randomBytes(length = 16) {
-        const size = Math.max(1, Math.trunc(length));
-        const bytes = new Uint8Array(size);
-        if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
-            try {
-                globalThis.crypto.getRandomValues(bytes);
-                return bytes;
-            } catch {
-                // fallback
-            }
-        }
-        for (let i = 0; i < size; i++) {
-            bytes[i] = Math.floor(Math.random() * 256);
-        }
-        return bytes;
-    }
-
-    /**
-     * Encode une chaîne en Uint8Array UTF-8.
-     * @private
-     */
-    #utf8Encode(str) {
-        if (typeof TextEncoder !== 'undefined') {
-            return new TextEncoder().encode(str);
-        }
-        const utf8 = [];
-        for (let i = 0; i < str.length; i++) {
-            let charcode = str.charCodeAt(i);
-            if (charcode < 0x80) utf8.push(charcode);
-            else if (charcode < 0x800) {
-                utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
-            } else if (charcode < 0xd800 || charcode >= 0xe000) {
-                utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
-            } else {
-                i++;
-                charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-                utf8.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
-            }
-        }
-        return new Uint8Array(utf8);
-    }
-
-    /**
-     * Décode un Uint8Array UTF-8 en chaîne.
-     * @private
-     */
-    #utf8Decode(bytes) {
-        if (typeof TextDecoder !== 'undefined') {
-            return new TextDecoder().decode(bytes);
-        }
-        let str = '';
-        let i = 0;
-        while (i < bytes.length) {
-            const b = bytes[i++];
-            if (b < 128) str += String.fromCharCode(b);
-            else if (b > 191 && b < 224) str += String.fromCharCode(((b & 31) << 6) | (bytes[i++] & 63));
-            else if (b > 223 && b < 240) str += String.fromCharCode(((b & 15) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63));
-            else {
-                const cp = (((b & 7) << 18) | ((bytes[i++] & 63) << 12) | ((bytes[i++] & 63) << 6) | (bytes[i++] & 63)) - 0x10000;
-                str += String.fromCharCode((cp >> 10) + 0xd800, (cp & 0x3ff) + 0xdc00);
-            }
-        }
-        return str;
-    }
-
-    /**
-     * Convertit un Uint8Array en Base64.
-     * @private
-     */
-    #bytesToBase64(bytes) {
-        if (typeof btoa === 'function') {
-            let binary = '';
-            const len = bytes.length;
-            const chunkSize = 8192;
-            for (let i = 0; i < len; i += chunkSize) {
-                const sub = bytes.subarray(i, Math.min(i + chunkSize, len));
-                binary += String.fromCharCode.apply(null, sub);
-            }
-            return btoa(binary);
-        }
-        if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-            return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
-        }
-        return '';
-    }
-
-    /**
-     * Convertit une chaîne Base64 en Uint8Array.
-     * @private
-     */
-    #base64ToBytes(base64) {
-        if (typeof atob === 'function') {
-            const binary = atob(base64.trim());
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-                bytes[i] = binary.charCodeAt(i);
-            }
-            return bytes;
-        }
-        if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-            const buf = Buffer.from(base64.trim(), 'base64');
-            return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-        }
-        return new Uint8Array(0);
     }
 
     /**

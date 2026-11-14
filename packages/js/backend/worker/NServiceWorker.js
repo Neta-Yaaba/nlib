@@ -548,7 +548,8 @@ export class NServiceWorker {
             if (this.#swUrl && this.isNativeSupported) {
                 try {
                     this.#registration = await navigator.serviceWorker.register(this.#swUrl, {
-                        scope: this.#scope
+                        scope: this.#scope,
+                        type: "module"
                     });
                     nativeRegistered = true;
                     this.#syncConfigToNativeSw();

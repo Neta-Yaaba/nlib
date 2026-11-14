@@ -33,11 +33,12 @@ import { NUtil } from './NUtil.js';
  * const clearText = await cryptoUtil.decrypt(payload, keyPair.privateKey);
  * console.log(clearText); // 'Message confidentiel pour le serveur PHP'
  *
- * @example <caption>Exemple 2 : Chiffrement local autonome (AES-GCM 256 ou repli automatique)</caption>
+ * @example <caption>Exemple 2 : Chiffrement local autonome (asynchrone AES-GCM ou synchrone pur JS)</caption>
  * const cryptoUtil = new NCryptography();
- * const cipherLocal = await cryptoUtil.encryptLocal('Données hors-ligne SQLite');
- * const plainLocal = await cryptoUtil.decryptLocal(cipherLocal);
- * console.log(plainLocal); // 'Données hors-ligne SQLite'
+ * const cipherAsync = await cryptoUtil.encryptLocal('Données hors-ligne SQLite');
+ * console.log(await cryptoUtil.decryptLocal(cipherAsync)); // 'Données hors-ligne SQLite'
+ * const cipherSync = cryptoUtil.encryptLocalSync('Données locales synchrones');
+ * console.log(cryptoUtil.decryptLocalSync(cipherSync));    // 'Données locales synchrones'
  *
  * @example <caption>Exemple 3 : Chiffrement symétrique interopérable (AES-256-CBC) et hachage SHA-256</caption>
  * const cryptoUtil = new NCryptography();
@@ -206,6 +207,121 @@ export class NCryptography {
             result[k] = dataBytes[k] ^ rnd;
         }
         return result;
+    }
+
+    /**
+     * Construit à la volée (sans aucun stockage persistant) la signature matérielle et logicielle
+     * stable du navigateur et de l'appareil courant.
+     * Combine les informations de `NUtil.env`, `NUtil.sys`, `navigator`, `Intl` et `location.origin`.
+     *
+     * @returns {string} Chaîne brute d'empreinte du navigateur courant.
+     *
+     * @example <caption>Exemple 1 : Empreinte interne</caption>
+     * // Interne : #buildBrowserFingerprintRaw()
+     *
+     * @example <caption>Exemple 2 : Toujours déterministe sur le même navigateur</caption>
+     * // Interne : #buildBrowserFingerprintRaw() === #buildBrowserFingerprintRaw()
+     */
+    #buildBrowserFingerprintRaw() {
+        const parts = ['nlib-browser-key-v1'];
+
+        try {
+            parts.push(
+                String(NUtil.env?.os || 'unknown'),
+                String(NUtil.env?.browser || 'unknown'),
+                String(Boolean(NUtil.env?.isMobile)),
+                String(Boolean(NUtil.env?.isTablet)),
+                String(Boolean(NUtil.env?.isDesktop)),
+                String(Boolean(NUtil.env?.isWebView)),
+                String(NUtil.sys?.arch || 'unknown'),
+                String(NUtil.sys?.cpuCores || 1),
+                String(NUtil.sys?.deviceMemory ?? 'na')
+            );
+        } catch {
+            // Ignore
+        }
+
+        if (typeof navigator !== 'undefined') {
+            parts.push(
+                String(navigator.userAgent || ''),
+                String(navigator.platform || ''),
+                String(navigator.vendor || ''),
+                String(navigator.product || ''),
+                String(navigator.productSub || ''),
+                String(navigator.language || ''),
+                String(Array.isArray(navigator.languages) ? navigator.languages.join(',') : ''),
+                String(navigator.maxTouchPoints ?? 0),
+                String(navigator.pdfViewerEnabled ?? ''),
+                String(navigator.cookieEnabled ?? '')
+            );
+
+            if (navigator.userAgentData && typeof navigator.userAgentData === 'object') {
+                const brands = Array.isArray(navigator.userAgentData.brands)
+                    ? navigator.userAgentData.brands.map((b) => `${b.brand || ''}:${b.version || ''}`).join('|')
+                    : '';
+                parts.push(
+                    String(navigator.userAgentData.platform || ''),
+                    String(Boolean(navigator.userAgentData.mobile)),
+                    brands
+                );
+            }
+        }
+
+        if (typeof Intl !== 'undefined' && typeof Intl.DateTimeFormat === 'function') {
+            try {
+                const resolved = Intl.DateTimeFormat().resolvedOptions();
+                parts.push(
+                    String(resolved?.timeZone || ''),
+                    String(resolved?.calendar || ''),
+                    String(resolved?.numberingSystem || '')
+                );
+            } catch {
+                // Ignore
+            }
+        }
+
+        if (typeof globalThis !== 'undefined' && globalThis.location) {
+            parts.push(String(globalThis.location.origin || globalThis.location.host || ''));
+        }
+
+        return parts.join('||');
+    }
+
+    /**
+     * Dérive à la volée une clé cryptographique de 256 bits (`Uint8Array` de 32 octets)
+     * exclusivement à partir des informations intrinsèques du navigateur courant,
+     * sans jamais stocker de clé en persistance ni l'embarquer dans les données chiffrées.
+     *
+     * @returns {Uint8Array} Clé de 32 octets propre au navigateur courant.
+     *
+     * @example <caption>Exemple 1 : Clé 256 bits du navigateur</caption>
+     * // Interne : #getBrowserKeyBytes() -> Uint8Array(32)
+     *
+     * @example <caption>Exemple 2 : Identique à chaque appel dans le même navigateur</caption>
+     * // Interne : #getBrowserKeyBytes()
+     */
+    #getBrowserKeyBytes() {
+        const rawFingerprint = this.#buildBrowserFingerprintRaw();
+        const rawBytes = new TextEncoder().encode(rawFingerprint);
+        return this.#sha256Fallback(rawBytes);
+    }
+
+    /**
+     * Vérifie en temps constant si deux tableaux d'octets (`Uint8Array`) sont strictement identiques.
+     *
+     * @param {Uint8Array} a - Premier tableau d'octets.
+     * @param {Uint8Array} b - Second tableau d'octets.
+     * @returns {boolean} `true` si identiques.
+     */
+    #timingSafeEqualBytes(a, b) {
+        if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array) || a.length !== b.length || a.length === 0) {
+            return false;
+        }
+        let diff = 0;
+        for (let i = 0; i < a.length; i++) {
+            diff |= a[i] ^ b[i];
+        }
+        return diff === 0;
     }
 
     // =========================================================================
@@ -431,6 +547,97 @@ export class NCryptography {
         return Array.from(digestBytes)
             .map((b) => b.toString(16).padStart(2, '0'))
             .join('');
+    }
+
+    /**
+     * Calcule de manière totalement **synchrone** l'empreinte SHA-256 d'un texte ou d'un `Uint8Array`
+     * en utilisant directement le moteur SHA-256 pur JS (ignore `crypto.subtle`).
+     *
+     * @param {string|Uint8Array} data - Données à hacher.
+     * @param {'hex'|'base64'|'bytes'} [outputFormat='hex'] - Format de sortie (`'hex'`, `'base64'` ou `'bytes'`).
+     * @returns {string|Uint8Array} Empreinte SHA-256 synchrone.
+     *
+     * @example <caption>Exemple 1 : Empreinte SHA-256 synchrone en hexadécimal</caption>
+     * const cryptoUtil = new NCryptography();
+     * const hash = cryptoUtil.sha256Sync('NLib');
+     * console.log(hash.length); // 64
+     *
+     * @example <caption>Exemple 2 : Empreinte SHA-256 synchrone en octets (Uint8Array 32 octets)</caption>
+     * const cryptoUtil = new NCryptography();
+     * const keyBytes = cryptoUtil.sha256Sync('MonSecret', 'bytes');
+     * console.log(keyBytes.length); // 32
+     */
+    sha256Sync(data, outputFormat = 'hex') {
+        const inputBytes = data instanceof Uint8Array
+            ? data
+            : new TextEncoder().encode(String(data ?? ''));
+
+        const digestBytes = this.#sha256Fallback(inputBytes);
+
+        if (outputFormat === 'bytes') {
+            return digestBytes;
+        }
+        if (outputFormat === 'base64') {
+            return this.bytesToBase64(digestBytes);
+        }
+        return Array.from(digestBytes)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
+    /**
+     * Calcule de manière **synchrone** une signature HMAC-SHA256 en pur JavaScript.
+     *
+     * @param {string|Uint8Array} key - Clé secrète HMAC.
+     * @param {string|Uint8Array} data - Données à signer.
+     * @param {'hex'|'base64'|'bytes'} [outputFormat='bytes'] - Format de sortie (`'bytes'`, `'hex'` ou `'base64'`).
+     * @returns {Uint8Array|string} Signature HMAC-SHA256 de 32 octets (ou chaîne `'hex'` / `'base64'`).
+     *
+     * @example <caption>Exemple 1 : Signature HMAC-SHA256 en octets</caption>
+     * const cryptoUtil = new NCryptography();
+     * const mac = cryptoUtil.hmacSha256Sync('MaCleSecrete', 'Message');
+     * console.log(mac.length); // 32
+     *
+     * @example <caption>Exemple 2 : Signature HMAC-SHA256 en hexadécimal</caption>
+     * const cryptoUtil = new NCryptography();
+     * const macHex = cryptoUtil.hmacSha256Sync('MaCleSecrete', 'Message', 'hex');
+     * console.log(macHex.length); // 64
+     */
+    hmacSha256Sync(key, data, outputFormat = 'bytes') {
+        const keyBytes = key instanceof Uint8Array
+            ? key
+            : new TextEncoder().encode(String(key ?? ''));
+        const dataBytes = data instanceof Uint8Array
+            ? data
+            : new TextEncoder().encode(String(data ?? ''));
+
+        const blockSize = 64;
+        const normalizedKey = keyBytes.length > blockSize
+            ? this.#sha256Fallback(keyBytes)
+            : keyBytes;
+
+        const ipad = new Uint8Array(blockSize + dataBytes.length);
+        const opad = new Uint8Array(blockSize + 32);
+
+        for (let i = 0; i < blockSize; i++) {
+            const k = i < normalizedKey.length ? normalizedKey[i] : 0;
+            ipad[i] = k ^ 0x36;
+            opad[i] = k ^ 0x5c;
+        }
+        ipad.set(dataBytes, blockSize);
+        const innerHash = this.#sha256Fallback(ipad);
+        opad.set(innerHash, blockSize);
+        const macBytes = this.#sha256Fallback(opad);
+
+        if (outputFormat === 'hex') {
+            return Array.from(macBytes)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('');
+        }
+        if (outputFormat === 'base64') {
+            return this.bytesToBase64(macBytes);
+        }
+        return macBytes;
     }
 
     // =========================================================================
@@ -995,125 +1202,371 @@ export class NCryptography {
     }
 
     // =========================================================================
-    // Méthodes publiques — Chiffrement Local Autonome (Stockage Hors-Ligne)
+    // Méthodes publiques — Chiffrement Local Lié au Navigateur (Asynchrone & Synchrone)
     // =========================================================================
 
     /**
-     * Chiffre des données pour le stockage local (combinaison binaire `IV (12 octets) + Clé AES-GCM (32 octets) + Ciphertext`
-     * encodée en Base64). Si `crypto.subtle` n'est pas disponible, utilise le chiffrement par flot avec clé embarquée.
+     * Chiffre des données de manière **asynchrone** pour le stockage local (ex: `NIndexedDB`).
      *
-     * @param {string} data - Données à protéger pour le stockage local.
-     * @returns {Promise<string>} Chaîne Base64 compacte prête à être stockée.
+     * Fonctionnement :
+     * - Par défaut (**sans clé fournie**), la clé de 256 bits (`32 octets`) est dérivée dynamiquement à la volée
+     *   à partir des informations intrinsèques du navigateur et de l'appareil courant (`#getBrowserKeyBytes()`).
+     * - Aucune clé n'est enregistrée en persistance et aucune clé n'est incluse dans la chaîne Base64.
+     * - Seul ce même navigateur pourra reconstituer la clé à la volée pour déchiffrer la donnée avec `decryptLocal()`.
+     * - Supporte optionnellement une `secretKey` personnalisée ainsi que le mode `deterministic: true` (pour chiffrer
+     *   des clés de recherche en `O(1)`).
+     * - Utilise `AES-GCM 256 bits` (avec tag d'authentification matériel 128 bits) si `crypto.subtle` est disponible,
+     *   ou le chiffrement par flot 256 bits authentifié par `HMAC-SHA256` en repli.
      *
-     * @example <caption>Exemple 1 : Chiffrer une chaîne pour le stockage local</caption>
+     * @param {string|Object} data - Données à protéger pour le stockage local.
+     * @param {string|Object} [optionsOrSecret={}] - Clé secrète optionnelle (`string`) ou objet d'options.
+     * @param {string} [optionsOrSecret.secretKey=''] - Clé secrète personnalisée optionnelle (si omise, utilise les informations du navigateur).
+     * @param {boolean} [optionsOrSecret.deterministic=false] - Si `true`, génère un IV déterministe de 12 octets pour produire toujours le même chiffré sur ce navigateur.
+     * @returns {Promise<string>} Chaîne Base64 contenant uniquement `[Mode (1B) + IV + Ciphertext (+ Tag)]`.
+     *
+     * @example <caption>Exemple 1 : Chiffrer une donnée locale liée exclusivement au navigateur courant (sans clé)</caption>
      * const cryptoUtil = new NCryptography();
      * const token = await cryptoUtil.encryptLocal('SessionUtilisateur123');
-     * console.log(typeof token); // 'string'
+     * console.log(await cryptoUtil.decryptLocal(token)); // 'SessionUtilisateur123'
      *
-     * @example <caption>Exemple 2 : Chaîne vide retourne une chaîne vide</caption>
+     * @example <caption>Exemple 2 : Chiffrement local déterministe pour une clé IndexedDB</caption>
      * const cryptoUtil = new NCryptography();
-     * console.log(await cryptoUtil.encryptLocal('')); // ''
+     * const k1 = await cryptoUtil.encryptLocal('user_42', { deterministic: true });
+     * const k2 = await cryptoUtil.encryptLocal('user_42', { deterministic: true });
+     * console.log(k1 === k2); // true
      */
-    async encryptLocal(data) {
-        if (!data) {
+    async encryptLocal(data, optionsOrSecret = {}) {
+        if (data === null || data === undefined || data === '') {
             return '';
         }
-        const dataBuffer = new TextEncoder().encode(String(data));
-
-        if (this.isWebCryptoAvailable()) {
-            try {
-                const key = await globalThis.crypto.subtle.generateKey(
-                    { name: 'AES-GCM', length: 256 },
-                    true,
-                    ['encrypt']
-                );
-                const iv = this.randomBytes(12);
-                const encrypted = await globalThis.crypto.subtle.encrypt(
-                    { name: 'AES-GCM', iv },
-                    key,
-                    dataBuffer
-                );
-                const exportedKey = await globalThis.crypto.subtle.exportKey('raw', key);
-                const combined = new Uint8Array(iv.length + exportedKey.byteLength + encrypted.byteLength);
-                combined.set(iv, 0);
-                combined.set(new Uint8Array(exportedKey), iv.length);
-                combined.set(new Uint8Array(encrypted), iv.length + exportedKey.byteLength);
-
-                return this.bytesToBase64(combined);
-            } catch (err) {
-                NUtil.log.warn('NCryptography.encryptLocal: Échec WebCrypto AES-GCM, bascule sur le chiffrement de repli.', {
-                    code: 'WARN_CRYPTO_FALLBACK',
-                    cause: err
-                });
+        try {
+            const plainString = typeof data === 'string' ? data : JSON.stringify(data);
+            if (!plainString) {
+                return '';
             }
-        }
+            const dataBuffer = new TextEncoder().encode(plainString);
 
-        // Alternative hors Web Crypto : IV (12 octets) + Clé aléatoire (32 octets) + StreamCipher
-        const iv = this.randomBytes(12);
-        const rawKey = this.randomBytes(32);
-        const cipherBytes = this.#streamCipherFallback(dataBuffer, rawKey, iv);
-        const combined = new Uint8Array(12 + 32 + cipherBytes.length);
-        combined.set(iv, 0);
-        combined.set(rawKey, 12);
-        combined.set(cipherBytes, 44);
-        return this.bytesToBase64(combined);
+            const secretKey = typeof optionsOrSecret === 'string'
+                ? optionsOrSecret.trim()
+                : (typeof optionsOrSecret?.secretKey === 'string' ? optionsOrSecret.secretKey.trim() : '');
+            const deterministic = typeof optionsOrSecret === 'object' && optionsOrSecret !== null
+                ? Boolean(optionsOrSecret.deterministic)
+                : false;
+
+            const keyMaterial = secretKey.length > 0
+                ? await this.sha256(secretKey, 'bytes')
+                : this.#getBrowserKeyBytes();
+
+            let iv;
+            if (deterministic) {
+                const ivInput = new Uint8Array(dataBuffer.length + keyMaterial.length);
+                ivInput.set(dataBuffer, 0);
+                ivInput.set(keyMaterial, dataBuffer.length);
+                iv = this.#sha256Fallback(ivInput).slice(0, 12);
+            } else {
+                iv = this.randomBytes(12);
+            }
+
+            if (this.isWebCryptoAvailable()) {
+                try {
+                    const key = await globalThis.crypto.subtle.importKey(
+                        'raw',
+                        keyMaterial,
+                        { name: 'AES-GCM', length: 256 },
+                        false,
+                        ['encrypt']
+                    );
+                    const encrypted = await globalThis.crypto.subtle.encrypt(
+                        { name: 'AES-GCM', iv },
+                        key,
+                        dataBuffer
+                    );
+                    const encryptedBytes = new Uint8Array(encrypted);
+                    // Format binaire : [0x01 (AES-GCM, 1 octet) | IV (12 octets) | Ciphertext+AuthTag]
+                    const combined = new Uint8Array(1 + iv.length + encryptedBytes.length);
+                    combined[0] = 0x01;
+                    combined.set(iv, 1);
+                    combined.set(encryptedBytes, 1 + iv.length);
+
+                    return this.bytesToBase64(combined);
+                } catch (err) {
+                    NUtil.log.warn('NCryptography.encryptLocal: Échec WebCrypto AES-GCM, bascule sur le chiffrement de repli.', {
+                        code: 'WARN_CRYPTO_FALLBACK',
+                        cause: err
+                    });
+                }
+            }
+
+            // Repli sans WebCrypto : délègue à encryptLocalSync
+            return this.encryptLocalSync(plainString, optionsOrSecret);
+        } catch (err) {
+            NUtil.log.warn('NCryptography.encryptLocal: Échec du chiffrement local.', {
+                code: 'ERR_CRYPTO_ENCRYPT_LOCAL',
+                cause: err
+            });
+            return '';
+        }
     }
 
     /**
-     * Déchiffre une chaîne Base64 issue de `encryptLocal()`.
+     * Déchiffre de manière **asynchrone** une chaîne Base64 issue de `encryptLocal()`.
+     * Par défaut (sans clé fournie), recalcule à la volée la clé de 256 bits à partir des informations
+     * du navigateur courant (`#getBrowserKeyBytes()`).
+     * Si la chaîne provient d'un autre navigateur ou a été altérée, la vérification d'intégrité
+     * (`AES-GCM` ou `HMAC-SHA256`) échoue et la méthode retourne `''`.
      *
      * @param {string} encryptedData - Chaîne Base64 générée par `encryptLocal()`.
-     * @returns {Promise<string>} Données déchiffrées en clair, ou `''` si invalide.
+     * @param {string|Object} [optionsOrSecret={}] - Clé secrète personnalisée optionnelle (`string`) ou `{ secretKey }`.
+     * @returns {Promise<string>} Données déchiffrées en clair, ou `''` si le navigateur ne correspond pas ou si la donnée est invalide.
      *
-     * @example <caption>Exemple 1 : Déchiffrer une donnée locale</caption>
+     * @example <caption>Exemple 1 : Déchiffrer une donnée locale sur le même navigateur</caption>
      * const cryptoUtil = new NCryptography();
      * const encrypted = await cryptoUtil.encryptLocal('SecretLocal');
      * console.log(await cryptoUtil.decryptLocal(encrypted)); // 'SecretLocal'
      *
-     * @example <caption>Exemple 2 : Donnée corrompue retourne une chaîne vide</caption>
+     * @example <caption>Exemple 2 : Donnée corrompue ou issue d'un autre navigateur retourne ''</caption>
      * const cryptoUtil = new NCryptography();
      * console.log(await cryptoUtil.decryptLocal('invalide')); // ''
      */
-    async decryptLocal(encryptedData) {
+    async decryptLocal(encryptedData, optionsOrSecret = {}) {
         if (!encryptedData || typeof encryptedData !== 'string') {
             return '';
         }
-        const combined = this.base64ToBytes(encryptedData);
-        if (combined.length <= 44) {
-            return this.decodeBase64(encryptedData);
+        try {
+            const combined = this.base64ToBytes(encryptedData);
+            if (combined.length < 14) {
+                return '';
+            }
+
+            const secretKey = typeof optionsOrSecret === 'string'
+                ? optionsOrSecret.trim()
+                : (typeof optionsOrSecret?.secretKey === 'string' ? optionsOrSecret.secretKey.trim() : '');
+
+            const keyMaterial = secretKey.length > 0
+                ? await this.sha256(secretKey, 'bytes')
+                : this.#getBrowserKeyBytes();
+
+            const mode = combined[0];
+
+            // Mode 0x01 : AES-GCM 256 bits lié à l'empreinte du navigateur (ou secretKey)
+            if (mode === 0x01) {
+                if (!this.isWebCryptoAvailable() || combined.length <= 13) {
+                    return '';
+                }
+                const iv = combined.slice(1, 13);
+                const encrypted = combined.slice(13);
+                try {
+                    const key = await globalThis.crypto.subtle.importKey(
+                        'raw',
+                        keyMaterial,
+                        { name: 'AES-GCM', length: 256 },
+                        false,
+                        ['decrypt']
+                    );
+                    const decrypted = await globalThis.crypto.subtle.decrypt(
+                        { name: 'AES-GCM', iv },
+                        key,
+                        encrypted
+                    );
+                    return new TextDecoder().decode(decrypted);
+                } catch (err) {
+                    NUtil.log.warn('NCryptography.decryptLocal: Échec du déchiffrement AES-GCM (navigateur différent ou donnée altérée).', {
+                        code: 'WARN_CRYPTO_LOCAL_AUTH_FAILED',
+                        cause: err
+                    });
+                    return '';
+                }
+            }
+
+            // Modes 0x02 et 0x03 (Stream Cipher + HMAC / Déterministe)
+            return this.decryptLocalSync(encryptedData, optionsOrSecret);
+        } catch (err) {
+            NUtil.log.warn('NCryptography.decryptLocal: Échec du déchiffrement local.', {
+                code: 'ERR_CRYPTO_DECRYPT_LOCAL',
+                cause: err
+            });
+            return '';
+        }
+    }
+
+    /**
+     * Chiffre des données de manière **totalement synchrone** pour le stockage local (ex: `NStorage`).
+     * Ignore `crypto.subtle` et utilise directement le moteur synchrone SHA-256 + Stream Cipher 256 bits + HMAC-SHA256.
+     *
+     * Deux modes de fonctionnement :
+     * 1. **Mode autonome lié au navigateur (sans clé fournie)** : Dérive la clé de 256 bits à la volée depuis
+     *    les informations du navigateur courant (`#getBrowserKeyBytes()`), sans aucune clé enregistrée en persistance
+     *    ni embarquée dans le Base64, et authentifie le chiffré avec un tag HMAC-SHA256 de 16 octets.
+     * 2. **Mode à clé secrète personnalisée (`secretKey`)** : Dérive la clé en 256 bits via `sha256Sync(secretKey, 'bytes')`.
+     *    Si `deterministic: true` (pour les clés de stockage `O(1)`), utilise un IV déterministe de 16 octets.
+     *    Sinon, utilise un IV aléatoire de 12 octets et un tag HMAC-SHA256 de 16 octets.
+     *
+     * @param {string|Object} data - Chaîne ou donnée à chiffrer localement.
+     * @param {string|Object} [optionsOrSecret={}] - Clé secrète (`string`) ou objet d'options.
+     * @param {string} [optionsOrSecret.secretKey=''] - Clé secrète personnalisée optionnelle (si omise, utilise les informations du navigateur).
+     * @param {boolean} [optionsOrSecret.deterministic=false] - Si `true`, génère un IV déterministe pour produire toujours le même chiffré à partir de la même entrée sur ce navigateur.
+     * @returns {string} Chaîne Base64 chiffrée (ou `''` si l'entrée est vide).
+     *
+     * @example <caption>Exemple 1 : Chiffrement local synchrone lié au navigateur (sans clé à donner)</caption>
+     * const cryptoUtil = new NCryptography();
+     * const token = cryptoUtil.encryptLocalSync('SessionUtilisateur123');
+     * console.log(cryptoUtil.decryptLocalSync(token)); // 'SessionUtilisateur123'
+     *
+     * @example <caption>Exemple 2 : Chiffrement local synchrone déterministe (pour clés de stockage)</caption>
+     * const cryptoUtil = new NCryptography();
+     * const encKey1 = cryptoUtil.encryptLocalSync('user_id', { deterministic: true });
+     * const encKey2 = cryptoUtil.encryptLocalSync('user_id', { deterministic: true });
+     * console.log(encKey1 === encKey2); // true
+     * console.log(cryptoUtil.decryptLocalSync(encKey1)); // 'user_id'
+     */
+    encryptLocalSync(data, optionsOrSecret = {}) {
+        if (data === null || data === undefined || data === '') {
+            return '';
         }
 
-        const iv = combined.slice(0, 12);
-        const exportedKey = combined.slice(12, 44);
-        const encrypted = combined.slice(44);
+        try {
+            const plainString = typeof data === 'string' ? data : JSON.stringify(data);
+            if (!plainString) {
+                return '';
+            }
+            const dataBuffer = new TextEncoder().encode(plainString);
 
-        if (this.isWebCryptoAvailable()) {
-            try {
-                const key = await globalThis.crypto.subtle.importKey(
-                    'raw',
-                    exportedKey,
-                    { name: 'AES-GCM', length: 256 },
-                    true,
-                    ['decrypt']
-                );
-                const decrypted = await globalThis.crypto.subtle.decrypt(
-                    { name: 'AES-GCM', iv },
-                    key,
-                    encrypted
-                );
-                return new TextDecoder().decode(decrypted);
-            } catch (err) {
-                NUtil.log.warn('NCryptography.decryptLocal: Échec du déchiffrement AES-GCM, tentative avec le moteur de repli.', {
-                    code: 'WARN_CRYPTO_FALLBACK',
-                    cause: err
-                });
-                const plainBytes = this.#streamCipherFallback(encrypted, exportedKey, iv);
+            const secretKey = typeof optionsOrSecret === 'string'
+                ? optionsOrSecret.trim()
+                : (typeof optionsOrSecret?.secretKey === 'string' ? optionsOrSecret.secretKey.trim() : '');
+            const deterministic = typeof optionsOrSecret === 'object' && optionsOrSecret !== null
+                ? Boolean(optionsOrSecret.deterministic)
+                : false;
+
+            // Clé 256 bits : soit dérivée de secretKey si fournie, soit dérivée des informations du navigateur courant
+            const keyMaterial = secretKey.length > 0
+                ? this.sha256Sync(secretKey, 'bytes')
+                : this.#getBrowserKeyBytes();
+
+            // Cas A : Mode déterministe (pour les clés O(1) de NStorage) -> [0x03 | IV déterministe (16B) | Ciphertext]
+            if (deterministic) {
+                const ivInput = new Uint8Array(dataBuffer.length + keyMaterial.length);
+                ivInput.set(dataBuffer, 0);
+                ivInput.set(keyMaterial, dataBuffer.length);
+                const iv = this.#sha256Fallback(ivInput).slice(0, 16);
+
+                const cipherBytes = this.#streamCipherFallback(dataBuffer, keyMaterial, iv);
+                const combined = new Uint8Array(1 + 16 + cipherBytes.length);
+                combined[0] = 0x03;
+                combined.set(iv, 1);
+                combined.set(cipherBytes, 17);
+                return this.bytesToBase64(combined);
+            }
+
+            // Cas B : Mode standard avec IV aléatoire (12B) + Tag d'intégrité HMAC-SHA256 (16B) -> [0x02 | IV (12B) | Tag (16B) | Ciphertext]
+            const iv = this.randomBytes(12);
+            const cipherBytes = this.#streamCipherFallback(dataBuffer, keyMaterial, iv);
+            const macInput = new Uint8Array(iv.length + cipherBytes.length);
+            macInput.set(iv, 0);
+            macInput.set(cipherBytes, iv.length);
+            const macTag = this.hmacSha256Sync(keyMaterial, macInput, 'bytes').slice(0, 16);
+
+            const combined = new Uint8Array(1 + 12 + 16 + cipherBytes.length);
+            combined[0] = 0x02;
+            combined.set(iv, 1);
+            combined.set(macTag, 13);
+            combined.set(cipherBytes, 29);
+            return this.bytesToBase64(combined);
+        } catch (err) {
+            NUtil.log.warn('NCryptography.encryptLocalSync: Échec du chiffrement local synchrone.', {
+                code: 'ERR_CRYPTO_ENCRYPT_LOCAL_SYNC',
+                cause: err
+            });
+            return '';
+        }
+    }
+
+    /**
+     * Déchiffre de manière **totalement synchrone** une chaîne Base64 générée par `encryptLocalSync()`.
+     * Par défaut (sans clé fournie), utilise la clé de 256 bits dérivée à la volée des informations du navigateur courant.
+     * Si la chaîne provient d'un autre navigateur ou a été altérée, retourne `''`.
+     *
+     * @param {string} encryptedData - Chaîne Base64 générée par `encryptLocalSync()`.
+     * @param {string|Object} [optionsOrSecret={}] - Clé secrète personnalisée optionnelle (`string`) ou `{ secretKey }`.
+     * @returns {string} Données déchiffrées en clair, ou `''` si le navigateur/clé ne correspond pas.
+     *
+     * @example <caption>Exemple 1 : Déchiffrer une donnée locale sur le même navigateur (sans clé)</caption>
+     * const cryptoUtil = new NCryptography();
+     * const encrypted = cryptoUtil.encryptLocalSync('SecretLocalSync');
+     * console.log(cryptoUtil.decryptLocalSync(encrypted)); // 'SecretLocalSync'
+     *
+     * @example <caption>Exemple 2 : Déchiffrer une donnée protégée par une clé secrète personnalisée</caption>
+     * const cryptoUtil = new NCryptography();
+     * const encrypted = cryptoUtil.encryptLocalSync('DonnéeSensible', 'MonSecret');
+     * console.log(cryptoUtil.decryptLocalSync(encrypted, 'MonSecret')); // 'DonnéeSensible'
+     */
+    decryptLocalSync(encryptedData, optionsOrSecret = {}) {
+        if (!encryptedData || typeof encryptedData !== 'string') {
+            return '';
+        }
+
+        try {
+            const combined = this.base64ToBytes(encryptedData);
+            if (combined.length < 18) {
+                return '';
+            }
+
+            const secretKey = typeof optionsOrSecret === 'string'
+                ? optionsOrSecret.trim()
+                : (typeof optionsOrSecret?.secretKey === 'string' ? optionsOrSecret.secretKey.trim() : '');
+
+            const keyMaterial = secretKey.length > 0
+                ? this.sha256Sync(secretKey, 'bytes')
+                : this.#getBrowserKeyBytes();
+
+            const mode = combined[0];
+
+            // Mode 0x03 : Déterministe [0x03 | IV (16B) | Ciphertext]
+            if (mode === 0x03) {
+                const iv = combined.slice(1, 17);
+                const cipherBytes = combined.slice(17);
+                const plainBytes = this.#streamCipherFallback(cipherBytes, keyMaterial, iv);
+                const expectedIvInput = new Uint8Array(plainBytes.length + keyMaterial.length);
+                expectedIvInput.set(plainBytes, 0);
+                expectedIvInput.set(keyMaterial, plainBytes.length);
+                const expectedIv = this.#sha256Fallback(expectedIvInput).slice(0, 16);
+
+                if (!this.#timingSafeEqualBytes(iv, expectedIv)) {
+                    return '';
+                }
                 return new TextDecoder().decode(plainBytes);
             }
-        }
 
-        const plainBytes = this.#streamCipherFallback(encrypted, exportedKey, iv);
-        return new TextDecoder().decode(plainBytes);
+            // Mode 0x02 : Authentifié par HMAC [0x02 | IV (12B) | Tag (16B) | Ciphertext]
+            if (mode === 0x02) {
+                if (combined.length <= 29) {
+                    return '';
+                }
+                const iv = combined.slice(1, 13);
+                const expectedTag = combined.slice(13, 29);
+                const cipherBytes = combined.slice(29);
+
+                const macInput = new Uint8Array(iv.length + cipherBytes.length);
+                macInput.set(iv, 0);
+                macInput.set(cipherBytes, iv.length);
+                const computedTag = this.hmacSha256Sync(keyMaterial, macInput, 'bytes').slice(0, 16);
+
+                if (!this.#timingSafeEqualBytes(expectedTag, computedTag)) {
+                    return '';
+                }
+
+                const plainBytes = this.#streamCipherFallback(cipherBytes, keyMaterial, iv);
+                return new TextDecoder().decode(plainBytes);
+            }
+
+            return '';
+        } catch (err) {
+            NUtil.log.warn('NCryptography.decryptLocalSync: Échec du déchiffrement local synchrone.', {
+                code: 'ERR_CRYPTO_DECRYPT_LOCAL_SYNC',
+                cause: err
+            });
+            return '';
+        }
     }
 }
 
