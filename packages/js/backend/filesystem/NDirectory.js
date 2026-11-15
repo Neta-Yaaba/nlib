@@ -18,6 +18,7 @@
  *   et retours normalisés prévisibles.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -69,7 +70,7 @@ import { NUtil } from '../utils/NUtil.js';
  * const totalBytes = await NUtil.dir.size('projets');
  * console.log(found.length, NUtil.num.formatBytes(totalBytes));
  */
-export class NDirectory {
+export class NDirectory extends NObject {
 
     // =========================================================================
     // Propriétés privées

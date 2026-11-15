@@ -18,6 +18,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -47,7 +48,7 @@ import { NUtil } from './NUtil.js';
  * const decrypted = await cryptoUtil.decryptSymmetric(encrypted, 'MaCleSecrete');
  * console.log(decrypted); // 'Texte secret'
  */
-export class NCryptography {
+export class NCryptography extends NObject {
 
     // =========================================================================
     // Méthodes privées internes (Moteur de repli JS pur : SHA-256 & Stream Cipher)

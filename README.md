@@ -88,6 +88,16 @@ Si le volume du CSS grandit (thèmes, design tokens partagés), il pourra être 
 
 ---
 
+## Ce que fait NLib (`@nlib/js-backend`)
+
+`@nlib/js-backend` fournit une couche logique JavaScript pure (sans dépendance DOM ni npm) dont toutes les classes héritent de `NObject` (cycle de vie, état observable avec événements, sérialisation JSON, clonage et destruction) :
+
+- **Noyau et événements (`core/`)** : `NObject` (socle commun avec `util` et `event` intégrés) et `NEvent` (bus d'événements synchrone/asynchrone avec `on`, `once`, `off`, `emit`, `emitAsync`, `waitFor`).
+- **Journalisation, configuration et diagnostic (`log/`, `config/`, `environment/`, `system/`)** : `NLog` (journaux multi-niveaux, contexte, filtres, export/import), `NConfig` (accès typé par chemins hiérarchiques, parsing `.env`, validation `require` et verrouillage `freeze`), `NEnvironment` (détection du runtime Navigateur/Node/Worker/ServiceWorker, OS et capacités) et `NSystem` (métriques CPU/mémoire/réseau/batterie, chronométrage et snapshots).
+- **Utilitaires purs (`utils/`)** : `NUtil` (façade singleton paresseuse) donnant accès à `NCryptography` (SHA-256, HMAC, AES-GCM local, chiffrement hybride RSA-OAEP + AES-GCM), `NString`, `NNumber`, `NDate`, `NArray`, `NJson`, `NMath`, `NColor`, `NRegex`, `NFormat` et `NValidate`.
+- **Persistance locale et fichiers (`database/`, `filesystem/`, `cache/`)** : `NDatabase` unifiant `NStorage` (clé-valeur chiffré avec contextes), `NIndexedDB` et `NSql` (SQLite WebAssembly persisté en IndexedDB) ; `NFile` et `NDirectory` (abstraction fichiers/répertoires) ; `NCache` (cache mémoire/persistant avec TTL et politiques d'éviction).
+- **Réseau, services et concurrence (`requests/`, `worker/`)** : `NNetwork` (HTTP/fetch et connectivité), `NTableRequest` (requêtes tabulaires/paginées), `NRequestManager` (file, annulation et retries), `NService` (client de service et temps réel), `NWorker` / `NWorkerManager` (orchestration de Web Workers / Worker Threads) et `NServiceWorker` (gestion du cycle de vie et des messages Service Worker).
+
 ## Démarrage rapide
 
 Prérequis : Node.js >= 18 et pnpm >= 9.
@@ -117,7 +127,7 @@ const res = await NUtil.db.idb.getAll('ntable'); // IndexedDB : { ok, data, erro
 
 ## Avancement
 
-- Fait : `packages/js/backend` (core, utils, config, system, environment, worker, requests, database).
+- Fait : `packages/js/backend` — 11 modules complets (`core`, `log`, `config`, `environment`, `system`, `utils`, `database`, `filesystem`, `cache`, `requests` dont `NService`, `worker` dont `NServiceWorker`), héritage universel `NObject`, typings TypeScript (`index.d.ts`) et suite de 49 tests unitaires (`tests.html` / `tests/index.js`).
 - Squelette : `packages/js/frontend` (`dom/`, `style/`), `website/`.
 - À venir : classes du frontend, serveurs PHP et Node, conteneurs natifs.
 

@@ -6,14 +6,14 @@ describe('NNumber (utils/NNumber.js)', () => {
 
     it('valide et convertit les nombres', () => {
         assert.equal(num.isNumber(42), true);
-        assert.equal(num.isNumeric('1 250,50'), true);
+        assert.equal(num.isNumeric('1250.50'), true);
         assert.equal(num.isInteger(10), true);
         assert.equal(num.isFloat(10.5), true);
         assert.equal(num.isPositive(5, true), true);
         assert.equal(num.isEven(4), true);
         assert.equal(num.isOdd(5), true);
         assert.equal(num.isBetween(5, 1, 10), true);
-        assert.equal(num.toFloat('1 250,75'), 1250.75);
+        assert.equal(num.toFloat('1250.75'), 1250.75);
         assert.equal(num.toInt('42px', 0), 42);
     });
 

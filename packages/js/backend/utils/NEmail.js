@@ -11,6 +11,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -33,7 +34,7 @@ import { NUtil } from './NUtil.js';
  * console.log(emailUtil.extractFromText('Écrivez à support@nlib.dev ou info@nlib.dev'));
  * // ['support@nlib.dev', 'info@nlib.dev']
  */
-export class NEmail {
+export class NEmail extends NObject {
 
     // =========================================================================
     // Méthodes publiques — Validation & Vérifications

@@ -14,10 +14,10 @@ describe('NWorkerManager (worker/NWorkerManager.js)', () => {
         const pool = mgr.createPool('calcPool', {}, 2);
         assert.equal(pool.length, 2);
         assert.equal(mgr.has('calcPool'), true);
+        assert.notEqual(pool[0], pool[1]);
 
-        const wA = mgr.get('calcPool');
-        const wB = mgr.get('calcPool');
-        assert.notEqual(wA, wB);
+        const chosen = mgr.get('calcPool');
+        assert.ok(pool.includes(chosen));
 
         mgr.terminateAll();
         assert.equal(mgr.size, 0);

@@ -12,6 +12,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -34,7 +35,7 @@ import { NUtil } from './NUtil.js';
  * const amt = new NAmount();
  * console.log(amt.allocate(100, 3)); // [33.34, 33.33, 33.33] (somme exacte = 100)
  */
-export class NAmount {
+export class NAmount extends NObject {
 
     // =========================================================================
     // Méthodes privées internes (Arrondi financier exact sans état)

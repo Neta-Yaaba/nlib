@@ -16,6 +16,8 @@
  * - Ne contient aucune méthode statique : s'utilise via une instance ou via `NUtil.env`.
  */
 
+import { NObject } from '../core/NObject.js';
+
 /**
  * @class NEnvironment
  * @description Utilitaire fournissant toutes les informations sur l'environnement d'exécution
@@ -37,7 +39,7 @@
  * console.log(NUtil.env.os);
  * console.log(NUtil.env.info);
  */
-export class NEnvironment {
+export class NEnvironment extends NObject {
 
     // =========================================================================
     // Getters d'instance — Type d'Environnement (Runtime)

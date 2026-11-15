@@ -25,6 +25,7 @@
  */
 
 import { NEvent } from '../core/NEvent.js';
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -61,7 +62,7 @@ import { NUtil } from '../utils/NUtil.js';
  * const logoUrl = await sw.resolveFileUrl('/assets/logo.png');
  * console.log(logoUrl);
  */
-export class NServiceWorker {
+export class NServiceWorker extends NObject {
 
     // =========================================================================
     // Propriétés privées
@@ -213,6 +214,7 @@ export class NServiceWorker {
      * });
      */
     constructor(options = {}) {
+        super(options);
         this.configure(options);
     }
 

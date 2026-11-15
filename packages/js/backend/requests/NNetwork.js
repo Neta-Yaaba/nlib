@@ -12,6 +12,7 @@
  * et intégration via `NUtil.network`.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -35,7 +36,7 @@ import { NUtil } from '../utils/NUtil.js';
  * const resNative = await netNative.post('https://external-api.com/auth', { apiKey: 'secret' });
  * console.log(resNative.ok, resNative.data);
  */
-export class NNetwork {
+export class NNetwork extends NObject {
 
     // =========================================================================
     // Propriétés privées
@@ -210,6 +211,7 @@ export class NNetwork {
      * });
      */
     constructor(options = {}) {
+        super(options);
         if (options && typeof options === 'object') {
             if (options.driver === 'fetch' || options.driver === 'xhr' || options.driver === 'native' || options.driver === 'auto') {
                 this.#driver = options.driver;

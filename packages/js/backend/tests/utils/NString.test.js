@@ -7,7 +7,7 @@ describe('NString (utils/NString.js)', () => {
     it('valide, compare et nettoie les chaînes avec accents et casse', () => {
         assert.equal(str.isString('abc'), true);
         assert.equal(str.isEmpty('   '), true);
-        assert.equal(str.isNotEmpty(' a '), true);
+        assert.equal(str.isEmpty(' a '), false);
         assert.equal(str.equals('Éléphant', 'elephant', { caseSensitive: false, ignoreAccents: true }), true);
         assert.equal(str.contains('Bonjour le monde', 'MONDE', { caseSensitive: false }), true);
         assert.equal(str.cleanSpaces('  un   deux   trois  '), 'un deux trois');
@@ -15,7 +15,7 @@ describe('NString (utils/NString.js)', () => {
 
     it('transforme la casse, génère des slugs et interpole des templates', () => {
         assert.equal(str.capitalize('bonjour'), 'Bonjour');
-        assert.equal(str.capitalizeWords('jean pierre'), 'Jean Pierre');
+        assert.equal(str.toTitleCase('jean pierre'), 'Jean Pierre');
         assert.equal(str.toCamelCase('user_first_name'), 'userFirstName');
         assert.equal(str.toPascalCase('user_first_name'), 'UserFirstName');
         assert.equal(str.toSnakeCase('userFirstName'), 'user_first_name');

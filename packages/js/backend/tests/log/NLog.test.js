@@ -13,28 +13,30 @@ describe('NLog (log/NLog.js)', () => {
         log.warn('Warn msg');
         log.error('Error msg', { code: 500 });
 
-        assert.equal(log.count(), 4);
-        assert.equal(log.count('error'), 1);
-        assert.equal(log.getLastLog('error').message, 'Error msg');
-        assert.equal(log.getLastLog('debug').context.app, 'TestApp');
+        assert.equal(log.getLogs().length, 4);
+        assert.equal(log.getLogs({ level: 'error' }).length, 1);
+        const lastErr = log.getLogs({ level: 'error' }).at(-1);
+        assert.equal(lastErr.message, 'Error msg');
+        assert.equal(log.getLogs({ level: 'debug' })[0].context.app, 'TestApp');
     });
 
     it('capture les exceptions, filtre, exporte et importe les journaux', () => {
         const log = new NLog({ consoleEnabled: false });
-        log.captureException(new Error('Boom'), 'Crash détecté', { userId: 7 });
+        log.captureException(new Error('Boom détecté'), { userId: 7 });
 
-        const errors = log.getLogs({ level: 'error', search: 'Crash' });
+        const errors = log.getLogs({ level: 'error', search: 'Boom' });
         assert.equal(errors.length, 1);
 
-        const exported = log.export(false);
+        const exported = log.export('json');
         log.clear();
-        assert.equal(log.count(), 0);
+        assert.equal(log.getLogs().length, 0);
 
-        const importedCount = log.import(exported);
-        assert.equal(importedCount, 1);
-        assert.equal(log.count(), 1);
+        const importedRes = log.import(exported);
+        assert.equal(importedRes.success, true);
+        assert.equal(importedRes.count, 1);
+        assert.equal(log.getLogs().length, 1);
 
         log.destroy();
-        assert.equal(log.count(), 0);
+        assert.equal(log.getLogs().length, 0);
     });
 });

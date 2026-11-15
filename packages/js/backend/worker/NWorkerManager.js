@@ -10,8 +10,8 @@
  * Règles : n'hérite pas de `NObject`, aucune méthode statique, allocations mémoire à la demande.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NWorker } from './NWorker.js';
-import { NManagedWorker } from './NManagedWorker.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -31,7 +31,7 @@ import { NUtil } from '../utils/NUtil.js';
  * // Dans le Worker :
  * const info = await NWorker.requestMain('requestApp', { action: 'getDeviceInfo' });
  */
-export class NWorkerManager {
+export class NWorkerManager extends NObject {
 
     // =========================================================================
     // Propriétés privées (Allocation paresseuse)
@@ -74,6 +74,7 @@ export class NWorkerManager {
      * console.log(manager.hasAction('invokeNative')); // true
      */
     constructor() {
+        super();
         this.registerAction('invokeNative', async (params) => {
             return NUtil.sys.invokeNative(params);
         });
@@ -290,8 +291,41 @@ export class NWorkerManager {
      * @example <caption>Exemple 2 : Worker depuis une fonction inline</caption>
      * NUtil.worker.create('tmp', { source: () => { console.log('worker'); } });
      */
+    /**
+     * Instancie un `NWorker` rattaché à ce gestionnaire en redirigeant `onRequest`
+     * vers les actions enregistrées dans ce `NWorkerManager`.
+     *
+     * @param {Object} options - Options transmises à `NWorker`.
+     * @returns {NWorker}
+     * @private
+     */
+    #createManagedWorker(options) {
+        const worker = new NWorker(options);
+        const defaultOnRequest = worker.onRequest.bind(worker);
+        worker.onRequest = async (action, params, onUpdate) => {
+            if (this.hasAction(action)) {
+                try {
+                    return await this.executeAction(action, params, onUpdate);
+                } catch (err) {
+                    NUtil.log.error(`NWorkerManager [${worker.name}]: Erreur lors de la délégation de l'action "${action}".`, {
+                        code: 'ERR_MANAGED_ACTION_EXEC',
+                        cause: err
+                    });
+                    return {
+                        success: false,
+                        code: 'ERR_MANAGED_ACTION_EXEC',
+                        error: 'ERR_MANAGED_ACTION_EXEC',
+                        message: err?.message ?? String(err)
+                    };
+                }
+            }
+            return defaultOnRequest(action, params, onUpdate);
+        };
+        return worker;
+    }
+
     create(name, options = {}) {
-        return this.add(name, new NManagedWorker({ ...options, name }, this));
+        return this.add(name, this.#createManagedWorker({ ...options, name }));
     }
 
     /**
@@ -359,7 +393,7 @@ export class NWorkerManager {
         const list = [];
 
         for (let i = 0; i < count; i++) {
-            const worker = new NManagedWorker({ ...options, name: `${name}#${i}` }, this);
+            const worker = this.#createManagedWorker({ ...options, name: `${name}#${i}` });
             worker.event.once('destroy', () => {
                 const pool = this.#pools?.get(name);
                 if (!pool) return;

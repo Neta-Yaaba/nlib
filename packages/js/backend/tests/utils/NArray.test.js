@@ -8,8 +8,8 @@ describe('NArray (utils/NArray.js)', () => {
         assert.equal(arr.isArray([1, 2]), true);
         assert.equal(arr.first([10, 20, 30]), 10);
         assert.equal(arr.last([10, 20, 30]), 30);
-        assert.equal(arr.at([10, 20, 30], -1), 30);
-        assert.deepEqual(arr.compact([0, 1, null, '', 2, undefined]), [1, 2]);
+        assert.equal(arr.get([10, 20, 30], -1), 30);
+        assert.deepEqual(arr.compact([0, 1, null, '', 2, undefined]), [0, 1, 2]);
         assert.deepEqual(arr.unique([1, 2, 2, 3, 1]), [1, 2, 3]);
         assert.deepEqual(arr.chunk([1, 2, 3, 4], 2), [[1, 2], [3, 4]]);
 

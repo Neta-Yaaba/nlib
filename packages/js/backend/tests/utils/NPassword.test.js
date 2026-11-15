@@ -7,9 +7,9 @@ describe('NPassword (utils/NPassword.js)', () => {
     it('génère, valide et évalue la robustesse des mots de passe et PIN', async () => {
         const generated = pwd.generate(16);
         assert.equal(generated.length, 16);
-        assert.equal(pwd.isStrong(generated), true);
+        assert.equal(pwd.isValid(generated), true);
 
-        const evalResult = pwd.strength(generated);
+        const evalResult = pwd.evaluate(generated);
         assert.ok(evalResult.score >= 3);
 
         const pin = pwd.generatePin(6);

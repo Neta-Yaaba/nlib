@@ -12,6 +12,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -35,7 +36,7 @@ import { NUtil } from './NUtil.js';
  * console.log(phoneUtil.toWhatsAppUrl('+226 70 12 34 56', 'Bonjour'));
  * // 'https://wa.me/22670123456?text=Bonjour'
  */
-export class NPhoneNumber {
+export class NPhoneNumber extends NObject {
 
     // =========================================================================
     // Méthodes publiques — Nettoyage & Validation

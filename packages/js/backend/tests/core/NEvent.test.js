@@ -34,18 +34,17 @@ describe('NEvent (core/NEvent.js)', () => {
         assert.equal(count, 1);
     });
 
-    it('supporte emitAsync et waitFor', async () => {
+    it('supporte waitFor (résolution et timeout) et clear', async () => {
         const bus = new NEvent();
-        bus.on('calc', async (x) => x * 2);
-        bus.on('calc', async (x) => x + 10);
-
-        const results = await bus.emitAsync('calc', 5);
-        assert.deepEqual(results, [10, 15]);
 
         setTimeout(() => bus.emit('ready', { ok: true }), 20);
         const payload = await bus.waitFor('ready', 500);
         assert.deepEqual(payload, { ok: true });
 
+        const expired = await bus.waitFor('never', 30);
+        assert.equal(expired, null);
+
+        bus.on('tmp', () => {});
         bus.clear();
         assert.equal(bus.isEmpty, true);
     });

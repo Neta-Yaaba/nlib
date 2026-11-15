@@ -25,6 +25,7 @@
  * sans méthode statique superflue, et compatible avec le Main Thread (DOM) et les Web Workers (`WorkerGlobalScope`).
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -82,7 +83,7 @@ import { NUtil } from '../utils/NUtil.js';
  * // Chiffrer la clé uniquement
  * await db.put('ntable', { id: 2, note: 'publique' }, { encryptKey: true, encryptData: false });
  */
-export class NIndexedDB {
+export class NIndexedDB extends NObject {
 
     // =========================================================================
     // Propriétés privées (Encapsulation stricte)
@@ -173,6 +174,7 @@ export class NIndexedDB {
      * });
      */
     constructor(options = {}) {
+        super(options);
         if (options && typeof options === 'object') {
             if (typeof options.name === 'string' && options.name.trim()) {
                 this.#name = options.name.trim();
@@ -528,7 +530,7 @@ export class NIndexedDB {
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
         const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
         const lookupKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? await this.#encryptKey(String(key), secretKey)
+            ? await this.#encryptKeyValue(String(key), secretKey)
             : key;
 
         return this.#executeStoreRequest(storeName, 'readonly', (store) => {
@@ -660,7 +662,7 @@ export class NIndexedDB {
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
         const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
         const targetKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? await this.#encryptKey(String(key), secretKey)
+            ? await this.#encryptKeyValue(String(key), secretKey)
             : key;
 
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
@@ -1013,7 +1015,7 @@ export class NIndexedDB {
             for (const key of keys) {
                 targetKeys.push(
                     shouldEncryptKey && !this.#isEncryptedKey(key)
-                        ? await this.#encryptKey(String(key), secretKey)
+                        ? await this.#encryptKeyValue(String(key), secretKey)
                         : key
                 );
             }
@@ -1301,7 +1303,7 @@ export class NIndexedDB {
      * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {Promise<string>} Clé chiffrée préfixée (`enck:...`).
      */
-    async #encryptKey(plainKey, secretKey) {
+    async #encryptKeyValue(plainKey, secretKey) {
         if (this.#isEncryptedKey(plainKey)) {
             return plainKey;
         }
@@ -1337,7 +1339,7 @@ export class NIndexedDB {
      * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {Promise<string>} Chaîne chiffrée Base64 préfixée (`encd:...`).
      */
-    async #encryptData(value, secretKey) {
+    async #encryptDataValue(value, secretKey) {
         const jsonStr = JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
         const cipherB64 = await NUtil.crypto.encryptLocal(jsonStr, secretKey);
         return `encd:${cipherB64}`;
@@ -1393,14 +1395,14 @@ export class NIndexedDB {
         if (!hasKeyPath) {
             let finalKey = explicitKey;
             if (shouldEncryptKey && explicitKey !== undefined && explicitKey !== null) {
-                finalKey = await this.#encryptKey(String(explicitKey), secretKey);
+                finalKey = await this.#encryptKeyValue(String(explicitKey), secretKey);
             }
 
             let finalValue = value;
             if (shouldEncryptData) {
                 finalValue = {
                     __nlib_encrypted__: true,
-                    __payload__: await this.#encryptData(value, secretKey)
+                    __payload__: await this.#encryptDataValue(value, secretKey)
                 };
             }
 
@@ -1413,11 +1415,11 @@ export class NIndexedDB {
             let finalPk = rawPk;
 
             if (shouldEncryptKey && rawPk !== undefined && rawPk !== null) {
-                finalPk = await this.#encryptKey(String(rawPk), secretKey);
+                finalPk = await this.#encryptKeyValue(String(rawPk), secretKey);
             }
 
             if (shouldEncryptData) {
-                const encryptedPayload = await this.#encryptData(value, secretKey);
+                const encryptedPayload = await this.#encryptDataValue(value, secretKey);
                 const record = {
                     __nlib_encrypted__: true,
                     __payload__: encryptedPayload

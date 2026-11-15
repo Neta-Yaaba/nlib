@@ -10,6 +10,8 @@
  * datetime-driven NUtil.setTimeout / clearTimeout, sleep, debounce, throttle, retry).
  */
 
+import { NEvent } from '../core/NEvent.js';
+import { NObject } from '../core/NObject.js';
 import { NString } from './NString.js';
 import { NNumber } from './NNumber.js';
 import { NDateTime } from './NDateTime.js';
@@ -55,7 +57,7 @@ import { NLog } from '../log/NLog.js';
  * console.log(NUtil.getType([1, 2, 3]));      // 'array'
  * await NUtil.sleep(100);
  */
-export class NUtil {
+export class NUtil extends NObject {
 
     // =========================================================================
     // Variables statiques privées (Lazy Singletons : initialisées au 1er appel)
@@ -888,8 +890,8 @@ export class NUtil {
                 targetTime: 0,
                 delay: 0,
                 active: false,
-                cancel: () => {},
-                clear: () => {}
+                cancel: () => { },
+                clear: () => { }
             };
         }
 
@@ -1187,5 +1189,8 @@ export class NUtil {
         };
     }
 }
+
+NEvent.registerUtil(NUtil);
+NObject.registerUtil(NUtil);
 
 export default NUtil;

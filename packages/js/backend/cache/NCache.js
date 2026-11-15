@@ -18,6 +18,7 @@
  * - Contrat strict **Zero Throw / Zero Reject** : aucune exception non capturée, journalisation via `NUtil.log`.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -60,7 +61,7 @@ import { NUtil } from '../utils/NUtil.js';
  * const cached = await NUtil.cache.matchUrl('https://api.example.com/config', { format: 'json' });
  * console.log(cached.version); // '1.0.0'
  */
-export class NCache {
+export class NCache extends NObject {
 
     // =========================================================================
     // Propriétés privées
@@ -150,6 +151,7 @@ export class NCache {
      * const apiCache = new NCache({ namespace: 'api', defaultTtl: 120 });
      */
     constructor(options = {}) {
+        super(options);
         if (options && typeof options === 'object') {
             if (typeof options.maxMemoryEntries === 'number' && options.maxMemoryEntries > 0) {
                 this.#maxMemoryEntries = Math.trunc(options.maxMemoryEntries);

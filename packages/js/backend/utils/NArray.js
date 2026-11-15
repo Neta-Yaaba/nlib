@@ -13,6 +13,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -41,7 +42,7 @@ import { NUtil } from './NUtil.js';
  * console.log(arrUtil.paginate([10, 20, 30, 40, 50], 2, 2));
  * // { data: [30, 40], page: 2, perPage: 2, total: 5, totalPages: 3, hasNext: true, hasPrev: true }
  */
-export class NArray {
+export class NArray extends NObject {
 
     // =========================================================================
     // Méthodes publiques — Validation & Vérifications

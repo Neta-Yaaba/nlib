@@ -14,6 +14,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -37,7 +38,7 @@ import { NUtil } from './NUtil.js';
  * console.log(await pwdUtil.verify('MonMotDePasseSecret!', hashStr)); // true
  * console.log(await pwdUtil.verify('MauvaisMotDePasse', hashStr));    // false
  */
-export class NPassword {
+export class NPassword extends NObject {
 
     // =========================================================================
     // Méthodes privées internes (Aléatoire cryptographique & SHA-256 / HMAC de repli)

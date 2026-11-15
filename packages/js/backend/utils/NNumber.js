@@ -11,6 +11,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -35,7 +36,7 @@ import { NUtil } from './NUtil.js';
  * console.log(num.sum([10, 20, 30]));          // 60
  * console.log(num.average([10, 20, 30]));      // 20
  */
-export class NNumber {
+export class NNumber extends NObject {
 
     // =========================================================================
     // Méthodes publiques — Vérifications & Comparaisons (Validation)

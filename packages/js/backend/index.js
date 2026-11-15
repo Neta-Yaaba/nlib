@@ -33,7 +33,6 @@ export { NEnvironment } from './environment/NEnvironment.js';
 
 // Workers
 export { NWorker } from './worker/NWorker.js';
-export { NManagedWorker } from './worker/NManagedWorker.js';
 export { NWorkerManager } from './worker/NWorkerManager.js';
 export { NServiceWorker } from './worker/NServiceWorker.js';
 
@@ -41,6 +40,7 @@ export { NServiceWorker } from './worker/NServiceWorker.js';
 export { NNetwork } from './requests/NNetwork.js';
 export { NTableRequest } from './requests/NTableRequest.js';
 export { NRequestManager } from './requests/NRequestManager.js';
+export { NService } from './requests/NService.js';
 
 // Stockage & bases de données
 export { NDatabase } from './database/NDatabase.js';

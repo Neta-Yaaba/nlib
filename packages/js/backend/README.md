@@ -45,11 +45,11 @@ Documentation complète de l'API du paquet `@nlib/js-backend`, organisée dossie
     - [`NNetwork`](#101-classe-nnetwork-requestsnnetworkjs)
     - [`NTableRequest`](#102-classe-ntablerequest-requestsntablerequestjs)
     - [`NRequestManager`](#103-classe-nrequestmanager-requestsnrequestmanagerjs)
+    - [`NService`](#104-classe-nservice-requestsnservicejs)
 12. [Dossier `worker/`](#11-dossier-worker)
     - [`NWorker`](#111-classe-nworker-workernworkerjs)
-    - [`NManagedWorker`](#112-classe-nmanagedworker-workernmanagedworkerjs)
-    - [`NWorkerManager`](#113-classe-nworkermanager-workernworkermanagerjs)
-    - [`NServiceWorker`](#114-classe-nserviceworker-workernserviceworkerjs)
+    - [`NWorkerManager`](#112-classe-nworkermanager-workernworkermanagerjs)
+    - [`NServiceWorker`](#113-classe-nserviceworker-workernserviceworkerjs)
 
 ---
 
@@ -77,8 +77,8 @@ import {
     NNetwork,
     NTableRequest,
     NRequestManager,
+    NService,
     NWorker,
-    NManagedWorker,
     NWorkerManager,
     NServiceWorker
 } from '@nlib/js-backend';
@@ -98,7 +98,7 @@ Contient le socle orienté objet et le gestionnaire d'événements utilisés par
 
 ### 1.1. Classe `NObject` (`core/NObject.js`)
 
-Classe de base fournissant la gestion d'état interne (`#state`), un bus d'événements intégré (`this.event`), un cycle de vie (`initialize`, `destroy`), la sérialisation JSON et le clonage.
+Classe mère universelle de l'écosystème NLib (toutes les classes du package, hormis `NEvent`, héritent de `NObject`). Fournit la gestion d'état interne (`#state`), un bus d'événements intégré (`this.event`), un cycle de vie (`initialize`, `destroy`), la sérialisation JSON et le clonage.
 
 #### Constructeur
 - `new NObject(options = {})`
@@ -123,12 +123,12 @@ Classe de base fournissant la gestion d'état interne (`#state`), un bus d'évé
 | `hasState` | `hasState(key)` | `boolean` | Vérifie si une clé existe dans l'état interne. |
 | `getState` | `getState(key, defaultValue = undefined)` | `any` | Récupère la valeur d'une clé d'état ou retourne `defaultValue`. |
 | `setState` | `setState(keyOrObject, value)` | `this` | Définit une clé ou fusionne un objet dans l'état et émet `'stateChange'`. |
-| `deleteState` | `deleteState(key)` | `boolean` | Supprime une clé de l'état et émet `'stateDelete'`. |
-| `clearState` | `clearState()` | `this` | Vide toutes les clés de l'état et émet `'stateClear'`. |
 | `toJSON` | `toJSON()` | `Object` | Sérialise l'objet sous la forme `{ className, isInitialized, state }`. |
-| `fromJSON` | `fromJSON(json)` | `this` | Restaure l'état de l'instance à partir d'un objet ou d'une chaîne JSON. |
+| `fromJSON` | `fromJSON(data)` | `this` | Restaure l'état de l'instance à partir d'un objet `{ state }`. |
 | `clone` | `clone()` | `NObject` | Crée une nouvelle instance de la même classe avec une copie de l'état. |
 | `NObject.create` | `static create(options = {})` | `NObject` | Fabrique statique retournant une nouvelle instance. |
+| `NObject.isNObject` | `static isNObject(value)` | `boolean` | Vérifie si `value` est une instance de `NObject` ou d'une sous-classe. |
+| `NObject.registerUtil` | `static registerUtil(util)` | `typeof NObject` | Enregistre la façade `NUtil` auprès de `NObject` (appelé automatiquement au chargement de `NUtil`). |
 
 #### Exemple d'utilisation
 ```js
@@ -181,10 +181,11 @@ Gestionnaire d'événements synchrone et asynchrone permettant l'abonnement (`on
 | `on` | `on(event, callback)` | `this` | Enregistre un écouteur sur un événement (ou plusieurs séparés par des espaces). |
 | `once` | `once(event, callback)` | `this` | Enregistre un écouteur exécuté une seule fois puis retiré automatiquement. |
 | `off` | `off(event, callback)` | `this` | Retire un écouteur précis ou tous les écouteurs d'un événement. |
-| `emit` | `emit(event, ...args)` | `this` | Déclenche de manière synchrone tous les écouteurs de `event`. |
-| `emitAsync` | `emitAsync(event, ...args)` | `Promise<any[]>` | Déclenche les écouteurs en attendant la résolution des promesses retournées. |
-| `waitFor` | `waitFor(event, timeout = 0)` | `Promise<any>` | Retourne une promesse résolue à la prochaine émission de `event` (avec timeout optionnel en ms). |
+| `emit` | `emit(event, data = null)` | `this` | Déclenche de manière synchrone tous les écouteurs de `event`. |
+| `waitFor` | `waitFor(event, timeoutMs = 0)` | `Promise<any>` | Retourne une promesse résolue à la prochaine émission de `event` (ou `null` en cas d'expiration). |
 | `clear` | `clear()` | `this` | Supprime tous les écouteurs de tous les événements. |
+| `NEvent.create` | `static create(target = null)` | `NEvent` | Fabrique statique retournant une nouvelle instance `NEvent`. |
+| `NEvent.registerUtil` | `static registerUtil(util)` | `typeof NEvent` | Enregistre la façade `NUtil` auprès de `NEvent` (appelé automatiquement au chargement de `NUtil`). |
 
 #### Exemple d'utilisation
 ```js
@@ -1663,9 +1664,77 @@ console.log(resultats); // { users: true, invoices: true }
 
 ---
 
+### 10.4. Classe `NService` (`requests/NService.js`)
+
+Gestionnaire de communication temps réel et périodique permettant de synchroniser un identifiant d'événement entier (`lastId`, `int`) entre un serveur distant et l'application cliente. Hérite de `NObject`.
+- **Sélection et exécution d'un moteur d'écoute unique** selon la chaîne de priorité : `'native'` -> `'websocket'` -> `'sse'` -> `'polling'`.
+- **Synchronisation d'identifiants entiers (`int`)** : normalise la réponse serveur (entier, chaîne numérique ou structure JSON `{ id, lastId }`), met à jour `lastId` et émet les événements `'id'` et `'change'`.
+- **Persistance locale IndexedDB** : enregistre et restaure l'identifiant entier `lastId` dans `NIndexedDB` (`NUtil.db.idb`) sous la clé dédiée au service (`__nservice_last_id__:<serviceId>`).
+
+#### Constructeur
+- `new NService({ id = 'default', url = '', driver = 'auto', lastId = 0, persistLastId = true, pollingInterval = 5000, reconnectDelay = 3000, state } = {})`
+
+#### Propriétés (Getters)
+| Propriété | Type | Description |
+| :--- | :--- | :--- |
+| `serviceId` | `string` | Identifiant logique du service utilisé pour isoler les événements natifs et l'entrée IndexedDB. |
+| `url` | `string` | URL du point d'entrée serveur configurée pour ce service. |
+| `lastId` | `number` | Dernier identifiant d'événement entier (`int`) reçu du serveur ou transmis par le client. |
+| `isRunning` | `boolean` | Indique si le service maintient actuellement un canal d'écoute actif. |
+| `activeDriver` | `string\|null` | Nom du moteur de transport en cours d'exécution (`'native'`, `'websocket'`, `'sse'`, `'polling'` ou `null` à l'arrêt). |
+| `driver` | `string` | Moteur de transport actif ou moteur résolu selon l'ordre de priorité. |
+| `isNativeAvailable` | `boolean` | Indique si l'environnement expose le conteneur natif (`NUtil.env.isWebView`). |
+| `isWebSocketAvailable` | `boolean` | Indique si l'API `WebSocket` est disponible dans l'environnement global. |
+| `isSseAvailable` | `boolean` | Indique si l'API `EventSource` (Server-Sent Events) est disponible. |
+| `isPollingAvailable` | `boolean` | Indique si l'API `fetch` est disponible pour exécuter des requêtes HTTP. |
+| `pollingInterval` | `number` | Intervalle temporel en millisecondes entre deux appels HTTP du moteur `'polling'`. |
+
+#### Méthodes
+| Méthode | Signature | Retour | Description |
+| :--- | :--- | :--- | :--- |
+| `configure` | `configure(options = {})` | `this` | Met à jour dynamiquement les paramètres du service (`id`, `url`, `driver`, `lastId`, `persistLastId`, `pollingInterval`, `reconnectDelay`). |
+| `on` / `once` / `off` | `on(eventName, callback)` | `this` | Gère les abonnements aux événements du service (`'id'`, `'change'`, `'connected'`, `'disconnected'`, `'error'`). |
+| `loadLastId` | `loadLastId()` | `Promise<number>` | Lit l'identifiant entier `lastId` stocké dans `NIndexedDB` pour ce service et met à jour `this.lastId`. |
+| `saveLastId` | `saveLastId(id = this.lastId)` | `Promise<boolean>` | Met à jour l'identifiant entier `lastId` en mémoire et l'enregistre dans `NIndexedDB`. |
+| `resetLastId` | `resetLastId(newId = 0)` | `Promise<number>` | Réinitialise `lastId` à la valeur entière spécifiée et met à jour `NIndexedDB`. |
+| `start` | `start(options = {})` | `Promise<Object>` | Charge `lastId` depuis `NIndexedDB` et démarre un unique moteur d'écoute (`native` -> `websocket` -> `sse` -> `polling`). Retourne `{ ok, driver, lastId }`. |
+| `stop` | `stop()` | `Promise<boolean>` | Arrête le moteur d'écoute actif, ferme la connexion ouverte et émet `'disconnected'`. |
+| `send` | `send(id = this.lastId)` | `Promise<boolean>` | Envoie un identifiant entier (`int`) au serveur via le moteur actif (pont natif, WebSocket ou HTTP `POST`) et traite tout nouvel identifiant retourné. |
+| `refreshId` / `fetchId` | `refreshId(customUrl = '')` | `Promise<number\|null>` | Exécute une requête HTTP `GET` vers le serveur avec `?id=<lastId>`, met à jour `lastId` dans `NIndexedDB` et déclenche `'id'` / `'change'`. |
+| `destroy` | `destroy()` | `void` | Arrête le moteur d'écoute actif, annule les minuteurs et libère les écouteurs d'événements. |
+
+#### Exemples d'utilisation
+```javascript
+import { NService } from '@nlib/js-backend';
+
+// Exemple 1 : Démarrage automatique et écoute des changements d'identifiant
+const service = new NService({
+    id: 'sync_global',
+    url: 'https://api.exemple.com/events',
+    pollingInterval: 5000
+});
+
+service.on('change', (newId) => {
+    console.log('Nouvel identifiant événement serveur :', newId);
+});
+
+const state = await service.start();
+console.log('Connecté via :', state.driver, 'depuis lastId =', state.lastId);
+
+// Exemple 2 : Envoi bidirectionnel d'un identifiant entier au serveur
+await service.send(42);
+
+// Exemple 3 : Actualisation ponctuelle par requête HTTP GET et gestion IndexedDB
+const refreshedId = await service.refreshId();
+console.log('Identifiant actualisé en HTTP :', refreshedId);
+await service.resetLastId(0);
+```
+
+---
+
 ## 11. Dossier `worker/`
 
-Ce dossier regroupe les outils de calcul parallèle et d'interception réseau/hors-ligne : Web Workers bidirectionnels (`NWorker`, `NManagedWorker`, `NWorkerManager`) et Service Worker / mode hors-ligne (`NServiceWorker`).
+Ce dossier regroupe les outils de calcul parallèle et d'interception réseau/hors-ligne : Web Workers bidirectionnels (`NWorker`, `NWorkerManager`) et Service Worker / mode hors-ligne (`NServiceWorker`).
 
 ### 11.1. Classe `NWorker` (`worker/NWorker.js`)
 
@@ -1725,26 +1794,7 @@ console.log('Total :', resultat); // 100
 
 ---
 
-### 11.2. Classe `NManagedWorker` (`worker/NManagedWorker.js`)
-
-Sous-classe de `NWorker` intégrée à `NWorkerManager`. Lorsqu'un Web Worker appelle `NWorker.requestMain(action, params)`, `NManagedWorker` délègue automatiquement l'exécution aux actions enregistrées dans son `NWorkerManager`.
-
-#### Constructeur
-- `new NManagedWorker(options = {}, manager = null)`
-
-#### Propriétés (Getters)
-| Propriété | Type | Description |
-| :--- | :--- | :--- |
-| `manager` | `NWorkerManager\|null` | Référence vers le gestionnaire parent. |
-
-#### Méthodes
-| Méthode | Signature | Retour | Description |
-| :--- | :--- | :--- | :--- |
-| `onRequest` | `onRequest(action, params, onUpdate)` | `Promise<any>` | Relaye toute requête entrante du worker vers `manager.executeAction(action, params, onUpdate)`. |
-
----
-
-### 11.3. Classe `NWorkerManager` (`worker/NWorkerManager.js`)
+### 11.2. Classe `NWorkerManager` (`worker/NWorkerManager.js`)
 
 Gestionnaire centralisé de Web Workers et de pools de workers (répartition de charge Round-Robin), préconfiguré avec les actions `'invokeNative'` et `'requestApp'` pour permettre aux workers d'invoquer le pont natif à travers le thread principal. Accessible via `NUtil.worker` ou en instanciant `new NWorkerManager()`.
 
@@ -1759,13 +1809,13 @@ Gestionnaire centralisé de Web Workers et de pools de workers (répartition de 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `registerAction` | `registerAction(action, handler)` | `this` | Enregistre une action globale accessible par tous les `NManagedWorker` lorsqu'ils sollicitent le thread principal. |
+| `registerAction` | `registerAction(action, handler)` | `this` | Enregistre une action globale accessible par tous les workers gérés lorsqu'ils sollicitent le thread principal. |
 | `unregisterAction` | `unregisterAction(action)` | `boolean` | Supprime une action enregistrée. |
 | `hasAction` | `hasAction(action)` | `boolean` | Vérifie si une action est enregistrée. |
 | `executeAction` | `executeAction(action, params = {}, onUpdate = null)` | `Promise<any>` | Exécute une action enregistrée sur le thread principal. |
-| `create` | `create(name, options = {})` | `NManagedWorker` | Crée, enregistre et retourne un `NManagedWorker`. |
+| `create` | `create(name, options = {})` | `NWorker` | Crée, enregistre et retourne un `NWorker` rattaché au gestionnaire. |
 | `add` | `add(name, worker)` | `NWorker\|null` | Enregistre une instance existante de `NWorker`. |
-| `createPool` | `createPool(name, options = {}, size = NUtil.sys.cpuCores)` | `Array<NManagedWorker>` | Crée un pool de plusieurs workers partageant la charge en Round-Robin. |
+| `createPool` | `createPool(name, options = {}, size = NUtil.sys.cpuCores)` | `Array<NWorker>` | Crée un pool de plusieurs workers partageant la charge en Round-Robin. |
 | `has` | `has(name)` | `boolean` | Vérifie si un worker ou un pool existe sous ce nom. |
 | `get` | `get(name)` | `NWorker\|null` | Récupère un worker par son nom (ou le prochain worker disponible s'il s'agit d'un pool). |
 | `request` | `request(name, action, params = {}, onUpdate = null, timeout = null)` | `Promise<any>` | Exécute une requête sur le worker ou le pool désigné par `name`. |
@@ -1792,7 +1842,7 @@ const img2 = await NUtil.worker.request('imagePool', 'resize', { width: 400 });
 
 ---
 
-### 11.4. Classe `NServiceWorker` (`worker/NServiceWorker.js`)
+### 11.3. Classe `NServiceWorker` (`worker/NServiceWorker.js`)
 
 Système complet de gestion du mode hors-ligne (Offline), d'interception des requêtes HTTP, de mise en cache intelligente (`NUtil.cache` / `NUtil.file`), de point d'entrée unique (`entryPoint`) pour les applications monopages (SPA), et de repli automatique par **Monkey Patching** (`globalThis.fetch` et `XMLHttpRequest`) lorsque l'API `ServiceWorker` n'est pas disponible (WebView locale, HTTP non sécurisé, contexte restreint).
 

@@ -12,6 +12,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -35,7 +36,7 @@ import { NUtil } from './NUtil.js';
  * console.log(urlUtil.join('https://api.nlib.dev/', '/v1/', '/users/42/'));
  * // 'https://api.nlib.dev/v1/users/42'
  */
-export class NUrl {
+export class NUrl extends NObject {
 
     // =========================================================================
     // Méthodes privées internes (Résolution sécurisée sans état)

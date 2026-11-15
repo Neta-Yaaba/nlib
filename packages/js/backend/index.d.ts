@@ -43,6 +43,9 @@ export class NEvent {
     emitAsync(event: string, ...args: any[]): Promise<any[]>;
     waitFor<T = any>(event: string, timeout?: number): Promise<T | null>;
     clear(): this;
+
+    static create(target?: object | null): NEvent;
+    static registerUtil(util: typeof NUtil): typeof NEvent;
 }
 
 /**
@@ -71,6 +74,8 @@ export class NObject {
     clone(): this;
 
     static create<T extends NObject = NObject>(options?: NObjectOptions): T;
+    static isNObject(value: any): value is NObject;
+    static registerUtil(util: typeof NUtil): typeof NObject;
 }
 
 /* ========================================================================== *
@@ -106,7 +111,7 @@ export interface NLogFilter {
 /**
  * Gestionnaire de journalisation centralisé avec historique circulaire en mémoire (`log/NLog.js`).
  */
-export class NLog {
+export class NLog extends NObject {
     static readonly LEVEL: {
         readonly DEBUG: 'debug';
         readonly INFO: 'info';
@@ -150,7 +155,7 @@ export type NConfigPath = string | Array<string | number>;
 /**
  * Gestionnaire de configuration applicative en mémoire avec typage fort et valeurs par défaut (`config/NConfig.js`).
  */
-export class NConfig {
+export class NConfig extends NObject {
     constructor(initialValues?: Record<string, any>, defaults?: Record<string, any>);
 
     readonly isFrozen: boolean;
@@ -210,7 +215,7 @@ export interface NEnvironmentInfo {
 /**
  * Détection des caractéristiques de l'environnement d'exécution (`environment/NEnvironment.js`).
  */
-export class NEnvironment {
+export class NEnvironment extends NObject {
     constructor();
 
     readonly type: NEnvironmentType;
@@ -292,7 +297,7 @@ export interface NSystemStorageQuota {
 /**
  * Informations matérielles, mesures de performance, presse-papiers et passerelle native (`system/NSystem.js`).
  */
-export class NSystem {
+export class NSystem extends NObject {
     constructor();
 
     readonly cpuCores: number;
@@ -332,7 +337,7 @@ export type NDebouncedFunction<T extends (...args: any[]) => any> = ((...args: P
 /**
  * Point d'entrée statique centralisant l'accès aux singletons et utilitaires globaux (`utils/NUtil.js`).
  */
-export class NUtil {
+export class NUtil extends NObject {
     static readonly str: NString;
     static readonly num: NNumber;
     static readonly date: NDateTime;
@@ -378,7 +383,7 @@ export class NUtil {
  * Centralisation du chiffrement local (asynchrone/synchrone), du chiffrement hybride client-serveur
  * et des fonctions de hachage (`utils/NCryptography.js`).
  */
-export class NCryptography {
+export class NCryptography extends NObject {
     constructor();
 
     encryptLocal(data: any): Promise<string>;
@@ -419,7 +424,7 @@ export interface NStringMaskOptions {
 /**
  * Manipulation, comparaison, transformation de casse et formatage de chaînes (`utils/NString.js`).
  */
-export class NString {
+export class NString extends NObject {
     constructor();
 
     isString(value: any): value is string;
@@ -475,7 +480,7 @@ export interface NNumberCurrencyOptions extends NNumberFormatOptions {
 /**
  * Validation, conversion, calculs mathématiques et formatage numérique (`utils/NNumber.js`).
  */
-export class NNumber {
+export class NNumber extends NObject {
     constructor();
 
     isNumber(value: any): value is number;
@@ -514,7 +519,7 @@ export type NDateInput = Date | string | number;
 /**
  * Manipulation, arithmétique calendaire, calculs d'écarts et formatage de dates (`utils/NDateTime.js`).
  */
-export class NDateTime {
+export class NDateTime extends NObject {
     constructor();
 
     now(): Date;
@@ -563,7 +568,7 @@ export class NDateTime {
 /**
  * Calculs monétaires exacts en centimes, TVA, remises et formatage de devises (`utils/NAmount.js`).
  */
-export class NAmount {
+export class NAmount extends NObject {
     constructor();
 
     isValid(value: any, allowNegative?: boolean): boolean;
@@ -601,7 +606,7 @@ export interface NEmailNormalizeOptions {
 /**
  * Validation, normalisation, analyse et masquage d'adresses e-mail (`utils/NEmail.js`).
  */
-export class NEmail {
+export class NEmail extends NObject {
     constructor();
 
     isValid(email: any): boolean;
@@ -631,7 +636,7 @@ export interface NPhoneParsed {
 /**
  * Validation, nettoyage, analyse et formatage de numéros de téléphone (`utils/NPhoneNumber.js`).
  */
-export class NPhoneNumber {
+export class NPhoneNumber extends NObject {
     constructor();
 
     clean(phone: string, keepPlus?: boolean): string;
@@ -677,7 +682,7 @@ export interface NUrlBuildParts {
 /**
  * Manipulation d'URLs, Query Strings et obfuscation signée d'identifiants (`utils/NUrl.js`).
  */
-export class NUrl {
+export class NUrl extends NObject {
     constructor();
 
     isValid(url: any, options?: { requireHttps?: boolean; allowRelative?: boolean }): boolean;
@@ -712,7 +717,7 @@ export type NJsonPath = string | number | Array<string | number>;
 /**
  * Sérialisation JSON tolérante aux cycles, clonage et lecture/écriture par chemin (`utils/NJson.js`).
  */
-export class NJson {
+export class NJson extends NObject {
     constructor();
 
     isValid(jsonString: any): boolean;
@@ -773,7 +778,7 @@ export interface NPasswordStrengthResult {
 /**
  * Validation, évaluation de robustesse, génération et hachage PBKDF2 de mots de passe (`utils/NPassword.js`).
  */
-export class NPassword {
+export class NPassword extends NObject {
     constructor();
 
     validate(password: string, rules?: NPasswordRules): NPasswordValidationResult;
@@ -807,7 +812,7 @@ export interface NPaginatedResult<T = any> {
 /**
  * Manipulation immuable de tableaux et de collections d'objets (`utils/NArray.js`).
  */
-export class NArray {
+export class NArray extends NObject {
     constructor();
 
     isArray(value: any): value is any[];
@@ -911,7 +916,7 @@ export interface NSqlPrimaryKeyInfo {
 /**
  * Moteur de base de données relationnelle SQLite natif / WebAssembly (`database/NSql.js`).
  */
-export class NSql {
+export class NSql extends NObject {
     constructor(options?: NSqlOptions);
 
     readonly name: string;
@@ -962,7 +967,7 @@ export interface NIndexedDBOptions extends NIndexedDBEncryptionOptions {
 /**
  * Moteur NoSQL asynchrone basé sur IndexedDB avec chiffrement local optionnel (`database/NIndexedDB.js`).
  */
-export class NIndexedDB {
+export class NIndexedDB extends NObject {
     constructor(options?: NIndexedDBOptions);
 
     readonly isAvailable: boolean;
@@ -997,7 +1002,7 @@ export interface NStorageOptions extends NIndexedDBEncryptionOptions {
 /**
  * Gestionnaire de stockage synchrone clé-valeur avec TTL et chiffrement local synchrone (`database/NStorage.js`).
  */
-export class NStorage {
+export class NStorage extends NObject {
     constructor(options?: NStorageOptions);
 
     readonly isAvailable: boolean;
@@ -1064,7 +1069,7 @@ export interface NFileOperationOptions {
 /**
  * Gestionnaire de fichiers multiplateforme (`filesystem/NFile.js`).
  */
-export class NFile {
+export class NFile extends NObject {
     constructor();
 
     readonly driver: NFileSystemDriver;
@@ -1140,7 +1145,7 @@ export interface NDirectoryFindCriteria {
 /**
  * Gestionnaire de répertoires multiplateforme (`filesystem/NDirectory.js`).
  */
-export class NDirectory {
+export class NDirectory extends NObject {
     constructor();
 
     readonly driver: NFileSystemDriver;
@@ -1210,7 +1215,7 @@ export interface NCacheStats {
 /**
  * Système de mise en cache unifié à sélection automatique de moteur (`cache/NCache.js`).
  */
-export class NCache {
+export class NCache extends NObject {
     constructor(options?: NCacheConstructorOptions);
 
     readonly driver: NCacheDriver;
@@ -1321,7 +1326,7 @@ export interface NNetworkWebSocketHandle {
 /**
  * Client HTTP et WebSocket intégrant le chiffrement client-serveur de `NCryptography` (`requests/NNetwork.js`).
  */
-export class NNetwork {
+export class NNetwork extends NObject {
     constructor(options?: NNetworkOptions);
 
     readonly isOnline: boolean;
@@ -1422,7 +1427,7 @@ export interface NRequestManagerOptions {
 /**
  * Registre centralisant plusieurs instances de `NTableRequest` (`requests/NRequestManager.js`).
  */
-export class NRequestManager {
+export class NRequestManager extends NObject {
     constructor(options?: NRequestManagerOptions);
 
     readonly size: number;
@@ -1439,8 +1444,59 @@ export class NRequestManager {
     clear(): void;
 }
 
+export type NServiceDriver = 'native' | 'websocket' | 'sse' | 'polling';
+
+export interface NServiceOptions extends NObjectOptions {
+    id?: string;
+    serviceId?: string;
+    url?: string;
+    driver?: 'auto' | NServiceDriver;
+    lastId?: number;
+    persistLastId?: boolean;
+    pollingInterval?: number;
+    reconnectDelay?: number;
+}
+
+/**
+ * Gestionnaire de communication temps réel et périodique permettant de synchroniser
+ * un identifiant d'événement entier (`lastId`, `int`) entre le serveur et le client
+ * sur un moteur d'écoute unique (`native` -> `websocket` -> `sse` -> `polling`),
+ * avec persistance locale dans `NIndexedDB` (`requests/NService.js`).
+ */
+export class NService extends NObject {
+    constructor(options?: NServiceOptions);
+
+    readonly serviceId: string;
+    readonly url: string;
+    readonly lastId: number;
+    readonly isRunning: boolean;
+    readonly activeDriver: NServiceDriver | null;
+    readonly driver: NServiceDriver;
+    readonly isNativeAvailable: boolean;
+    readonly isWebSocketAvailable: boolean;
+    readonly isSseAvailable: boolean;
+    readonly isPollingAvailable: boolean;
+    readonly pollingInterval: number;
+
+    configure(options?: NServiceOptions): this;
+    on(eventName: 'id' | 'change' | 'connected' | 'disconnected' | 'error' | string, callback: (payload: any) => void): this;
+    once(eventName: string, callback: (payload: any) => void): this;
+    off(eventName?: string, callback?: (payload: any) => void): this;
+
+    loadLastId(): Promise<number>;
+    saveLastId(id?: number): Promise<boolean>;
+    resetLastId(newId?: number): Promise<number>;
+
+    start(options?: NServiceOptions): Promise<{ ok: boolean; driver: NServiceDriver | null; lastId: number }>;
+    stop(): Promise<boolean>;
+    send(id?: number): Promise<boolean>;
+    refreshId(customUrl?: string): Promise<number | null>;
+    fetchId(customUrl?: string): Promise<number | null>;
+    destroy(): void;
+}
+
 /* ========================================================================== *
- * 11. DOSSIER worker/ (NWorker, NManagedWorker, NWorkerManager, NServiceWorker)
+ * 11. DOSSIER worker/ (NWorker, NWorkerManager, NServiceWorker)
  * ========================================================================== */
 
 export interface NWorkerOptions extends NObjectOptions {
@@ -1474,20 +1530,9 @@ export class NWorker extends NObject {
 }
 
 /**
- * Worker géré relayant ses requêtes entrantes aux actions de `NWorkerManager` (`worker/NManagedWorker.js`).
- */
-export class NManagedWorker extends NWorker {
-    constructor(options?: NWorkerOptions, manager?: NWorkerManager | null);
-
-    readonly manager: NWorkerManager | null;
-
-    onRequest(action: string, params: any, onUpdate?: NWorkerUpdateCallback): Promise<any>;
-}
-
-/**
  * Gestionnaire centralisé de Web Workers et de pools Round-Robin (`worker/NWorkerManager.js`).
  */
-export class NWorkerManager {
+export class NWorkerManager extends NObject {
     constructor();
 
     readonly isWorkerContext: boolean;
@@ -1500,9 +1545,9 @@ export class NWorkerManager {
     hasAction(action: string): boolean;
     executeAction<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null): Promise<T | null>;
 
-    create(name: string, options?: NWorkerOptions): NManagedWorker;
+    create(name: string, options?: NWorkerOptions): NWorker;
     add(name: string, worker: NWorker): NWorker | null;
-    createPool(name: string, options?: NWorkerOptions, size?: number): NManagedWorker[];
+    createPool(name: string, options?: NWorkerOptions, size?: number): NWorker[];
     has(name: string): boolean;
     get(name: string): NWorker | null;
     request<T = any>(name: string, action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
@@ -1542,7 +1587,7 @@ export interface NServiceWorkerOptions {
  * Gestionnaire du mode hors-ligne (Offline), d'interception des requêtes avec cache,
  * de point d'entrée unique (`entryPoint`) et de repli par Monkey Patching (`worker/NServiceWorker.js`).
  */
-export class NServiceWorker {
+export class NServiceWorker extends NObject {
     constructor(options?: NServiceWorkerOptions);
 
     readonly event: NEvent;

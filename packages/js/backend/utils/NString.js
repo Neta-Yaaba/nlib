@@ -11,6 +11,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -35,7 +36,7 @@ import { NUtil } from './NUtil.js';
  * const message = str.template('Bonjour {nom}, vous avez {nb} messages.', { nom: 'Neta', nb: 5 });
  * console.log(str.truncate(message, 20)); // 'Bonjour Neta, vou...'
  */
-export class NString {
+export class NString extends NObject {
 
     // =========================================================================
     // Méthodes publiques — Vérifications (Validation)

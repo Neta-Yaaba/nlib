@@ -29,6 +29,7 @@
  * - Typage strict à la lecture : `get()`, `getString()`, `getNumber()`, `getBoolean()`, `getJson()`, `getArray()`.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -65,7 +66,7 @@ import { NUtil } from '../utils/NUtil.js';
  * appStore.set('jwt', 'token_sec_123');
  * console.log(appStore.getString('jwt')); // 'token_sec_123'
  */
-export class NStorage {
+export class NStorage extends NObject {
 
     // =========================================================================
     // Propriétés d'instance privées
@@ -159,6 +160,7 @@ export class NStorage {
      * });
      */
     constructor(options = {}) {
+        super(options);
         const opts = options && typeof options === 'object' ? options : {};
 
         if (typeof opts.prefix === 'string') {
@@ -427,7 +429,7 @@ export class NStorage {
 
         if (shouldEncryptData) {
             try {
-                storedValue = this.#encryptData(value, secret);
+                storedValue = this.#encryptDataValue(value, secret);
                 isEncryptedPayload = true;
             } catch (err) {
                 NUtil.log.error('NStorage.set : Échec du chiffrement de la donnée.', {
@@ -461,7 +463,7 @@ export class NStorage {
 
         const ctxPrefix = this.#resolveContextPrefix(options.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-        const storageKeyName = shouldEncryptKey ? this.#encryptKey(contextualKey, secret) : contextualKey;
+        const storageKeyName = shouldEncryptKey ? this.#encryptKeyValue(contextualKey, secret) : contextualKey;
         const fullKey = this.#prefix ? `${this.#prefix}${storageKeyName}` : storageKeyName;
 
         try {
@@ -514,13 +516,13 @@ export class NStorage {
 
         // Recherche prioritaire selon le mode de clé configuré, avec repli automatique
         let raw = null;
-        const primaryKeyName = shouldEncryptKey ? this.#encryptKey(contextualKey, secret) : contextualKey;
+        const primaryKeyName = shouldEncryptKey ? this.#encryptKeyValue(contextualKey, secret) : contextualKey;
         const primaryFullKey = this.#prefix ? `${this.#prefix}${primaryKeyName}` : primaryKeyName;
         raw = this.#readRawFromAdapter(primaryFullKey);
 
         // Repli croisé : si introuvable, tester l'autre représentation (chiffrée ou en clair)
         if (raw === null || raw === undefined) {
-            const alternateKeyName = shouldEncryptKey ? contextualKey : this.#encryptKey(contextualKey, secret);
+            const alternateKeyName = shouldEncryptKey ? contextualKey : this.#encryptKeyValue(contextualKey, secret);
             const alternateFullKey = this.#prefix ? `${this.#prefix}${alternateKeyName}` : alternateKeyName;
             raw = this.#readRawFromAdapter(alternateFullKey);
         }
@@ -707,12 +709,12 @@ export class NStorage {
         const ctxPrefix = this.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
 
-        const primaryKeyName = shouldEncryptKey ? this.#encryptKey(contextualKey, secret) : contextualKey;
+        const primaryKeyName = shouldEncryptKey ? this.#encryptKeyValue(contextualKey, secret) : contextualKey;
         const primaryFullKey = this.#prefix ? `${this.#prefix}${primaryKeyName}` : primaryKeyName;
 
         let raw = this.#readRawFromAdapter(primaryFullKey);
         if (raw === null || raw === undefined) {
-            const alternateKeyName = shouldEncryptKey ? contextualKey : this.#encryptKey(contextualKey, secret);
+            const alternateKeyName = shouldEncryptKey ? contextualKey : this.#encryptKeyValue(contextualKey, secret);
             const alternateFullKey = this.#prefix ? `${this.#prefix}${alternateKeyName}` : alternateKeyName;
             raw = this.#readRawFromAdapter(alternateFullKey);
         }
@@ -763,7 +765,7 @@ export class NStorage {
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
 
         const plainFullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
-        const encKeyName = this.#encryptKey(contextualKey, secret);
+        const encKeyName = this.#encryptKeyValue(contextualKey, secret);
         const encFullKey = this.#prefix ? `${this.#prefix}${encKeyName}` : encKeyName;
 
         try {
@@ -960,7 +962,7 @@ export class NStorage {
      * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {string} Clé chiffrée préfixée (`enck:...`).
      */
-    #encryptKey(plainKey, secretKey) {
+    #encryptKeyValue(plainKey, secretKey) {
         if (this.#isEncryptedKey(plainKey)) {
             return plainKey;
         }
@@ -996,7 +998,7 @@ export class NStorage {
      * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {string} Chaîne chiffrée Base64 préfixée (`encd:...`).
      */
-    #encryptData(value, secretKey) {
+    #encryptDataValue(value, secretKey) {
         const jsonStr = JSON.stringify(value, this.#jsonReplacer);
         const cipherB64 = NUtil.crypto.encryptLocalSync(jsonStr, secretKey);
         return `encd:${cipherB64}`;

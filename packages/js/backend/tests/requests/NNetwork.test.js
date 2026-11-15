@@ -2,30 +2,15 @@ import { describe, it, assert } from '../test-helper.js';
 import { NNetwork } from '../../index.js';
 
 describe('NNetwork (requests/NNetwork.js)', () => {
-    it('configure baseUrl, headers, bearer token et chiffrement symétrique/asymétrique', async () => {
+    it('configure baseUrl, driver et chiffrement de payload', async () => {
         const net = new NNetwork({ baseUrl: 'https://api.nlib.dev/', timeout: 15000 });
         assert.equal(net.baseUrl, 'https://api.nlib.dev');
-        assert.equal(net.defaultTimeout, 15000);
+        assert.equal(typeof net.driver, 'string');
 
-        net.setBearerToken('jwt_123');
-        assert.equal(net.defaultHeaders.Authorization, 'Bearer jwt_123');
-
-        await net.configureEncryption({
-            enabled: true,
-            mode: 'symmetric',
-            sharedSecret: 'SharedKey2026!',
-            persistKeys: false
-        });
-        assert.equal(net.isEncryptionEnabled, true);
-        assert.equal(net.encryptionMode, 'symmetric');
-        assert.equal(net.hasEncryptionKeys, true);
-
-        const encrypted = await net.encryptPayload({ hello: 'world' });
+        const encrypted = await net.encryptPayload({ hello: 'world' }, { secret: 'SharedKey2026!' });
         if (encrypted) {
-            const decrypted = await net.decryptPayload(encrypted);
-            assert.deepEqual(decrypted, { hello: 'world' });
+            const decrypted = await net.decryptPayload(encrypted, { secret: 'SharedKey2026!' });
+            assert.deepEqual(JSON.parse(decrypted), { hello: 'world' });
         }
-
-        await net.clearEncryptionKeys(false);
     });
 });

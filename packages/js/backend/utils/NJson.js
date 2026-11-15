@@ -13,6 +13,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -39,7 +40,7 @@ import { NUtil } from './NUtil.js';
  * console.log(merged); // { a: 1, cfg: { x: 10, y: 20 } }
  * console.log(jsonUtil.flatten(merged)); // { a: 1, 'cfg.x': 10, 'cfg.y': 20 }
  */
-export class NJson {
+export class NJson extends NObject {
 
     // =========================================================================
     // Méthodes privées internes (Tri de clés & Helpers sans état)

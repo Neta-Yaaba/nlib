@@ -30,6 +30,8 @@
     "utils",
     "worker"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./utils/NUtil.js"
+  ],
   "license": "MIT"
 }

@@ -14,6 +14,7 @@
  * via `NUtil.sys` (et son alias `NUtil.system`).
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 import { NEvent } from '../core/NEvent.js';
 import { NWorker } from '../worker/NWorker.js';
@@ -40,7 +41,7 @@ import { NWorker } from '../worker/NWorker.js';
  * const snapshot = await NUtil.sys.getSnapshot();
  * console.log(snapshot);
  */
-export class NSystem {
+export class NSystem extends NObject {
 
     // =========================================================================
     // Propriétés privées
@@ -83,6 +84,7 @@ export class NSystem {
      * });
      */
     constructor(options = {}) {
+        super(options);
         if (options?.watchNetwork === true) {
             this.watchNetwork(true, {
                 onOnline: options.onOnline,

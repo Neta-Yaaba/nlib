@@ -9,6 +9,7 @@
  * via `NUtil.config`.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -39,7 +40,7 @@ import { NUtil } from '../utils/NUtil.js';
  * cfg.require(['apiKey']);
  * cfg.freeze(); // Empêche toute modification ultérieure
  */
-export class NConfig {
+export class NConfig extends NObject {
 
     // =========================================================================
     // Propriétés privées (Allocation paresseuse : null par défaut)
@@ -93,6 +94,7 @@ export class NConfig {
      * console.log(cfg.getInt('app.timeout'));   // 3000
      */
     constructor(options = {}) {
+        super(options);
         if (options?.defaults && NUtil.json.isPlainObject(options.defaults) && !NUtil.json.isEmpty(options.defaults)) {
             this.#defaults = NUtil.json.clone(options.defaults);
             this.#data = NUtil.json.clone(options.defaults);

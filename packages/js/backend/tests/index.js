@@ -53,14 +53,16 @@ import './cache/NCache.test.js';
 import './requests/NNetwork.test.js';
 import './requests/NTableRequest.test.js';
 import './requests/NRequestManager.test.js';
+import './requests/NService.test.js';
 
 // 11. worker/
 import './worker/NWorker.test.js';
-import './worker/NManagedWorker.test.js';
 import './worker/NWorkerManager.test.js';
 import './worker/NServiceWorker.test.js';
 
 export { runAllTests };
 
-// Exécution automatique
-runAllTests();
+// Exécution automatique hors navigateur (tests.html appelle runAllTests() directement)
+if (typeof document === 'undefined') {
+    runAllTests();
+}

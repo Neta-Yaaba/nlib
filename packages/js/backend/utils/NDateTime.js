@@ -11,6 +11,7 @@
  *   effectue le traitement et retourne directement le résultat.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from './NUtil.js';
 
 /**
@@ -34,7 +35,7 @@ import { NUtil } from './NUtil.js';
  * console.log(dt.isBetween('2026-11-10', '2026-11-01', '2026-11-30')); // true
  * console.log(dt.getAge('2000-05-15', '2026-11-10'));     // 26
  */
-export class NDateTime {
+export class NDateTime extends NObject {
 
     // =========================================================================
     // Méthodes privées internes (Normalisation & Helpers sans état)

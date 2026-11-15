@@ -19,6 +19,7 @@
  * - Isolation multiplateforme : fonctionne indifféremment sur Navigateur Web (WASM), Web Worker, applications hybrides/natives et Node.js.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NIndexedDB } from './NIndexedDB.js';
 import { NSql } from './NSql.js';
 import { NStorage } from './NStorage.js';
@@ -65,7 +66,7 @@ import { NUtil } from '../utils/NUtil.js';
  * await db.sql.insert('logs', { msg: 'Session démarrée' });
  * await db.saveSql(); // Persiste l'état binaire SQLite dans IndexedDB
  */
-export class NDatabase {
+export class NDatabase extends NObject {
 
     // =========================================================================
     // Propriétés d'instance privées
@@ -194,6 +195,7 @@ export class NDatabase {
      * console.log(db.context); // Résolu depuis NUtil.config
      */
     constructor(sqlOptions = {}) {
+        super(sqlOptions);
         const opts = sqlOptions && typeof sqlOptions === 'object' ? sqlOptions : {};
 
         this.#context = this.#resolveContext(opts.context);

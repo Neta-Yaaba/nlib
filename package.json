@@ -11,7 +11,7 @@
     "website"
   ],
   "scripts": {
-    "test": "node --test packages/**/tests/*.test.js",
+    "test": "pnpm --filter @nlib/js-backend test",
     "test:all": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
     "lint": "pnpm -r --if-present lint",

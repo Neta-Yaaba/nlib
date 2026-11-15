@@ -9,7 +9,7 @@ describe('NEmail (utils/NEmail.js)', () => {
         assert.equal(email.isValid('invalide@@test'), false);
         assert.equal(email.isFreeProvider('user@gmail.com'), true);
         assert.equal(email.isDisposable('temp@yopmail.com'), true);
-        assert.equal(email.isCorporate('direction@nlib.dev'), true);
+        assert.equal(email.isBusiness('direction@nlib.dev'), true);
 
         const parsed = email.parse('Client+VIP@Boutique.FR');
         assert.equal(parsed.baseLocal, 'client');

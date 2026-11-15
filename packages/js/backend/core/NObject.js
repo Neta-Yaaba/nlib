@@ -10,7 +10,6 @@
  */
 
 import { NEvent } from './NEvent.js';
-import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NObject
@@ -44,6 +43,18 @@ import { NUtil } from '../utils/NUtil.js';
  * obj.destroy();
  */
 export class NObject {
+
+    // =========================================================================
+    // Propriétés statiques privées (Injection de la façade NUtil)
+    // =========================================================================
+
+    /**
+     * Référence vers la façade utilitaire `NUtil` enregistrée par `NObject.registerUtil()`.
+     * Reste à `null` tant que `NUtil` n'a pas été chargé.
+     * @type {any}
+     * @private
+     */
+    static #util = null;
 
     // =========================================================================
     // Propriétés privées (Variables internes à initialisation paresseuse)
@@ -215,7 +226,7 @@ export class NObject {
      * console.log(obj.util.date.nowDate());
      */
     get util() {
-        return NUtil;
+        return NObject.#util;
     }
 
     /**
@@ -633,12 +644,17 @@ export class NObject {
         try {
             return new this(options);
         } catch (error) {
-            NUtil.log.error(`NObject: Échec de l'instanciation via la fabrique create() pour ${this.name}.`, {
+            const meta = {
                 code: 'ERR_CREATE_FAILED',
                 error,
                 stack: error?.stack,
                 options
-            });
+            };
+            if (NObject.#util?.log) {
+                NObject.#util.log.error(`NObject: Échec de l'instanciation via la fabrique create() pour ${this.name}.`, meta);
+            } else {
+                console.error(`NObject: Échec de l'instanciation via la fabrique create() pour ${this.name}.`, meta);
+            }
             return null;
         }
     }
@@ -663,6 +679,30 @@ export class NObject {
         } catch {
             return false;
         }
+    }
+
+    /**
+     * Enregistre la façade utilitaire `NUtil` auprès de `NObject` pour permettre l'accès
+     * via `this.util` et la journalisation dans `NObject.create()` sans import circulaire.
+     *
+     * @param {any} util - Classe ou façade `NUtil` à associer.
+     * @returns {typeof NObject} La classe `NObject` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NUtil auprès de NObject</caption>
+     * NObject.registerUtil(NUtil);
+     * const obj = new NObject();
+     * console.log(obj.util === NUtil); // true
+     *
+     * @example <caption>Exemple 2 : Utiliser obj.util après enregistrement</caption>
+     * NObject.registerUtil(NUtil);
+     * const obj = new NObject();
+     * obj.util.log.info('Instance prête');
+     */
+    static registerUtil(util) {
+        if (util) {
+            NObject.#util = util;
+        }
+        return NObject;
     }
 
     // =========================================================================

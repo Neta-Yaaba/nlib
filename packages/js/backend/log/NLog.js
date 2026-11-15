@@ -13,6 +13,7 @@
  */
 
 import { NEvent } from '../core/NEvent.js';
+import { NObject } from '../core/NObject.js';
 
 /**
  * @class NLog
@@ -48,7 +49,7 @@ import { NEvent } from '../core/NEvent.js';
  * loggerB.import(dump);
  * console.log(loggerB.getLogs().length); // 2
  */
-export class NLog {
+export class NLog extends NObject {
 
     // =========================================================================
     // Constantes statiques (Niveaux de sévérité)
@@ -171,6 +172,7 @@ export class NLog {
      * logger.info('Connexion établie à SQLite');
      */
     constructor(options = {}) {
+        super(options);
         if (options && typeof options === 'object') {
             if (typeof options.consoleEnabled === 'boolean') {
                 this.setConsoleEnabled(options.consoleEnabled);
@@ -915,6 +917,7 @@ export class NLog {
             this.#event = null;
         }
         this.#buffer = [];
+        super.destroy();
     }
 
     // =========================================================================

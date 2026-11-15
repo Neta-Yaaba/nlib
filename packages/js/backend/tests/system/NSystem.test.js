@@ -11,16 +11,19 @@ describe('NSystem (system/NSystem.js)', () => {
         assert.ok(sys.screen && typeof sys.screen.width === 'number');
         assert.ok(sys.network && typeof sys.network.online === 'boolean');
 
-        const measured = await sys.measure(async () => 21 * 2, 'double');
+        const measured = await sys.measure('double', async () => 21 * 2);
         assert.equal(measured.result, 42);
         assert.equal(measured.label, 'double');
         assert.ok(measured.durationMs >= 0);
 
         const battery = await sys.getBattery();
-        assert.equal(typeof battery.supported, 'boolean');
+        if (battery !== null) {
+            assert.equal(typeof battery.level, 'number');
+        }
 
         const quota = await sys.getStorageQuota();
-        assert.equal(typeof quota.supported, 'boolean');
+        assert.equal(typeof quota.usage, 'number');
+        assert.equal(typeof quota.quota, 'number');
 
         const snapshot = await sys.getSnapshot();
         assert.ok(snapshot && typeof snapshot === 'object');

@@ -38,7 +38,7 @@ describe('NUtil (utils/NUtil.js)', () => {
         assert.equal(NUtil.isEmpty([1]), false);
         assert.equal(NUtil.isDefined(0), true);
         assert.equal(NUtil.isDefined(undefined), false);
-        assert.equal(NUtil.isEqual({ a: [1, 2] }, { a: [1, 2] }), true);
+        assert.equal(NUtil.json.equals({ a: [1, 2] }, { a: [1, 2] }), true);
         assert.equal(NUtil.toBoolean('oui'), true);
         assert.equal(NUtil.toBoolean('0'), false);
     });

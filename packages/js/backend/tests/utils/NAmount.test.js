@@ -11,7 +11,7 @@ describe('NAmount (utils/NAmount.js)', () => {
         assert.equal(amount.subtract(10, 3.25), 6.75);
         assert.equal(amount.multiply(19.99, 3), 59.97);
         assert.equal(amount.divide(100, 4), 25);
-        assert.equal(amount.sum([0.1, 0.2, 0.3]), 0.6);
+        assert.equal(amount.add([0.1, 0.2, 0.3], 2), 0.6);
         assert.deepEqual(amount.allocate(100, 3), [33.34, 33.33, 33.33]);
     });
 

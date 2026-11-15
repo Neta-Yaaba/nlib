@@ -4,16 +4,17 @@ import { NRequestManager, NTableRequest } from '../../index.js';
 describe('NRequestManager (requests/NRequestManager.js)', () => {
     it('enregistre, récupère et supprime des instances de NTableRequest', () => {
         const mgr = new NRequestManager();
-        assert.equal(mgr.size, 0);
+        assert.equal(mgr.count, 0);
 
-        const usersReq = mgr.table('users', { primaryKey: 'id' });
-        assert.equal(usersReq instanceof NTableRequest, true);
-        assert.equal(mgr.has('users'), true);
-        assert.equal(mgr.get('users'), usersReq);
-        assert.deepEqual(mgr.tables, ['users']);
+        const usersReq = new NTableRequest({ table: 'users', primaryKey: 'id' });
+        mgr.addTableRequest('users', usersReq);
+        assert.equal(mgr.hasTableRequest('users'), true);
+        assert.equal(mgr.getTableRequest('users'), usersReq);
+        assert.deepEqual(mgr.tableNames, ['users']);
 
-        mgr.unregister('users');
-        assert.equal(mgr.has('users'), false);
+        assert.equal(mgr.removeTableRequest('users'), true);
+        assert.equal(mgr.hasTableRequest('users'), false);
         mgr.clear();
+        assert.equal(mgr.count, 0);
     });
 });

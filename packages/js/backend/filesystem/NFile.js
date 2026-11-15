@@ -19,6 +19,7 @@
  *   et retours normalisés prévisibles.
  */
 
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -78,7 +79,7 @@ import { NUtil } from '../utils/NUtil.js';
  * console.log(NUtil.file.getExtension('facture.PDF'));              // 'pdf'
  * console.log(NUtil.file.getMimeType('facture.pdf'));               // 'application/pdf'
  */
-export class NFile {
+export class NFile extends NObject {
 
     // =========================================================================
     // Propriétés privées

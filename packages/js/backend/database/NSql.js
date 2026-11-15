@@ -17,6 +17,7 @@
  */
 
 import { NEvent } from '../core/NEvent.js';
+import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
@@ -54,7 +55,7 @@ import { NUtil } from '../utils/NUtil.js';
  * });
  * console.log('Transaction réussie :', txRes.ok);
  */
-export class NSql {
+export class NSql extends NObject {
 
     // =========================================================================
     // Propriétés statiques privées (Cache et verrous globaux du module WASM)
@@ -147,6 +148,7 @@ export class NSql {
      * const sql = new NSql({ name: 'pos', wasmPath: '/assets/wasm/sql-wasm.wasm' });
      */
     constructor(options = {}) {
+        super(options);
         if (options && typeof options === 'object') {
             if (typeof options.name === 'string' && options.name.trim()) {
                 this.#name = options.name.trim();

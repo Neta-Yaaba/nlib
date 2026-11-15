@@ -11,8 +11,6 @@
  * - `waitFor()` résout toujours de façon sûre (valeur ou `null` en cas d'expiration/erreur, jamais de rejet).
  */
 
-import { NUtil } from '../utils/NUtil.js';
-
 /**
  * @class NEvent
  * @description Moteur d'événements léger à initialisation paresseuse (`#listeners` reste à `null`
@@ -38,6 +36,18 @@ import { NUtil } from '../utils/NUtil.js';
  * evt.clear();
  */
 export class NEvent {
+
+    // =========================================================================
+    // Propriétés statiques privées (Injection de la façade NUtil)
+    // =========================================================================
+
+    /**
+     * Référence vers la façade utilitaire `NUtil` enregistrée par `NEvent.registerUtil()`.
+     * Reste à `null` tant que `NUtil` n'a pas été chargé.
+     * @type {any}
+     * @private
+     */
+    static #util = null;
 
     // =========================================================================
     // Propriétés privées (Allocation paresseuse : null par défaut)
@@ -137,7 +147,7 @@ export class NEvent {
      * console.log(evt.util.str.slug('Mon Titre'));
      */
     get util() {
-        return NUtil;
+        return NEvent.#util;
     }
 
     // =========================================================================
@@ -270,14 +280,14 @@ export class NEvent {
      */
     on(event, callback) {
         if (typeof event !== 'string' || event.trim().length === 0) {
-            NUtil.log.warn('NEvent.on: Nom d\'événement invalide fourni.', {
+            NEvent.#log('warn', 'NEvent.on: Nom d\'événement invalide fourni.', {
                 code: 'WARN_EVENT_INVALID',
                 event
             });
             return this;
         }
         if (typeof callback !== 'function') {
-            NUtil.log.warn(`NEvent.on: Écouteur de type fonction attendu pour "${event}".`, {
+            NEvent.#log('warn', `NEvent.on: Écouteur de type fonction attendu pour "${event}".`, {
                 code: 'WARN_LISTENER_NOT_FUNCTION',
                 event,
                 callback
@@ -316,14 +326,14 @@ export class NEvent {
      */
     once(event, callback) {
         if (typeof event !== 'string' || event.trim().length === 0) {
-            NUtil.log.warn('NEvent.once: Nom d\'événement invalide fourni.', {
+            NEvent.#log('warn', 'NEvent.once: Nom d\'événement invalide fourni.', {
                 code: 'WARN_EVENT_INVALID',
                 event
             });
             return this;
         }
         if (typeof callback !== 'function') {
-            NUtil.log.warn(`NEvent.once: Écouteur de type fonction attendu pour "${event}".`, {
+            NEvent.#log('warn', `NEvent.once: Écouteur de type fonction attendu pour "${event}".`, {
                 code: 'WARN_LISTENER_NOT_FUNCTION',
                 event,
                 callback
@@ -335,7 +345,7 @@ export class NEvent {
             try {
                 callback.call(this.#target ?? this, payload);
             } catch (error) {
-                NUtil.log.error(`NEvent: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
+                NEvent.#log('error', `NEvent: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
                     code: 'ERR_EVENT_ONCE_LISTENER',
                     event,
                     error,
@@ -417,7 +427,7 @@ export class NEvent {
             try {
                 callback.call(ctx, data);
             } catch (error) {
-                NUtil.log.error(`NEvent: Erreur lors de l'exécution d'un écouteur pour l'événement "${event}".`, {
+                NEvent.#log('error', `NEvent: Erreur lors de l'exécution d'un écouteur pour l'événement "${event}".`, {
                     code: 'ERR_EVENT_LISTENER',
                     event,
                     error,
@@ -451,7 +461,7 @@ export class NEvent {
      */
     waitFor(event, timeoutMs = 0) {
         if (typeof event !== 'string' || event.trim().length === 0) {
-            NUtil.log.warn('NEvent.waitFor: Nom d\'événement invalide.', {
+            NEvent.#log('warn', 'NEvent.waitFor: Nom d\'événement invalide.', {
                 code: 'WARN_EVENT_INVALID',
                 event
             });
@@ -470,7 +480,7 @@ export class NEvent {
             if (typeof timeoutMs === 'number' && timeoutMs > 0) {
                 timer = setTimeout(() => {
                     this.off(event, handler);
-                    NUtil.log.warn(`NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
+                    NEvent.#log('warn', `NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
                         code: 'WARN_EVENT_TIMEOUT',
                         event,
                         timeoutMs
@@ -524,6 +534,47 @@ export class NEvent {
      */
     static create(target = null) {
         return new NEvent(target);
+    }
+
+    /**
+     * Enregistre la façade utilitaire `NUtil` auprès de `NEvent` pour permettre l'accès
+     * via `evt.util` et la journalisation via `NUtil.log` sans import circulaire.
+     *
+     * @param {any} util - Classe ou façade `NUtil` à associer.
+     * @returns {typeof NEvent} La classe `NEvent` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NUtil auprès de NEvent</caption>
+     * NEvent.registerUtil(NUtil);
+     * const bus = new NEvent();
+     * console.log(bus.util === NUtil); // true
+     *
+     * @example <caption>Exemple 2 : Utiliser evt.util après enregistrement</caption>
+     * NEvent.registerUtil(NUtil);
+     * const bus = new NEvent();
+     * bus.util.log.info('Bus prêt');
+     */
+    static registerUtil(util) {
+        if (util) {
+            NEvent.#util = util;
+        }
+        return NEvent;
+    }
+
+    /**
+     * Journalise un message via `NUtil.log` lorsqu'il est enregistré, ou via `console` en repli.
+     *
+     * @param {'warn'|'error'|'info'|'debug'} level - Niveau de journalisation.
+     * @param {string} message - Message à enregistrer.
+     * @param {Object} [meta] - Métadonnées associées.
+     * @private
+     */
+    static #log(level, message, meta) {
+        const logger = NEvent.#util?.log;
+        if (logger && typeof logger[level] === 'function') {
+            logger[level](message, meta);
+        } else if (typeof console?.[level] === 'function') {
+            console[level](message, meta);
+        }
     }
 }
 

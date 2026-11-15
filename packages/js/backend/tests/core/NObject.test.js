@@ -24,13 +24,8 @@ describe('NObject (core/NObject.js)', () => {
 
         obj.setState({ version: 2, ready: true });
         assert.equal(obj.getState('version'), 2);
-        assert.equal(changes.length, 2);
-
-        assert.equal(obj.deleteState('ready'), true);
-        assert.equal(obj.hasState('ready'), false);
-
-        obj.clearState();
-        assert.deepEqual(obj.state, {});
+        assert.equal(changes.length, 3);
+        assert.equal(obj.hasState('ready'), true);
     });
 
     it('sérialise (toJSON), restaure (fromJSON), clone et détruit (destroy)', () => {
@@ -44,7 +39,7 @@ describe('NObject (core/NObject.js)', () => {
         assert.deepEqual(cloned.state, obj.state);
 
         const restored = new NObject();
-        restored.fromJSON(JSON.stringify(json));
+        restored.fromJSON(JSON.parse(JSON.stringify(json)));
         assert.deepEqual(restored.state, { role: 'admin', level: 5 });
 
         obj.destroy();

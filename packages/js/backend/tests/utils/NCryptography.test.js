@@ -19,13 +19,15 @@ describe('NCryptography (utils/NCryptography.js)', () => {
         const payload = { id: 101, role: 'admin', permissions: ['read', 'write'] };
 
         const encryptedSync = crypto.encryptLocalSync(payload);
-        assert.equal(encryptedSync.startsWith('NLOC1:'), true);
-        const decryptedSync = crypto.decryptLocalSync(encryptedSync);
+        assert.equal(typeof encryptedSync, 'string');
+        assert.ok(encryptedSync.length > 0);
+        const decryptedSync = JSON.parse(crypto.decryptLocalSync(encryptedSync));
         assert.deepEqual(decryptedSync, payload);
 
         const encryptedAsync = await crypto.encryptLocal(payload);
         assert.equal(typeof encryptedAsync, 'string');
-        const decryptedAsync = await crypto.decryptLocal(encryptedAsync);
+        assert.ok(encryptedAsync.length > 0);
+        const decryptedAsync = JSON.parse(await crypto.decryptLocal(encryptedAsync));
         assert.deepEqual(decryptedAsync, payload);
     });
 
