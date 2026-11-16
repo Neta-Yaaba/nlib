@@ -271,10 +271,10 @@ export class NObject {
     // =========================================================================
 
     /**
-     * Initialise l'instance après vérification par `#validate()`.
+     * Initialise l'instance après vérification par `validate()`.
      * Si `#event` a été initialisé, émet l'événement `'initialize'` avec `{ target: this }`.
      * Si l'instance est déjà initialisée ou détruite, la méthode ne fait rien.
-     * En cas d'échec de validation, consigne l'erreur dans `NLog` et retourne l'instance sans lever d'exception.
+     * En cas d'échec de validation, consigne l'erreur dans `NLog` et retourne l'instance.
      *
      * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
@@ -293,7 +293,7 @@ export class NObject {
             return this;
         }
         try {
-            if (!this.#validate()) {
+            if (!this.validate()) {
                 this.util.log.error(`NObject: Échec de validation lors de l'initialisation de ${this.className}.`, {
                     code: 'ERR_INIT_VALIDATION',
                     className: this.className,
@@ -314,6 +314,27 @@ export class NObject {
             });
         }
         return this;
+    }
+
+    /**
+     * Vérifie la validité de l'instance avant son initialisation.
+     * Peut être surchargée par les sous-classes pour valider leur configuration.
+     *
+     * @returns {boolean} `true` si l'instance est valide, sinon `false`.
+     *
+     * @example <caption>Exemple 1 : Validation par défaut</caption>
+     * const obj = new NObject();
+     * console.log(obj.validate()); // true
+     *
+     * @example <caption>Exemple 2 : Surcharge dans une sous-classe</caption>
+     * class ServiceConfig extends NObject {
+     *     validate() { return this.hasState('url'); }
+     * }
+     * const srv = new ServiceConfig({ state: { url: 'https://api.nlib.dev' } });
+     * console.log(srv.validate()); // true
+     */
+    validate() {
+        return true;
     }
 
     /**
@@ -705,26 +726,6 @@ export class NObject {
         return NObject;
     }
 
-    // =========================================================================
-    // Méthodes privées
-    // =========================================================================
-
-    /**
-     * Vérifie la validité interne de l'instance avant son initialisation.
-     *
-     * @private
-     * @returns {boolean} `true` si l'instance est valide.
-     *
-     * @example <caption>Exemple 1 : Appel interne lors de initialize()</caption>
-     * // Exécuté automatiquement par this.initialize() :
-     * // if (!this.#validate()) this.util.log.error(...);
-     *
-     * @example <caption>Exemple 2 : Comportement par défaut</caption>
-     * // Retourne toujours true lorsque l'objet est dans un état cohérent.
-     */
-    #validate() {
-        return true;
-    }
 }
 
 export default NObject;

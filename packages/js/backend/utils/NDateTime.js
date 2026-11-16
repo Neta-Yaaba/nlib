@@ -3,20 +3,14 @@
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, la conversion, le calcul, la comparaison
  * et le formatage des dates et heures dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
 
 /**
  * @class NDateTime
- * @description Utilitaire de gestion et traitement des dates et heures sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion et traitement des dates et heures.
  *
  * @example <caption>Exemple 1 : Création, formatage et extraction de composants</caption>
  * const dt = new NDateTime();

@@ -41,6 +41,7 @@ export { NNetwork } from './requests/NNetwork.js';
 export { NTableRequest } from './requests/NTableRequest.js';
 export { NRequestManager } from './requests/NRequestManager.js';
 export { NService } from './requests/NService.js';
+export { NDataSynchronizer } from './requests/NDataSynchronizer.js';
 
 // Stockage & bases de données
 export { NDatabase } from './database/NDatabase.js';

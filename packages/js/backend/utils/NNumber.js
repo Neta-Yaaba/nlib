@@ -3,12 +3,6 @@
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, la conversion, le calcul mathématique
  * et le formatage des nombres dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -16,7 +10,8 @@ import { NUtil } from './NUtil.js';
 
 /**
  * @class NNumber
- * @description Utilitaire de gestion et traitement des nombres sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion et traitement des nombres.
  *
  * @example <caption>Exemple 1 : Validation, arrondi et bornage (clamp)</caption>
  * const num = new NNumber();

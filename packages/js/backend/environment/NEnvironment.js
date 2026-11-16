@@ -9,17 +9,13 @@
  * - Type d'appareil (`isMobile`, `isTablet`, `isDesktop`, `isTouch`)
  * - Hôte natif / WebView (`isWebView`)
  * - État réseau et préférences système (`isOnline`, `isOffline`, `isSecureContext`, `isDarkMode`, `language`, `timezone`).
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : s'utilise via une instance ou via `NUtil.env`.
  */
 
 import { NObject } from '../core/NObject.js';
 
 /**
  * @class NEnvironment
+ * @extends NObject
  * @description Utilitaire fournissant toutes les informations sur l'environnement d'exécution
  * (plateforme, OS, navigateur, WebView, appareil mobile, connexion Internet).
  *

@@ -21,4 +21,20 @@ describe('NSql (database/NSql.js)', () => {
 
         await sql.close();
     });
+
+    it('construit les clauses SQL de recherche paramétrée et de pagination', () => {
+        const sql = new NSql({ name: 'test_sql_clauses' });
+
+        const search = sql.buildSearchClause('alice paris', ['nom', 'ville']);
+        assert.equal(search.where.includes('LIKE'), true);
+        assert.equal(search.order.includes('CASE WHEN'), true);
+        assert.equal(Object.keys(search.params).length, 4);
+
+        const limited = sql.buildLimitClause(25, 50);
+        assert.equal(limited.trim(), 'LIMIT 50, 25');
+        assert.equal(sql.buildLimitClause(10).trim(), 'LIMIT 10');
+        assert.equal(sql.buildLimitClause(0), '');
+
+        sql.destroy();
+    });
 });

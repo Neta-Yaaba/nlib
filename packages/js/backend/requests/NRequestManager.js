@@ -2,18 +2,12 @@
  * @file NRequestManager.js
  * @package @nlib/js-backend
  * @description Gestionnaire centralisé des requêtes de tables de l'écosystème NLib.
- * Gère le registre, l'instanciation, la configuration et l'accès aux instances de `NTableRequest`.
- *
- * Conforme aux standards NLib :
- * - Hérite de `NObject`
- * - Propriétés privées modernes ES2022+
- * - Zéro variable hors classe
- * - Zéro import inutile
- * - Documentation JSDoc exhaustive en français (>= 3 @example classe, >= 2 @example méthodes/getters)
+ * Gère le registre, l'instanciation, la configuration, le routage et l'accès aux instances de `NTableRequest`.
  */
 
 import { NObject } from '../core/NObject.js';
 import { NTableRequest } from './NTableRequest.js';
+import { NDataSynchronizer } from './NDataSynchronizer.js';
 
 /**
  * @class NRequestManager
@@ -64,6 +58,20 @@ export class NRequestManager extends NObject {
      */
     #tableRequests = {};
 
+    /**
+     * Instance de `NDataSynchronizer` centralisée pour la synchronisation des tables.
+     * @type {NDataSynchronizer|null}
+     * @private
+     */
+    #synchronizer = null;
+
+    /**
+     * Indique si l'instance `#synchronizer` a été créée par ce gestionnaire.
+     * @type {boolean}
+     * @private
+     */
+    #ownsSynchronizer = false;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -74,12 +82,14 @@ export class NRequestManager extends NObject {
      * @constructor
      * @param {Object} [options={}] - Options de configuration du gestionnaire.
      * @param {Object<string, NTableRequest>} [options.tables={}] - Dictionnaire initial de tables `{ [nom]: NTableRequest }`.
+     * @param {NDataSynchronizer|Object} [options.synchronizer] - Instance existante de `NDataSynchronizer` ou options d'instanciation.
      *
      * @example <caption>Exemple 1 : Instanciation standard</caption>
      * const manager = new NRequestManager();
      *
-     * @example <caption>Exemple 2 : Instanciation avec tables préconfigurées</caption>
+     * @example <caption>Exemple 2 : Instanciation avec tables préconfigurées et options de synchronisation</caption>
      * const manager = new NRequestManager({
+     *     synchronizer: { autoSync: { enabled: true, onOnline: true } },
      *     tables: {
      *         users: new NTableRequest({ table: 'users' }),
      *         orders: new NTableRequest({ table: 'orders' })
@@ -88,6 +98,17 @@ export class NRequestManager extends NObject {
      */
     constructor(options = {}) {
         super();
+        if (options && typeof options === 'object' && options.synchronizer instanceof NDataSynchronizer) {
+            this.#synchronizer = options.synchronizer;
+            this.#ownsSynchronizer = false;
+        } else {
+            const syncOptions = (options && typeof options === 'object' && options.synchronizer && typeof options.synchronizer === 'object')
+                ? options.synchronizer
+                : {};
+            this.#synchronizer = new NDataSynchronizer(syncOptions);
+            this.#ownsSynchronizer = true;
+        }
+
         if (options && typeof options === 'object' && options.tables && typeof options.tables === 'object') {
             for (const [table, tr] of Object.entries(options.tables)) {
                 if (tr instanceof NTableRequest) {
@@ -129,6 +150,21 @@ export class NRequestManager extends NObject {
         return Object.keys(this.#tableRequests).length;
     }
 
+    /**
+     * Retourne l'instance de `NDataSynchronizer` gérée par ce gestionnaire.
+     * @type {NDataSynchronizer|null}
+     *
+     * @example <caption>Exemple 1 : Accéder au synchroniseur centralisé</caption>
+     * const sync = manager.synchronizer;
+     * console.log(sync.getStatus());
+     *
+     * @example <caption>Exemple 2 : Écouter les événements de synchronisation</caption>
+     * manager.synchronizer.on('complete', (summary) => console.log('Sync terminée :', summary));
+     */
+    get synchronizer() {
+        return this.#synchronizer;
+    }
+
     // =========================================================================
     // Gestion des NTableRequest
     // =========================================================================
@@ -166,6 +202,9 @@ export class NRequestManager extends NObject {
 
         const key = tableName.trim().toLowerCase();
         this.#tableRequests[key] = tableRequest;
+        if (!tableRequest.request) {
+            tableRequest.request = this;
+        }
         return tableRequest;
     }
 
@@ -218,6 +257,7 @@ export class NRequestManager extends NObject {
         const key = tableName.trim().toLowerCase();
         if (!this.#tableRequests[key]) {
             this.#tableRequests[key] = new NTableRequest({
+                request: this,
                 table: tableName.trim()
             });
         }
@@ -334,6 +374,52 @@ export class NRequestManager extends NObject {
             return null;
         }
         return tableRequest.execute(req);
+    }
+
+    /**
+     * Lance la synchronisation bidirectionnelle via l'instance `NDataSynchronizer` du gestionnaire.
+     *
+     * @async
+     * @method sync
+     * @param {string|null} [tableName=null] - Nom de la table/collection à synchroniser, ou `null` pour toutes.
+     * @param {Object} [options={}] - Options transmises à `NDataSynchronizer.sync`.
+     * @returns {Promise<Object>} Résumé d'exécution de la synchronisation.
+     *
+     * @example <caption>Exemple 1 : Synchroniser toutes les tables actives</caption>
+     * const report = await manager.sync();
+     * console.log(report.ok, report.results);
+     *
+     * @example <caption>Exemple 2 : Synchroniser une table spécifique en mode Push</caption>
+     * const res = await manager.sync('clients', { direction: 'push' });
+     */
+    async sync(tableName = null, options = {}) {
+        if (!this.#synchronizer) {
+            return { ok: false, status: 'unavailable', results: {} };
+        }
+        return await this.#synchronizer.sync(tableName, options);
+    }
+
+    /**
+     * Vide le registre des `NTableRequest` et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire le gestionnaire de requêtes</caption>
+     * const manager = new NRequestManager();
+     * manager.destroy();
+     * console.log(manager.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier le vidage après destruction</caption>
+     * manager.destroy();
+     * console.log(manager.count); // 0
+     */
+    destroy() {
+        this.clear();
+        if (this.#ownsSynchronizer && this.#synchronizer && !this.#synchronizer.isDestroyed) {
+            this.#synchronizer.destroy();
+        }
+        this.#synchronizer = null;
+        super.destroy();
     }
 }
 

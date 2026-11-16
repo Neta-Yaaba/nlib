@@ -5,9 +5,7 @@
  * - Thread principal : création et registre nommé de workers (`create`, `add`, `get`, `has`, `terminate`, `terminateAll`),
  *   pools de workers avec répartition sur le moins occupé (`createPool`) et requêtes directes (`request`).
  * - Contexte Worker : transmission des requêtes du Worker vers le thread principal via `NWorker.requestMain()`.
- * - Traitement par défaut des requêtes inverses : relaie automatiquement `'requestApp'` vers `NUtil.env.requestApp(params)`.
- *
- * Règles : n'hérite pas de `NObject`, aucune méthode statique, allocations mémoire à la demande.
+ * - Traitement par défaut des requêtes inverses : relaie `'requestApp'` / `'invokeNative'` vers `NUtil.sys.invokeNative(params)`.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -16,6 +14,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NWorkerManager
+ * @extends NObject
  * @description Registre, pools et routage centralisé des workers NLib (thread principal) et pont de communication.
  *
  * @example <caption>Exemple 1 : Créer un worker nommé et exécuter une action</caption>
@@ -355,7 +354,7 @@ export class NWorkerManager extends NObject {
             this.terminate(name);
         }
 
-        worker.event.once('destroy', () => {
+        worker.event.once('beforeDestroy', () => {
             if (this.#workers?.get(name) === worker) {
                 this.#workers.delete(name);
                 if (this.#workers.size === 0) this.#workers = null;
@@ -608,6 +607,29 @@ export class NWorkerManager extends NObject {
                 for (const w of [...list]) fn(w);
             }
         }
+    }
+
+    /**
+     * Termine tous les workers et pools actifs, vide les actions enregistrées
+     * et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire le gestionnaire de workers</caption>
+     * const manager = new NWorkerManager();
+     * manager.destroy();
+     * console.log(manager.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Arrêt complet lors de la fermeture</caption>
+     * if (!manager.isDestroyed) {
+     *     manager.destroy();
+     * }
+     */
+    destroy() {
+        this.terminateAll();
+        this.#actions?.clear?.();
+        this.#actions = null;
+        super.destroy();
     }
 }
 

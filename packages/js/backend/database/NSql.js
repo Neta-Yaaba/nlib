@@ -6,8 +6,8 @@
  * ou délègue automatiquement les requêtes au pont natif de l'application (`NUtil.env.isWebView` / `invokeNative`)
  * lorsqu'exécuté dans un conteneur natif ou une WebView.
  *
- * Principes architecturaux et fiabilisation :
- * - Zero Throw / Zero Reject : aucune exception non interceptée n'est propagée, toutes les erreurs sont journalisées via `NUtil.log`.
+ * Principes techniques :
+ * - Capture et journalisation des erreurs via `NUtil.log` avec retours normalisés.
  * - Gestion mémoire étanche : libération systématique des statements préparés (`stmt.free()`) dans des blocs `try ... finally`.
  * - Verrouillage anti-concurrence : chargement du module WebAssembly et initialisation protégés contre les appels simultanés.
  * - Normalisation lexicale des paramètres : analyseur SQL contextuel (ignore chaînes, commentaires et identifiants).
@@ -31,7 +31,14 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NSql
+ * @extends NObject
  * @description Gestionnaire universel de base de données SQLite (sql.js WebAssembly / Pont applicatif natif).
+ *
+ * Prérequis en mode WebAssembly (`sql.js`) :
+ * 1. Exposer la fonction `initSqlJs` sur `globalThis.initSqlJs`, `window.initSqlJs` ou `self.initSqlJs`
+ *    (via `<script src=".../sql-wasm.js"></script>` ou `import initSqlJs from 'sql.js'; globalThis.initSqlJs = initSqlJs;`).
+ * 2. Fournir le binaire `sql-wasm.wasm` et configurer `wasmPath` dans `new NSql({ wasmPath })` ou `sql.init({ wasmPath })`
+ *    (chemin vers le fichier `.wasm`, dossier parent, ou fonction `locateFile`; par défaut `${location.origin}/file/sqljs/sql-wasm.wasm`).
  *
  * @example <caption>Exemple 1 : Initialiser une base SQLite avec une structure déclarative</caption>
  * const sql = new NSql();
@@ -2011,6 +2018,116 @@ export class NSql extends NObject {
         }
 
         return new Uint8Array(0);
+    }
+
+    /**
+     * Construit une clause de recherche SQL paramétrée multi-mots et multi-colonnes
+     * avec calcul de pertinence dans le tri `ORDER BY`.
+     *
+     * @method buildSearchClause
+     * @param {string} queryText - Termes recherchés (séparés par des espaces).
+     * @param {string[]} fields - Liste des colonnes ciblées par la recherche.
+     * @returns {{ where: string, order: string, params: Object<string, string> }|null} Clauses SQL et paramètres nommés, ou `null` si l'entrée est vide.
+     *
+     * @example <caption>Exemple 1 : Recherche paramétrée sur plusieurs colonnes</caption>
+     * const search = sql.buildSearchClause('alice paris', ['name', 'city']);
+     * if (search) {
+     *     const rows = await sql.select(
+     *         `SELECT * FROM clients WHERE ${search.where} ORDER BY ${search.order}`,
+     *         search.params
+     *     );
+     * }
+     *
+     * @example <caption>Exemple 2 : Recherche sur une colonne unique</caption>
+     * const search = sql.buildSearchClause('facture', ['title']);
+     */
+    buildSearchClause(queryText, fields) {
+        if (!queryText || typeof queryText !== 'string' || !Array.isArray(fields) || fields.length === 0) {
+            return null;
+        }
+
+        const words = queryText.trim().split(/\s+/).filter(Boolean);
+        if (words.length === 0) return null;
+
+        const conditions = [];
+        const caseConditions = [];
+        const params = {};
+        let paramIdx = 0;
+
+        for (const word of words) {
+            let weight = fields.length;
+
+            for (const field of fields) {
+                const safeField = `\`${this.#escapeIdentifier(field)}\``;
+                const paramName = `n_word_${paramIdx++}`;
+                params[paramName] = `%${word}%`;
+
+                conditions.push(`LOWER(${safeField}) LIKE LOWER(:${paramName})`);
+
+                const scoreExact = 10 + weight;
+                const scorePartial = 5 + weight;
+                caseConditions.push(
+                    `(CASE WHEN LOWER(${safeField}) = LOWER(:${paramName}) THEN ${scoreExact} ` +
+                    `WHEN LOWER(${safeField}) LIKE LOWER(:${paramName}) THEN ${scorePartial} ELSE 0 END)`
+                );
+                weight--;
+            }
+        }
+
+        return {
+            where: conditions.length > 0 ? `(${conditions.join(' OR ')})` : '',
+            order: caseConditions.length > 0 ? `(${caseConditions.join(' + ')}) DESC` : '',
+            params
+        };
+    }
+
+    /**
+     * Construit une clause SQL `LIMIT` / `OFFSET` pour la pagination des requêtes.
+     *
+     * @method buildLimitClause
+     * @param {number} limit - Nombre maximal de lignes à retourner.
+     * @param {number} [offset=0] - Décalage de départ.
+     * @returns {string} Clause SQL `LIMIT` formatée ou chaîne vide.
+     *
+     * @example <caption>Exemple 1 : Limite simple</caption>
+     * const clause = sql.buildLimitClause(20); // ' LIMIT 20'
+     *
+     * @example <caption>Exemple 2 : Pagination avec limite et décalage</caption>
+     * const clause = sql.buildLimitClause(25, 50); // ' LIMIT 50, 25'
+     */
+    buildLimitClause(limit, offset = 0) {
+        const lim = typeof limit === 'number' && limit > 0 ? Math.floor(limit) : 0;
+        const off = typeof offset === 'number' && offset > 0 ? Math.floor(offset) : 0;
+
+        if (lim > 0 && off > 0) {
+            return ` LIMIT ${off}, ${lim}`;
+        }
+        if (lim > 0) {
+            return ` LIMIT ${lim}`;
+        }
+        if (off > 0) {
+            return ` LIMIT 0, ${off}`;
+        }
+        return '';
+    }
+
+    /**
+     * Ferme la base SQLite active et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire l'instance NSql</caption>
+     * const sql = new NSql();
+     * sql.destroy();
+     * console.log(sql.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier l'état de connexion après destruction</caption>
+     * sql.destroy();
+     * console.log(sql.isOpen); // false
+     */
+    destroy() {
+        this.close();
+        super.destroy();
     }
 }
 

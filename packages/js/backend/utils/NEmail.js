@@ -3,20 +3,14 @@
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, la normalisation, l'extraction de composants,
  * la comparaison, le masquage et le filtrage des adresses e-mail dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
 
 /**
  * @class NEmail
- * @description Utilitaire de gestion et traitement des adresses e-mail sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion et traitement des adresses e-mail.
  *
  * @example <caption>Exemple 1 : Validation et normalisation</caption>
  * const emailUtil = new NEmail();

@@ -1,21 +1,18 @@
 /**
  * @file NDirectory.js
  * @package @nlib/js-backend
- * @description Classe utilitaire universelle de gestion des répertoires (dossiers) pour l'écosystème NLib.
+ * @description Classe utilitaire de gestion des répertoires (dossiers) pour l'écosystème NLib,
+ * accessible via `NUtil.dir` (ou `NUtil.directory`) et par instanciation directe (`new NDirectory()`).
  *
- * Règles architecturales NLib :
- * - Fonctionne comme une classe utilitaire sans aucune méthode statique (`static`), accessible via `NUtil.dir`
- *   (ou `NUtil.directory`) et par instanciation directe (`new NDirectory()`).
- * - N'hérite pas de `NObject`.
- * - Stratégie de stockage adaptative multiplateforme à 3 niveaux (coordonnée avec `NFile`) :
- *   1. **Conteneur Natif / WebView (`native`)** : si `NUtil.env.isWebView` est actif, délègue les opérations
- *      au système d'exploitation hôte via `NUtil.sys.invokeNative`.
- *   2. **File System Access API / OPFS (`fs`)** : sinon, si l'API `navigator.storage.getDirectory` est disponible,
- *      manipule nativement les `FileSystemDirectoryHandle`.
- *   3. **IndexedDB (`idb`)** : sinon, bascule automatiquement sur `NUtil.db.idb` (magasin `ntable`) en parfaite
- *      synchronisation avec les fichiers enregistrés par `NFile` (`__nfile__:`) et les dossiers (`__ndir__:`).
- * - Contrat strict **Zero Throw / Zero Reject** : aucune exception non capturée, journalisation via `NUtil.log`
- *   et retours normalisés prévisibles.
+ * Stratégie de stockage adaptative multiplateforme à 3 niveaux (coordonnée avec `NFile`) :
+ * 1. **Conteneur Natif / WebView (`native`)** : si `NUtil.env.isWebView` est actif, délègue les opérations
+ *    au système d'exploitation hôte via `NUtil.sys.invokeNative`.
+ * 2. **File System Access API / OPFS (`fs`)** : si l'API `navigator.storage.getDirectory` est disponible,
+ *    manipule les `FileSystemDirectoryHandle`.
+ * 3. **IndexedDB (`idb`)** : s'appuie sur `NUtil.db.idb` (magasin `ntable`) en synchronisation avec
+ *    les fichiers enregistrés par `NFile` (`__nfile__:`) et les dossiers (`__ndir__:`).
+ *
+ * Les erreurs sont journalisées via `NUtil.log` avec retours normalisés.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -49,6 +46,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NDirectory
+ * @extends NObject
  * @description Service utilitaire de manipulation des répertoires (création, suppression, listage, arborescence,
  * recherche, copie, déplacement, renommage, vidage et calcul de taille) avec bascule automatique entre
  * Pont Natif (`invokeNative`), File System Access API (`navigator.storage.getDirectory`) et IndexedDB (`NUtil.db.idb`).

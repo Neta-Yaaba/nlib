@@ -29,4 +29,18 @@ describe('NJson (utils/NJson.js)', () => {
         assert.deepEqual(flat, { 'a.b': 1 });
         assert.deepEqual(json.unflatten(flat), { a: { b: 1 } });
     });
+
+    it('parcourt un tableau, un objet ou une chaîne JSON avec forEach', () => {
+        const arrOut = [];
+        assert.equal(json.forEach(['a', 'b', 'c'], (val, idx) => arrOut.push(`${idx}:${val}`)), true);
+        assert.deepEqual(arrOut, ['0:a', '1:b', '2:c']);
+
+        const objOut = [];
+        json.forEach('{"x":1,"y":2,"z":3}', (val, key) => {
+            objOut.push(`${key}=${val}`);
+            if (key === 'y') return false;
+        });
+        assert.deepEqual(objOut, ['x=1', 'y=2']);
+        assert.equal(json.forEach(null, () => {}), false);
+    });
 });

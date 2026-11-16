@@ -2,19 +2,14 @@
  * @file NTableRequest.js
  * @package @nlib/js-backend
  * @description Gestionnaire intelligent et synchronisé de requêtes de données sur une table.
- * Coordonne la persistance locale (SQLite via `NSql` / `NDatabase`) et les appels réseau distants (`NNetwork` / `NRequest`),
+ * Coordonne la persistance locale (SQLite via `NSql` / `NDatabase`) et les appels réseau distants (`NNetwork` / `NRequestManager`),
  * avec gestion automatique du mode hors-ligne/en-ligne, synchronisation bidirectionnelle,
  * suivi des événements de synchronisation (`nevent`), recherche textuelle et pagination.
- *
- * Conforme aux standards NLib :
- * - Hérite de `NObject`
- * - Zéro variable hors classe
- * - Zéro import inutile
- * - Documentation JSDoc exhaustive en français (>= 3 @example classe, >= 2 @example méthodes/getters)
  */
 
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NDataSynchronizer } from './NDataSynchronizer.js';
 
 /**
  * @class NTableRequest
@@ -37,11 +32,6 @@ import { NUtil } from '../utils/NUtil.js';
  *     data: { name: 'Pain Artisanal', price: 200 }
  * });
  * console.log('Produit enregistré :', result);
- *
- * @example <caption>Exemple 3 : Génération de requêtes de recherche textuelle avec pondération</caption>
- * const tr = new NTableRequest({ table: 'articles' });
- * const searchClause = tr.generateSqlSearch('nlib cross-platform', ['title', 'description']);
- * console.log(searchClause.where, searchClause.order);
  */
 export class NTableRequest extends NObject {
 
@@ -50,8 +40,8 @@ export class NTableRequest extends NObject {
     // =========================================================================
 
     /**
-     * Instance de NRequest parente optionnelle assurant le pont d'état et de synchronisation.
-     * @type {any}
+     * Instance de `NRequestManager` parente optionnelle assurant le pont d'état et de synchronisation.
+     * @type {NRequestManager|null}
      * @private
      */
     #request = null;
@@ -84,6 +74,55 @@ export class NTableRequest extends NObject {
      */
     #isSyncing = false;
 
+    /**
+     * Indique si la synchronisation via `NDataSynchronizer` est activée pour cette table.
+     * @type {boolean}
+     * @private
+     */
+    #syncEnabled = false;
+
+    /**
+     * Configuration de synchronisation de la collection associée à cette table.
+     * @type {Object}
+     * @private
+     */
+    #syncConfig = {};
+
+    /**
+     * Instance explicite ou locale de `NDataSynchronizer`.
+     * @type {NDataSynchronizer|null}
+     * @private
+     */
+    #synchronizer = null;
+
+    /**
+     * Indique si l'instance `#synchronizer` locale a été créée par ce `NTableRequest`.
+     * @type {boolean}
+     * @private
+     */
+    #ownsSynchronizer = false;
+
+    /**
+     * Instance de `NDataSynchronizer` sur laquelle les écouteurs sont actuellement attachés.
+     * @type {NDataSynchronizer|null}
+     * @private
+     */
+    #boundSynchronizer = null;
+
+    /**
+     * Référence de l'écouteur `'apply'` attaché au synchroniseur.
+     * @type {Function|null}
+     * @private
+     */
+    #onSyncApply = null;
+
+    /**
+     * Référence de l'écouteur `'confirmed'` attaché au synchroniseur.
+     * @type {Function|null}
+     * @private
+     */
+    #onSyncConfirmed = null;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -93,16 +132,22 @@ export class NTableRequest extends NObject {
      *
      * @constructor
      * @param {Object} [options={}] - Options de configuration de la requête de table.
-     * @param {any} [options.request] - Gestionnaire de requête parent `NRequest`.
+     * @param {NRequestManager|null} [options.request] - Gestionnaire de requête parent `NRequestManager`.
      * @param {string} [options.table=''] - Nom de la table associée.
      * @param {string} [options.primaryKey='id'] - Nom de la colonne clé primaire.
      * @param {any} [options.db] - Instance explicite de base de données (utilise `NUtil.db.sql` par défaut).
+     * @param {boolean|Object} [options.sync=false] - Active et configure la synchronisation via `NDataSynchronizer`.
+     * @param {NDataSynchronizer|null} [options.synchronizer] - Instance explicite de `NDataSynchronizer`.
      *
      * @example <caption>Exemple 1 : Instanciation avec nom de table et clé primaire</caption>
      * const tr = new NTableRequest({ table: 'clients', primaryKey: 'code_client' });
      *
-     * @example <caption>Exemple 2 : Instanciation liée à un gestionnaire NRequest parent</caption>
-     * const tr = new NTableRequest({ request: appRequest, table: 'orders' });
+     * @example <caption>Exemple 2 : Instanciation avec synchronisation activée via NRequestManager</caption>
+     * const tr = new NTableRequest({
+     *     request: manager,
+     *     table: 'orders',
+     *     sync: { endpoint: '/sync/orders', conflictStrategy: 'serverWins' }
+     * });
      */
     constructor(options = {}) {
         super();
@@ -111,6 +156,13 @@ export class NTableRequest extends NObject {
             this.#table = typeof options.table === 'string' ? options.table.trim() : '';
             this.#primaryKey = typeof options.primaryKey === 'string' && options.primaryKey.trim() ? options.primaryKey.trim() : 'id';
             this.#db = options.db || null;
+            if (options.synchronizer instanceof NDataSynchronizer) {
+                this.#synchronizer = options.synchronizer;
+                this.#ownsSynchronizer = false;
+            }
+            if (options.sync === true || (options.sync && typeof options.sync === 'object' && options.sync.enabled !== false)) {
+                this.enableSync(typeof options.sync === 'object' ? options.sync : {});
+            }
         }
     }
 
@@ -179,8 +231,8 @@ export class NTableRequest extends NObject {
     }
 
     /**
-     * Retourne le gestionnaire NRequest parent associé.
-     * @type {any}
+     * Retourne le gestionnaire `NRequestManager` parent associé.
+     * @type {NRequestManager|null}
      *
      * @example <caption>Exemple 1 : Consulter la requête parente</caption>
      * console.log(tr.request);
@@ -190,6 +242,70 @@ export class NTableRequest extends NObject {
      */
     get request() {
         return this.#request;
+    }
+
+    /**
+     * Associe un gestionnaire `NRequestManager` parent et réattache la synchronisation si elle est active.
+     * @param {NRequestManager|null} value - Gestionnaire parent.
+     *
+     * @example <caption>Exemple 1 : Attacher un NRequestManager parent</caption>
+     * tr.request = manager;
+     *
+     * @example <caption>Exemple 2 : Détacher le gestionnaire parent</caption>
+     * tr.request = null;
+     */
+    set request(value) {
+        this.#request = value || null;
+        if (this.#ownsSynchronizer && this.#synchronizer && this.#request?.synchronizer) {
+            this.#unbindSynchronizer();
+            if (!this.#synchronizer.isDestroyed) {
+                this.#synchronizer.destroy();
+            }
+            this.#synchronizer = null;
+            this.#ownsSynchronizer = false;
+        }
+        if (this.#syncEnabled) {
+            this.#bindSynchronizer();
+        }
+    }
+
+    /**
+     * Indique si la synchronisation via `NDataSynchronizer` est activée.
+     * @type {boolean}
+     *
+     * @example <caption>Exemple 1 : Vérifier si la synchronisation est active</caption>
+     * console.log(tr.syncEnabled);
+     *
+     * @example <caption>Exemple 2 : Conditionner un traitement de synchronisation</caption>
+     * if (tr.syncEnabled) { await tr.syncDatas(); }
+     */
+    get syncEnabled() {
+        return this.#syncEnabled;
+    }
+
+    /**
+     * Retourne l'instance de `NDataSynchronizer` associée à cette table.
+     * Utilise le synchroniseur explicite, celui du `NRequestManager` parent, ou crée une instance locale si la synchronisation est activée.
+     * @type {NDataSynchronizer|null}
+     *
+     * @example <caption>Exemple 1 : Accéder au synchroniseur de la table</caption>
+     * const sync = tr.synchronizer;
+     *
+     * @example <caption>Exemple 2 : Écouter un conflit sur le synchroniseur</caption>
+     * tr.synchronizer?.on('conflict', (ev) => console.warn(ev));
+     */
+    get synchronizer() {
+        if (this.#synchronizer && !this.#ownsSynchronizer) return this.#synchronizer;
+        if (this.#request && this.#request.synchronizer) {
+            return this.#request.synchronizer;
+        }
+        if (this.#synchronizer) return this.#synchronizer;
+        if (this.#syncEnabled) {
+            this.#synchronizer = new NDataSynchronizer();
+            this.#ownsSynchronizer = true;
+            return this.#synchronizer;
+        }
+        return null;
     }
 
     /**
@@ -300,7 +416,7 @@ export class NTableRequest extends NObject {
      */
     async get(req = {}) {
         let result = null;
-        const isLocalOnly = Boolean(req.isLocalOnly || req.N_REQUEST_LOCAL);
+        const isLocalOnly = Boolean(req.isLocalOnly);
         const sql = req.sql || req.SQL;
         const params = req.params || req.PARAMS || {};
         const requestCode = req.requestCode || req.REQUESTCODE;
@@ -515,6 +631,14 @@ export class NTableRequest extends NObject {
             );
         }
 
+        if (this.#syncEnabled && this.synchronizer) {
+            await this.synchronizer.trackChange(
+                this.#getSyncCollectionId(),
+                'create',
+                finalRecord || record
+            );
+        }
+
         // 2. Synchronisation distante immédiate si en ligne et non restreint
         if (!isLocalOnly && this.#isOnline()) {
             this.syncDatas().catch((err) => {
@@ -582,8 +706,19 @@ export class NTableRequest extends NObject {
         const updatePayload = { ...data, n_local: 3 };
         const affectedRows = await this.db.sql.update(this.#table, updatePayload, where, params);
 
+        if (this.#syncEnabled && affectedRows > 0 && this.synchronizer) {
+            const updatedRows = await this.db.sql.select(
+                `SELECT * FROM \`${this.#table}\` WHERE ${where}`,
+                params
+            );
+            const colId = this.#getSyncCollectionId();
+            for (const row of updatedRows || []) {
+                await this.synchronizer.trackChange(colId, 'update', row);
+            }
+        }
+
         if (!isLocalOnly && affectedRows > 0 && this.#isOnline()) {
-            this.syncDatas().catch(() => {});
+            this.syncDatas().catch(() => { });
         }
 
         return affectedRows;
@@ -640,19 +775,30 @@ export class NTableRequest extends NObject {
         }
 
         // Enregistrer les IDs à supprimer pour la synchronisation distante
+        const selectCols = this.#syncEnabled ? '*' : `\`${this.#primaryKey}\``;
         const toDeleteRows = await this.db.sql.select(
-            `SELECT \`${this.#primaryKey}\` FROM \`${this.#table}\` WHERE ${where}`,
+            `SELECT ${selectCols} FROM \`${this.#table}\` WHERE ${where}`,
             params
         );
 
         const affectedRows = await this.db.sql.delete(this.#table, where, params);
 
         if (affectedRows > 0 && toDeleteRows.length > 0) {
-            const deletedIds = toDeleteRows.map((r) => r[this.#primaryKey]);
-            await this.#recordDeletedIds(deletedIds);
+            if (this.#syncEnabled && this.synchronizer) {
+                const colId = this.#getSyncCollectionId();
+                const versionField = this.#syncConfig.versionField || 'version';
+                for (const row of toDeleteRows) {
+                    await this.synchronizer.trackChange(colId, 'delete', row[this.#primaryKey], {
+                        baseVersion: row[versionField] ?? null
+                    });
+                }
+            } else {
+                const deletedIds = toDeleteRows.map((r) => r[this.#primaryKey]);
+                await this.#recordDeletedIds(deletedIds);
+            }
 
             if (!isLocalOnly && this.#isOnline()) {
-                this.syncDatas().catch(() => {});
+                this.syncDatas().catch(() => { });
             }
         }
 
@@ -682,7 +828,73 @@ export class NTableRequest extends NObject {
     // =========================================================================
 
     /**
+     * Active et configure la synchronisation bidirectionnelle de la table via `NDataSynchronizer`.
+     * Enregistre la collection associée et attache les écouteurs `'apply'` et `'confirmed'`.
+     *
+     * @method enableSync
+     * @param {Object} [config={}] - Configuration de synchronisation de la collection.
+     * @param {string} [config.collection] - Identifiant de collection (nom de la table par défaut).
+     * @param {string} [config.endpoint] - URL ou chemin d'endpoint distant (`/api/<table>` par défaut).
+     * @param {string} [config.versionField='version'] - Champ de version utilisé pour la détection de conflits.
+     * @param {'serverWins'|'clientWins'|'manual'|'merge'} [config.conflictStrategy='serverWins'] - Stratégie de résolution de conflits.
+     * @param {Function} [config.mergeResolver] - Fonction de fusion personnalisée pour la stratégie `'merge'`.
+     * @param {number} [config.batchSize=50] - Taille de lot Push.
+     * @param {number} [config.pullLimit=100] - Taille de page Pull.
+     * @param {number} [config.maxPages=50] - Nombre maximal de pages Pull par cycle.
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Activer la synchronisation avec endpoint personnalisé</caption>
+     * tr.enableSync({ endpoint: '/sync/clients', conflictStrategy: 'serverWins' });
+     *
+     * @example <caption>Exemple 2 : Activer la synchronisation avec stratégie de fusion</caption>
+     * tr.enableSync({
+     *     endpoint: '/sync/produits',
+     *     conflictStrategy: 'merge',
+     *     mergeResolver: ({ clientRecord, serverRecord }) => ({ ...serverRecord, ...clientRecord })
+     * });
+     */
+    enableSync(config = {}) {
+        const cfg = (config && typeof config === 'object') ? config : {};
+        this.#syncConfig = {
+            collection: (typeof cfg.collection === 'string' && cfg.collection.trim()) ? cfg.collection.trim() : this.#table,
+            endpoint: (typeof cfg.endpoint === 'string' && cfg.endpoint.trim()) ? cfg.endpoint.trim() : `/api/${this.#table}`,
+            primaryKey: (typeof cfg.primaryKey === 'string' && cfg.primaryKey.trim()) ? cfg.primaryKey.trim() : this.#primaryKey,
+            versionField: (typeof cfg.versionField === 'string' && cfg.versionField.trim()) ? cfg.versionField.trim() : 'version',
+            conflictStrategy: cfg.conflictStrategy || 'serverWins',
+            mergeResolver: typeof cfg.mergeResolver === 'function' ? cfg.mergeResolver : undefined,
+            batchSize: cfg.batchSize,
+            pullLimit: cfg.pullLimit,
+            maxPages: cfg.maxPages,
+            enabled: true
+        };
+        this.#syncEnabled = true;
+        this.#bindSynchronizer();
+        return this;
+    }
+
+    /**
+     * Désactive la synchronisation via `NDataSynchronizer` pour cette table,
+     * détache les écouteurs et désenregistre la collection du synchroniseur.
+     *
+     * @method disableSync
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Désactiver la synchronisation de la table</caption>
+     * tr.disableSync();
+     * console.log(tr.syncEnabled); // false
+     *
+     * @example <caption>Exemple 2 : Désactivation chaînée</caption>
+     * tr.disableSync();
+     */
+    disableSync() {
+        this.#unbindSynchronizer();
+        this.#syncEnabled = false;
+        return this;
+    }
+
+    /**
      * Lance la synchronisation bidirectionnelle des données de la table avec le serveur distant.
+     * Délègue à `NDataSynchronizer` lorsque la synchronisation est activée.
      *
      * @async
      * @method syncDatas
@@ -693,12 +905,27 @@ export class NTableRequest extends NObject {
      * const ok = await tr.syncDatas();
      * console.log('Synchronisé :', ok);
      *
-     * @example <caption>Exemple 2 : Synchronisation avec filtres</caption>
-     * await tr.syncDatas({ limit: 50 });
+     * @example <caption>Exemple 2 : Synchronisation avec direction ciblée</caption>
+     * await tr.syncDatas({ direction: 'push' });
      */
     async syncDatas(options = {}) {
         if (!this.#isOnline() || this.#isSyncing) {
             return false;
+        }
+
+        if (this.#syncEnabled && this.synchronizer) {
+            this.#isSyncing = true;
+            try {
+                const report = await this.synchronizer.sync(this.#getSyncCollectionId(), options);
+                return Boolean(report?.ok);
+            } catch (err) {
+                this.util.log.warn(`NTableRequest.syncDatas : échec de synchronisation sur "${this.#table}".`, {
+                    error: err?.message || String(err)
+                });
+                return false;
+            } finally {
+                this.#isSyncing = false;
+            }
         }
 
         this.#isSyncing = true;
@@ -733,157 +960,11 @@ export class NTableRequest extends NObject {
     }
 
     // =========================================================================
-    // Générateurs de Clauses SQL (Recherche textuelle, Pagination)
-    // =========================================================================
-
-    /**
-     * Génère une clause de recherche SQL textuelle multi-champs avec pondération de pertinence dans le `ORDER BY`.
-     *
-     * @method generateSqlSearch
-     * @param {string} textSearch - Termes recherchés (séparés par des espaces).
-     * @param {string[]} arrayField - Liste des colonnes sur lesquelles effectuer la recherche.
-     * @returns {{ where: string, order: string }|null} Clauses SQL générées ou null si texte vide.
-     *
-     * @example <caption>Exemple 1 : Recherche simple sur titre et description</caption>
-     * const search = tr.generateSqlSearch('pain chocolat', ['title', 'description']);
-     * if (search) {
-     *     const query = `SELECT * FROM products WHERE ${search.where} ORDER BY ${search.order}`;
-     * }
-     *
-     * @example <caption>Exemple 2 : Recherche sur un seul champ</caption>
-     * const search = tr.generateSqlSearch('dupont', ['name']);
-     */
-    generateSqlSearch(textSearch, arrayField) {
-        if (!textSearch || typeof textSearch !== 'string' || !Array.isArray(arrayField) || arrayField.length === 0) {
-            return null;
-        }
-
-        const words = textSearch.trim().split(/\s+/).filter(Boolean);
-        if (words.length === 0) return null;
-
-        const conditions = [];
-        const caseConditions = [];
-
-        for (const word of words) {
-            const escapedWord = word.replace(/'/g, "''");
-            let weight = arrayField.length;
-
-            for (const field of arrayField) {
-                const safeField = `\`${String(field).replace(/`/g, '``')}\``;
-
-                // WHERE : recherche par correspondance partielle insensible à la casse
-                conditions.push(`LOWER(${safeField}) LIKE LOWER('%${escapedWord}%')`);
-
-                // ORDER BY : score de pertinence plus élevé pour correspondance exacte
-                const scoreExact = 10 + weight;
-                const scorePartial = 5 + weight;
-                caseConditions.push(
-                    `(CASE WHEN LOWER(${safeField}) = LOWER('${escapedWord}') THEN ${scoreExact} ` +
-                    `WHEN LOWER(${safeField}) LIKE LOWER('%${escapedWord}%') THEN ${scorePartial} ELSE 0 END)`
-                );
-                weight--;
-            }
-        }
-
-        return {
-            where: conditions.length > 0 ? `(${conditions.join(' OR ')})` : '',
-            order: caseConditions.length > 0 ? `(${caseConditions.join(' + ')}) DESC` : ''
-        };
-    }
-
-    /**
-     * Génère une clause de recherche SQL avec paramètres nommés pour éviter les injections.
-     *
-     * @method generateSqlSearchParams
-     * @param {string} textSearch - Termes recherchés.
-     * @param {string[]} arrayField - Colonnes ciblées.
-     * @returns {{ where: string, order: string, params: Object<string, string> }|null}
-     *
-     * @example <caption>Exemple 1 : Recherche paramétrée sécurisée</caption>
-     * const search = tr.generateSqlSearchParams('jean', ['name', 'email']);
-     * if (search) {
-     *     const results = await tr.db.sql.select(`SELECT * FROM users WHERE ${search.where}`, search.params);
-     * }
-     *
-     * @example <caption>Exemple 2 : Utilisation avec tri</caption>
-     * const search = tr.generateSqlSearchParams('pos', ['title']);
-     */
-    generateSqlSearchParams(textSearch, arrayField) {
-        if (!textSearch || typeof textSearch !== 'string' || !Array.isArray(arrayField) || arrayField.length === 0) {
-            return null;
-        }
-
-        const words = textSearch.trim().split(/\s+/).filter(Boolean);
-        if (words.length === 0) return null;
-
-        const conditions = [];
-        const caseConditions = [];
-        const params = {};
-        let paramIdx = 0;
-
-        for (const word of words) {
-            let weight = arrayField.length;
-
-            for (const field of arrayField) {
-                const safeField = `\`${String(field).replace(/`/g, '``')}\``;
-                const paramName = `n_word_${paramIdx++}`;
-                params[paramName] = `%${word}%`;
-
-                conditions.push(`LOWER(${safeField}) LIKE LOWER(:${paramName})`);
-
-                const scoreExact = 10 + weight;
-                const scorePartial = 5 + weight;
-                caseConditions.push(
-                    `(CASE WHEN LOWER(${safeField}) = LOWER(:${paramName}) THEN ${scoreExact} ` +
-                    `WHEN LOWER(${safeField}) LIKE LOWER(:${paramName}) THEN ${scorePartial} ELSE 0 END)`
-                );
-                weight--;
-            }
-        }
-
-        return {
-            where: conditions.length > 0 ? `(${conditions.join(' OR ')})` : '',
-            order: caseConditions.length > 0 ? `(${caseConditions.join(' + ')}) DESC` : '',
-            params
-        };
-    }
-
-    /**
-     * Génère la clause SQL `LIMIT` et `OFFSET` pour la pagination.
-     *
-     * @method generateSqlLimited
-     * @param {number} limit - Nombre maximal de lignes à retourner.
-     * @param {number} [offset=0] - Décalage de départ (offset).
-     * @returns {string} Clause SQL `LIMIT x, y` ou chaîne vide.
-     *
-     * @example <caption>Exemple 1 : Limite simple</caption>
-     * const limitSql = tr.generateSqlLimited(20); // ' LIMIT 20'
-     *
-     * @example <caption>Exemple 2 : Limite avec décalage</caption>
-     * const pageSql = tr.generateSqlLimited(10, 20); // ' LIMIT 20, 10'
-     */
-    generateSqlLimited(limit, offset = 0) {
-        const lim = typeof limit === 'number' && limit > 0 ? Math.floor(limit) : 0;
-        const off = typeof offset === 'number' && offset > 0 ? Math.floor(offset) : 0;
-
-        if (lim > 0 && off > 0) {
-            return ` LIMIT ${off}, ${lim}`;
-        }
-        if (lim > 0) {
-            return ` LIMIT ${lim}`;
-        }
-        if (off > 0) {
-            return ` LIMIT 0, ${off}`;
-        }
-        return '';
-    }
-
-    // =========================================================================
     // Méthodes Internes Privées
     // =========================================================================
 
     /**
-     * Vérifie si le mode en ligne est actif (navigateur connecté et NRequest en ligne).
+     * Vérifie si le mode en ligne est actif (navigateur connecté et `NRequestManager` en ligne).
      * @private
      */
     #isOnline() {
@@ -972,6 +1053,165 @@ export class NTableRequest extends NObject {
                 { id: res[this.#primaryKey] }
             );
         }
+    }
+
+    /**
+     * Retourne l'identifiant de collection utilisé auprès de `NDataSynchronizer`.
+     * @private
+     * @returns {string}
+     */
+    #getSyncCollectionId() {
+        return this.#syncConfig.collection || this.#table;
+    }
+
+    /**
+     * Enregistre la collection auprès du `NDataSynchronizer` actif et attache les écouteurs `'apply'` et `'confirmed'`.
+     * @private
+     */
+    #bindSynchronizer() {
+        const sync = this.synchronizer;
+        if (!sync) return;
+
+        if (this.#boundSynchronizer && this.#boundSynchronizer !== sync) {
+            this.#unbindSynchronizer();
+        }
+
+        const collectionId = this.#getSyncCollectionId();
+        if (collectionId) {
+            sync.register(collectionId, {
+                ...this.#syncConfig,
+                enabled: true
+            });
+        }
+
+        if (this.#boundSynchronizer !== sync) {
+            this.#onSyncApply = (ev) => this.#handleSyncApply(ev);
+            this.#onSyncConfirmed = (ev) => {
+                this.#handleSyncConfirmed(ev).catch((err) => {
+                    this.util.log.warn(`NTableRequest : échec de confirmation locale pour "${this.#table}".`, {
+                        error: err?.message || String(err)
+                    });
+                });
+            };
+            sync.on('apply', this.#onSyncApply);
+            sync.on('confirmed', this.#onSyncConfirmed);
+            this.#boundSynchronizer = sync;
+        }
+    }
+
+    /**
+     * Détache les écouteurs et désenregistre la collection du synchroniseur lié.
+     * @private
+     */
+    #unbindSynchronizer() {
+        if (!this.#boundSynchronizer) return;
+        if (this.#onSyncApply) {
+            this.#boundSynchronizer.off('apply', this.#onSyncApply);
+        }
+        if (this.#onSyncConfirmed) {
+            this.#boundSynchronizer.off('confirmed', this.#onSyncConfirmed);
+        }
+        const collectionId = this.#getSyncCollectionId();
+        if (collectionId) {
+            this.#boundSynchronizer.unregister(collectionId);
+        }
+        this.#onSyncApply = null;
+        this.#onSyncConfirmed = null;
+        this.#boundSynchronizer = null;
+    }
+
+    /**
+     * Applique dans la base SQL locale les changements reçus lors du Pull `NDataSynchronizer`.
+     * @private
+     * @param {Object} ev - Événement `'apply'` émis par `NDataSynchronizer`.
+     */
+    #handleSyncApply(ev) {
+        if (!this.#syncEnabled || !ev || ev.collection !== this.#getSyncCollectionId()) {
+            return;
+        }
+
+        const task = (async () => {
+            if (ev.action === 'delete') {
+                await this.db.sql.delete(
+                    this.#table,
+                    `\`${this.#primaryKey}\` = :id`,
+                    { id: ev.recordId }
+                );
+                return;
+            }
+
+            if (ev.record && typeof ev.record === 'object') {
+                const pkVal = ev.record[this.#primaryKey] ?? ev.recordId;
+                const payload = { ...ev.record, n_local: 1 };
+                const existing = await this.db.sql.selectOne(
+                    `SELECT * FROM \`${this.#table}\` WHERE \`${this.#primaryKey}\` = :id LIMIT 1`,
+                    { id: pkVal }
+                );
+                if (existing && existing[this.#primaryKey] !== undefined) {
+                    await this.db.sql.update(
+                        this.#table,
+                        payload,
+                        `\`${this.#primaryKey}\` = :id`,
+                        { id: pkVal }
+                    );
+                } else {
+                    await this.db.sql.insert(this.#table, payload);
+                }
+            }
+        })();
+
+        if (typeof ev.waitUntil === 'function') {
+            ev.waitUntil(task);
+        }
+    }
+
+    /**
+     * Met à jour le marqueur `n_local = 1` pour les enregistrements confirmés par le serveur.
+     * @private
+     * @param {Object} ev - Événement `'confirmed'` émis par `NDataSynchronizer`.
+     */
+    async #handleSyncConfirmed(ev) {
+        if (!this.#syncEnabled || !ev || ev.collection !== this.#getSyncCollectionId()) {
+            return;
+        }
+        const confirmed = Array.isArray(ev.confirmed) ? ev.confirmed : [];
+        for (const item of confirmed) {
+            if (item && item.action !== 'delete' && item.recordId !== undefined && item.recordId !== null) {
+                await this.db.sql.update(
+                    this.#table,
+                    { n_local: 1 },
+                    `\`${this.#primaryKey}\` = :id`,
+                    { id: item.recordId }
+                );
+            }
+        }
+    }
+
+    /**
+     * Libère les références vers le gestionnaire parent et la base de données.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire l'instance NTableRequest</caption>
+     * const tr = new NTableRequest({ table: 'users' });
+     * tr.destroy();
+     * console.log(tr.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Nettoyage après fin d'utilisation</caption>
+     * if (!tr.isDestroyed) {
+     *     tr.destroy();
+     * }
+     */
+    destroy() {
+        this.disableSync();
+        if (this.#ownsSynchronizer && this.#synchronizer && !this.#synchronizer.isDestroyed) {
+            this.#synchronizer.destroy();
+        }
+        this.#synchronizer = null;
+        this.#request = null;
+        this.#db = null;
+        this.#isSyncing = false;
+        super.destroy();
     }
 }
 

@@ -36,6 +36,7 @@ import { NLog } from '../log/NLog.js';
 
 /**
  * @class NUtil
+ * @extends NObject
  * @description Point d'accès statique universel vers tous les utilitaires de NLib et fonctions
  * transversales générales.
  *
@@ -598,6 +599,10 @@ export class NUtil extends NObject {
      * @example <caption>Exemple 1 : Journaliser un message ou une anomalie</caption>
      * NUtil.log.info('Opération réussie', { id: 123 });
      * NUtil.log.error('Échec de validation', { champ: 'nom' });
+     *
+     * @example <caption>Exemple 2 : Consulter les derniers logs enregistrés</caption>
+     * const recents = NUtil.log.getLogs({ level: 'warn' });
+     * console.log(recents.length);
      */
     static get log() {
         if (!this.#log) {

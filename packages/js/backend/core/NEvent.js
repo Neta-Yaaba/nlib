@@ -4,11 +4,10 @@
  * @description Gestionnaire d'événements autonome avec allocation mémoire à la demande (*Lazy Initialization*)
  * dans l'écosystème NLib.
  *
- * Conçu selon la philosophie Zero Throw / Zero Reject :
- * - Aucune exception n'est levée lors des émissions ou abonnements,
+ * Gestion des erreurs et promesses :
  * - Les erreurs survenues dans les fonctions de rappel (listeners) sont capturées et journalisées via `NUtil.log.error`
- *   sans interrompre les autres écouteurs,
- * - `waitFor()` résout toujours de façon sûre (valeur ou `null` en cas d'expiration/erreur, jamais de rejet).
+ *   tout en poursuivant l'exécution des autres écouteurs,
+ * - `waitFor()` résout avec la valeur de l'événement ou `null` en cas d'expiration ou d'erreur.
  */
 
 /**
@@ -401,7 +400,7 @@ export class NEvent {
      * Émet un événement et déclenche de manière synchrone tous les écouteurs enregistrés sur cet événement.
      * N'effectue aucune allocation si aucun écouteur n'est enregistré (`#listeners === null`).
      * Chaque écouteur est encapsulé dans un bloc sécurisé : si une fonction de rappel lève une erreur,
-     * celle-ci est journalisée sans interrompre les autres écouteurs ni le code appelant (Zero Throw).
+     * celle-ci est journalisée tout en poursuivant l'exécution des autres écouteurs.
      *
      * @param {string} event - Nom de l'événement à émettre.
      * @param {any} [data=null] - Données transmises en argument à chaque écouteur.
@@ -441,7 +440,7 @@ export class NEvent {
 
     /**
      * Attend de manière asynchrone (`Promise`) la prochaine émission d'un événement.
-     * Respecte rigoureusement la politique Zero Reject : ne rejette jamais la promesse.
+     * Résout toujours avec la valeur de l'événement ou `null` en cas d'expiration.
      * En cas de délai expiré ou de nom d'événement invalide, résout avec `null`.
      *
      * @param {string} event - Nom de l'événement attendu.

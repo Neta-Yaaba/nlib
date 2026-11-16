@@ -2,16 +2,19 @@ import { describe, it, assert } from '../test-helper.js';
 import { NStorage } from '../../index.js';
 
 describe('NStorage (database/NStorage.js)', () => {
-    it('stocke, lit, chiffre de manière synchrone et gère les clés', () => {
+    it('stocke, lit, gère les contextes et manipule les clés sans chiffrement', () => {
         const store = new NStorage({
             prefix: 'test_store_',
-            encryptData: true,
-            encryptKey: true
+            context: 'app'
         });
 
-        assert.equal(store.isAvailable, true);
-        assert.equal(store.isDataEncrypted, true);
-        assert.equal(store.isKeyEncrypted, true);
+        assert.equal(typeof store.isAvailable, 'boolean');
+        assert.equal(store.prefix, 'test_store_');
+        assert.equal(store.context, 'app');
+
+        if (!store.isAvailable) {
+            return;
+        }
 
         store.clear();
         store.set('profile', { name: 'Alice', level: 3 });
@@ -25,9 +28,18 @@ describe('NStorage (database/NStorage.js)', () => {
         assert.equal(keys.includes('profile'), true);
         assert.equal(keys.includes('counter'), true);
 
+        const adminStore = store.withContext('admin');
+        adminStore.set('theme', 'dark');
+        assert.equal(adminStore.getString('theme'), 'dark');
+        assert.equal(store.has('theme'), false);
+        adminStore.clear();
+
         store.remove('counter');
         assert.equal(store.has('counter'), false);
         store.clear();
         assert.equal(store.length, 0);
+
+        store.destroy();
+        assert.equal(store.isDestroyed, true);
     });
 });

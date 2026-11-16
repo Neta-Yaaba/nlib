@@ -1,27 +1,18 @@
 /**
  * @file NServiceWorker.js
  * @package @nlib/js-backend
- * @description Gestionnaire universel de Service Worker, de mode hors-ligne (Offline-First), d'interception réseau
- * et de point d'entrée unique de pages (App Shell / SPA) avec repli automatique par **Monkey Patching**
+ * @description Gestionnaire de Service Worker, de mode hors-ligne (Offline-First), d'interception réseau
+ * et de point d'entrée unique de pages (App Shell / SPA) avec repli par **Monkey Patching**
  * (`fetch` & `XMLHttpRequest`) pour l'écosystème NLib.
  *
- * Règles architecturales NLib :
- * - Fonctionne comme une classe autonome sans aucune méthode statique (`static`), utilisable par instanciation
- *   directe (`new NServiceWorker(options)`).
- * - N'hérite pas de `NObject`.
- * - **Garantie de fonctionnement universel (Service Worker natif + Monkey Patching)** :
- *   1. Si l'API native `navigator.serviceWorker` est disponible et qu'un script `swUrl` est fourni (ou si exécuté
- *      directement dans un `ServiceWorkerGlobalScope`), pilote le Service Worker natif (`install`, `activate`, `fetch`, `message`).
- *   2. Si `ServiceWorker` n'est pas disponible (HTTP non sécurisé, `file://`, WebView mobile/desktop sans SW,
- *      navigateur restreint ou absence de script `sw.js` dédié), active automatiquement un **système de Monkey Patching**
- *      transparent sur `globalThis.fetch` et `globalThis.XMLHttpRequest` adossé à `NUtil.cache` et `NUtil.file`.
- *      Ainsi, l'interception des requêtes, la mise en cache des fichiers, le mode hors-ligne et le point d'entrée unique
- *      des pages fonctionnent **toujours**, dans 100 % des environnements.
- * - **Point d'entrée unique pour les pages (`entryPoint`)** :
- *   Permet de définir une page maîtresse unique (ex: `'/index.html'`) qui sera servie automatiquement pour toute
- *   navigation de page (`mode === 'navigate'` ou `Accept: text/html`), garantissant le chargement hors-ligne
- *   de toutes les routes applicatives.
- * - Contrat strict **Zero Throw / Zero Reject** : aucune exception non capturée, journalisation via `NUtil.log`.
+ * Fonctionnement technique :
+ * 1. Si l'API native `navigator.serviceWorker` est disponible et qu'un script `swUrl` est fourni (ou si exécuté
+ *    dans un `ServiceWorkerGlobalScope`), pilote le Service Worker natif (`install`, `activate`, `fetch`, `message`).
+ * 2. Sinon, active un **système de Monkey Patching** sur `globalThis.fetch` et `globalThis.XMLHttpRequest`
+ *    adossé à `NUtil.cache` et `NUtil.file`.
+ * - **Point d'entrée unique pour les pages (`entryPoint`)** : sert une page maîtresse (ex: `'/index.html'`)
+ *   pour toute navigation de page (`mode === 'navigate'` ou `Accept: text/html`).
+ * - Les erreurs sont capturées et journalisées via `NUtil.log`.
  */
 
 import { NEvent } from '../core/NEvent.js';
@@ -40,6 +31,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NServiceWorker
+ * @extends NObject
  * @description Système complet de gestion du mode hors-ligne (Offline), d'interception et mise en cache automatique
  * des requêtes/fichiers (`NUtil.cache` / `NUtil.file`), de point d'entrée unique pour les pages (`entryPoint`),
  * et de Monkey Patching (`fetch` / `XMLHttpRequest`) lorsque `ServiceWorker` n'est pas disponible.
@@ -1513,6 +1505,27 @@ export class NServiceWorker extends NObject {
         if (this.#event && !this.#event.isEmpty) {
             this.#event.emit(eventName, payload);
         }
+    }
+
+    /**
+     * Libère le bus d'événements interne et les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire l'instance NServiceWorker</caption>
+     * const sw = new NServiceWorker();
+     * sw.destroy();
+     * console.log(sw.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Nettoyage avant remplacement</caption>
+     * if (!sw.isDestroyed) {
+     *     sw.destroy();
+     * }
+     */
+    destroy() {
+        this.#event?.clear?.();
+        this.#event = null;
+        super.destroy();
     }
 }
 

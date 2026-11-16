@@ -4,12 +4,6 @@
  * @description Classe utilitaire pure pour la validation, la décomposition, la construction,
  * la normalisation, la manipulation des paramètres de requête (Query String), des chemins (paths)
  * et des ancres (hash) d'URL dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -17,7 +11,8 @@ import { NUtil } from './NUtil.js';
 
 /**
  * @class NUrl
- * @description Utilitaire de gestion et traitement des URLs et paramètres de requête sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion et traitement des URLs et paramètres de requête.
  *
  * @example <caption>Exemple 1 : Validation, analyse et normalisation d'URL</caption>
  * const urlUtil = new NUrl();

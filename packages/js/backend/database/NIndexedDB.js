@@ -16,21 +16,18 @@
  *   3. Donnée seule (`encryptData: true, encryptKey: false`)
  *   4. Aucun cryptage (`encryptKey: false, encryptData: false` - comportement par défaut)
  *   Prise en charge à la fois au niveau de l'instance et au niveau de chaque opération CRUD (add, put, get, getAll, cursor, etc.).
- * - Moteur cryptographique synchrone autonome pur JS (SHA-256 + Stream Cipher 256 bits + IV aléatoire/déterministe).
- * - Méthode `cursor()` résiliente : capture d'erreurs en bloc try/catch, support des callbacks synchrones et asynchrones
- *   avec arrêt anticipé propre (`return false`) sans rompre le cycle de vie de la transaction, avec déchiffrement transparent.
- * - Format de retour standardisé et prévisible : `{ ok: true, data: any }` ou `{ ok: false, error: string, code: string }`.
- *
- * Conforme aux standards stricts NLib : classe autonome sans variable globale hors classe,
- * sans méthode statique superflue, et compatible avec le Main Thread (DOM) et les Web Workers (`WorkerGlobalScope`).
+ * - Chiffrement local AES-256-GCM via `NUtil.crypto.encryptLocal()` et `NUtil.crypto.decryptLocal()`.
+ * - Méthode `cursor()` avec capture d'erreurs en bloc `try/catch`, support des callbacks synchrones et asynchrones,
+ *   arrêt anticipé (`return false`) et déchiffrement transparent.
+ * - Format de retour normalisé : `{ ok: true, data: any }` ou `{ ok: false, error: string, code: string }`.
+ * - Compatible avec le Main Thread (DOM) et les Web Workers (`WorkerGlobalScope`).
  */
 
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
- * Format standard de retour de toutes les opérations NIndexedDB.
- * Garantit que l'appelant reçoit toujours une structure prévisible et sûre sans exception rejetée.
+ * Structure standard de retour des opérations NIndexedDB (`{ ok, data, error, code }`).
  *
  * @typedef {Object} NIndexedDBResponse
  * @property {boolean} ok - Indique si l'opération a réussi.
@@ -44,11 +41,11 @@ import { NUtil } from '../utils/NUtil.js';
  * @typedef {Object} NIndexedDBOptions
  * @property {boolean} [encryptKey=false] - Indique si la clé doit être chiffrée.
  * @property {boolean} [encryptData=false] - Indique si les données doivent être chiffrées.
- * @property {string} [secretKey=''] - Clé secrète personnalisée pour le chiffrement.
  */
 
 /**
  * @class NIndexedDB
+ * @extends NObject
  * @description Gestionnaire asynchrone IndexedDB résilient, sécurisé transactionnellement et multi-instances avec cryptage optionnel.
  *
  * @example <caption>Exemple 1 : Utilisation standard avec store déclaré et CRUD basique</caption>
@@ -69,7 +66,6 @@ import { NUtil } from '../utils/NUtil.js';
  *     version: 1,
  *     encryptKey: true,
  *     encryptData: true,
- *     secretKey: 'mon_mot_de_passe_chiffrement',
  *     stores: [{ name: 'tokens', keyPath: 'id' }]
  * });
  * await secureDb.put('tokens', { id: 'usr_42', jwt: 'xyz987', role: 'admin' });
@@ -138,13 +134,6 @@ export class NIndexedDB extends NObject {
      */
     #encryptData = false;
 
-    /**
-     * Clé secrète de chiffrement configurée pour l'instance.
-     * @type {string}
-     * @private
-     */
-    #secretKey = '';
-
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -159,7 +148,6 @@ export class NIndexedDB extends NObject {
      * @param {Array<Object>} [options.stores=[]] - Déclaration des magasins (stores) et leurs index.
      * @param {boolean} [options.encryptKey=false] - Active le cryptage par défaut des clés.
      * @param {boolean} [options.encryptData=false] - Active le cryptage par défaut des données.
-     * @param {string} [options.secretKey=''] - Clé secrète de chiffrement de l'instance.
      *
      * @example <caption>Exemple 1 : Instanciation simple avec store par défaut (ntable / id)</caption>
      * const idb = new NIndexedDB({ name: 'my_app' });
@@ -169,8 +157,7 @@ export class NIndexedDB extends NObject {
      *     name: 'pos_secure',
      *     version: 2,
      *     encryptKey: true,
-     *     encryptData: true,
-     *     secretKey: 'mon_secret_pos'
+     *     encryptData: true
      * });
      */
     constructor(options = {}) {
@@ -190,9 +177,6 @@ export class NIndexedDB extends NObject {
             }
             if (typeof options.encryptData === 'boolean') {
                 this.#encryptData = options.encryptData;
-            }
-            if (typeof options.secretKey === 'string' && options.secretKey.trim()) {
-                this.#secretKey = options.secretKey.trim();
             }
         }
     }
@@ -452,8 +436,7 @@ export class NIndexedDB extends NObject {
                 ? store.add(prepared.value, prepared.key)
                 : store.add(prepared.value);
         }, async (result) => {
-            const secretKey = this.#getEffectiveSecretKey(opts?.secretKey);
-            return this.#isEncryptedKey(result) ? await this.#decryptKey(result, secretKey) : result;
+            return this.#isEncryptedKey(result) ? await this.#decryptKey(result) : result;
         });
     }
 
@@ -497,8 +480,7 @@ export class NIndexedDB extends NObject {
                 ? store.put(prepared.value, prepared.key)
                 : store.put(prepared.value);
         }, async (result) => {
-            const secretKey = this.#getEffectiveSecretKey(opts?.secretKey);
-            return this.#isEncryptedKey(result) ? await this.#decryptKey(result, secretKey) : result;
+            return this.#isEncryptedKey(result) ? await this.#decryptKey(result) : result;
         });
     }
 
@@ -510,7 +492,7 @@ export class NIndexedDB extends NObject {
      * @method get
      * @param {string} storeName - Nom du magasin.
      * @param {IDBValidKey} key - Clé de l'élément recherché.
-     * @param {NIndexedDBOptions} [options={}] - Options ponctuelles (secretKey, encryptKey).
+     * @param {NIndexedDBOptions} [options={}] - Options ponctuelles (`encryptKey`, `encryptData`).
      * @returns {Promise<NIndexedDBResponse>} Contient l'objet trouvé dans `res.data` (ou `null` s'il est absent).
      *
      * @example <caption>Exemple 1 : Récupérer un utilisateur par identifiant</caption>
@@ -528,9 +510,8 @@ export class NIndexedDB extends NObject {
 
         const opts = options && typeof options === 'object' ? options : {};
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
-        const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
         const lookupKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? await this.#encryptKeyValue(String(key), secretKey)
+            ? await this.#encryptKeyValue(String(key))
             : key;
 
         return this.#executeStoreRequest(storeName, 'readonly', (store) => {
@@ -556,7 +537,7 @@ export class NIndexedDB extends NObject {
      * console.log(`Nombre total de produits : ${res.data.length}`);
      *
      * @example <caption>Exemple 2 : Obtenir avec déchiffrement explicite</caption>
-     * const res = await db.getAll('ntable', null, 50, { secretKey: 'custom_secret' });
+     * const res = await db.getAll('ntable', null, 50, { encryptData: true });
      * console.log(res.data);
      */
     async getAll(storeName, query, count, options = {}) {
@@ -620,8 +601,6 @@ export class NIndexedDB extends NObject {
             cnt = undefined;
         }
 
-        const secretKey = this.#getEffectiveSecretKey(opts?.secretKey);
-
         return this.#executeStoreRequest(storeName, 'readonly', (store) => {
             return q !== undefined || cnt !== undefined
                 ? store.getAllKeys(q, cnt)
@@ -630,7 +609,7 @@ export class NIndexedDB extends NObject {
             if (!Array.isArray(result)) return result;
             const clearKeys = [];
             for (const k of result) {
-                clearKeys.push(this.#isEncryptedKey(k) ? await this.#decryptKey(k, secretKey) : k);
+                clearKeys.push(this.#isEncryptedKey(k) ? await this.#decryptKey(k) : k);
             }
             return clearKeys;
         });
@@ -660,9 +639,8 @@ export class NIndexedDB extends NObject {
 
         const opts = options && typeof options === 'object' ? options : {};
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
-        const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
         const targetKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? await this.#encryptKeyValue(String(key), secretKey)
+            ? await this.#encryptKeyValue(String(key))
             : key;
 
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
@@ -825,8 +803,6 @@ export class NIndexedDB extends NObject {
             cnt = undefined;
         }
 
-        const secretKey = this.#getEffectiveSecretKey(opts?.secretKey);
-
         return this.#executeIndexRequest(storeName, indexName, (index) => {
             return q !== undefined || cnt !== undefined
                 ? index.getAllKeys(q, cnt)
@@ -835,7 +811,7 @@ export class NIndexedDB extends NObject {
             if (!Array.isArray(result)) return result;
             const clearKeys = [];
             for (const k of result) {
-                clearKeys.push(this.#isEncryptedKey(k) ? await this.#decryptKey(k, secretKey) : k);
+                clearKeys.push(this.#isEncryptedKey(k) ? await this.#decryptKey(k) : k);
             }
             return clearKeys;
         });
@@ -998,7 +974,6 @@ export class NIndexedDB extends NObject {
 
         const opts = options && typeof options === 'object' ? options : {};
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
-        const secretKey = this.#getEffectiveSecretKey(opts.secretKey);
 
         try {
             const db = await this.#ensureConnection();
@@ -1015,7 +990,7 @@ export class NIndexedDB extends NObject {
             for (const key of keys) {
                 targetKeys.push(
                     shouldEncryptKey && !this.#isEncryptedKey(key)
-                        ? await this.#encryptKeyValue(String(key), secretKey)
+                        ? await this.#encryptKeyValue(String(key))
                         : key
                 );
             }
@@ -1084,11 +1059,10 @@ export class NIndexedDB extends NObject {
      * @param {string} storeName - Nom du magasin.
      * @param {Function} callback - Fonction appelée pour chaque élément `(value, key, cursor) => boolean|Promise<boolean|void>|void`.
      *   Retourner `false` (ou résoudre `false`) arrête prématurément le parcours.
-     * @param {Object} [options={}] - Options complémentaires (query, direction, mode, secretKey, encryptKey).
+     * @param {Object} [options={}] - Options complémentaires (`query`, `direction`, `mode`, `encryptKey`).
      * @param {IDBKeyRange|IDBValidKey} [options.query] - Plage de filtrage.
      * @param {'next'|'nextunique'|'prev'|'prevunique'} [options.direction='next'] - Sens de parcours.
      * @param {'readonly'|'readwrite'} [options.mode='readonly'] - Mode de transaction.
-     * @param {string} [options.secretKey=''] - Clé secrète de déchiffrement.
      * @returns {Promise<NIndexedDBResponse>} Retourne le nombre d'éléments visités dans `res.data`.
      *
      * @example <caption>Exemple 1 : Parcourir et afficher tous les éléments déchiffrés</caption>
@@ -1125,7 +1099,6 @@ export class NIndexedDB extends NObject {
             const mode = options.mode === 'readwrite' ? 'readwrite' : 'readonly';
             const direction = options.direction || 'next';
             const query = options.query;
-            const secretKey = this.#getEffectiveSecretKey(options.secretKey);
             const keyPath = this.#getStoreKeyPath(db, storeName);
 
             return new Promise((resolve) => {
@@ -1179,7 +1152,7 @@ export class NIndexedDB extends NObject {
                         const rawVal = cursorInstance.value;
 
                         Promise.all([
-                            this.#isEncryptedKey(rawKey) ? this.#decryptKey(rawKey, secretKey) : Promise.resolve(rawKey),
+                            this.#isEncryptedKey(rawKey) ? this.#decryptKey(rawKey) : Promise.resolve(rawKey),
                             this.#restoreRecordAfterRead(keyPath, rawVal, options)
                         ])
                             .then(([clearKey, clearVal]) => {
@@ -1248,7 +1221,7 @@ export class NIndexedDB extends NObject {
         if (!val || typeof val !== 'object' || Array.isArray(val) || val instanceof Date) {
             return false;
         }
-        return val.encryptKey !== undefined || val.encryptData !== undefined || val.secretKey !== undefined;
+        return val.encryptKey !== undefined || val.encryptData !== undefined;
     }
 
     /**
@@ -1271,20 +1244,6 @@ export class NIndexedDB extends NObject {
     }
 
     /**
-     * Retourne la clé secrète effective (surcharge passée en paramètre ou clé d'instance ;
-     * si vide, `NUtil.crypto.encryptLocal` utilise automatiquement l'empreinte du navigateur courant).
-     * @private
-     * @param {string} [customSecret] - Clé secrète ponctuelle optionnelle.
-     * @returns {string} Clé secrète résolue (ou `''` pour utiliser la clé du navigateur).
-     */
-    #getEffectiveSecretKey(customSecret) {
-        if (typeof customSecret === 'string' && customSecret.trim()) {
-            return customSecret.trim();
-        }
-        return this.#secretKey || '';
-    }
-
-    /**
      * Vérifie si une chaîne représente une clé chiffrée NIndexedDB (`enck:...`).
      * @private
      * @param {any} key - Clé à tester.
@@ -1295,22 +1254,17 @@ export class NIndexedDB extends NObject {
     }
 
     /**
-     * Chiffre une clé de manière déterministe et réversible via `NUtil.crypto.encryptLocal`.
-     * Permet la recherche directe en O(1) sans scanner l'espace de stockage.
+     * Chiffre une clé via `NUtil.crypto.encryptLocal`.
      *
      * @private
      * @param {string} plainKey - Clé en clair.
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {Promise<string>} Clé chiffrée préfixée (`enck:...`).
      */
-    async #encryptKeyValue(plainKey, secretKey) {
+    async #encryptKeyValue(plainKey) {
         if (this.#isEncryptedKey(plainKey)) {
             return plainKey;
         }
-        const cipherB64 = await NUtil.crypto.encryptLocal(String(plainKey), {
-            secretKey,
-            deterministic: true
-        });
+        const cipherB64 = await NUtil.crypto.encryptLocal(String(plainKey));
         return cipherB64 ? `enck:${cipherB64}` : String(plainKey);
     }
 
@@ -1319,15 +1273,14 @@ export class NIndexedDB extends NObject {
      *
      * @private
      * @param {string} encryptedKey - Clé chiffrée (`enck:...`).
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {Promise<string>} Nom de clé en clair.
      */
-    async #decryptKey(encryptedKey, secretKey) {
+    async #decryptKey(encryptedKey) {
         if (!this.#isEncryptedKey(encryptedKey)) {
             return encryptedKey;
         }
         const rawBase64 = encryptedKey.slice(5);
-        const plain = await NUtil.crypto.decryptLocal(rawBase64, secretKey);
+        const plain = await NUtil.crypto.decryptLocal(rawBase64);
         return plain || encryptedKey;
     }
 
@@ -1336,13 +1289,12 @@ export class NIndexedDB extends NObject {
      *
      * @private
      * @param {any} value - Valeur à protéger.
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {Promise<string>} Chaîne chiffrée Base64 préfixée (`encd:...`).
      */
-    async #encryptDataValue(value, secretKey) {
+    async #encryptDataValue(value) {
         const jsonStr = JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
-        const cipherB64 = await NUtil.crypto.encryptLocal(jsonStr, secretKey);
-        return `encd:${cipherB64}`;
+        const cipherB64 = await NUtil.crypto.encryptLocal(jsonStr);
+        return cipherB64 ? `encd:${cipherB64}` : '';
     }
 
     /**
@@ -1350,16 +1302,15 @@ export class NIndexedDB extends NObject {
      *
      * @private
      * @param {string} encryptedString - Donnée chiffrée.
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
      * @returns {Promise<any>} Donnée originale déchiffrée et typée.
      */
-    async #decryptData(encryptedString, secretKey) {
+    async #decryptData(encryptedString) {
         if (typeof encryptedString !== 'string' || !encryptedString.startsWith('encd:')) {
             return encryptedString;
         }
         try {
             const rawBase64 = encryptedString.slice(5);
-            const jsonStr = await NUtil.crypto.decryptLocal(rawBase64, secretKey);
+            const jsonStr = await NUtil.crypto.decryptLocal(rawBase64);
             if (!jsonStr) {
                 return null;
             }
@@ -1387,7 +1338,6 @@ export class NIndexedDB extends NObject {
     async #prepareRecordForWrite(keyPath, value, explicitKey, options = {}) {
         const shouldEncryptKey = options.encryptKey ?? this.#encryptKey;
         const shouldEncryptData = options.encryptData ?? this.#encryptData;
-        const secretKey = this.#getEffectiveSecretKey(options.secretKey);
 
         const hasKeyPath = Boolean(keyPath);
 
@@ -1395,14 +1345,14 @@ export class NIndexedDB extends NObject {
         if (!hasKeyPath) {
             let finalKey = explicitKey;
             if (shouldEncryptKey && explicitKey !== undefined && explicitKey !== null) {
-                finalKey = await this.#encryptKeyValue(String(explicitKey), secretKey);
+                finalKey = await this.#encryptKeyValue(String(explicitKey));
             }
 
             let finalValue = value;
             if (shouldEncryptData) {
                 finalValue = {
                     __nlib_encrypted__: true,
-                    __payload__: await this.#encryptDataValue(value, secretKey)
+                    __payload__: await this.#encryptDataValue(value)
                 };
             }
 
@@ -1415,11 +1365,11 @@ export class NIndexedDB extends NObject {
             let finalPk = rawPk;
 
             if (shouldEncryptKey && rawPk !== undefined && rawPk !== null) {
-                finalPk = await this.#encryptKeyValue(String(rawPk), secretKey);
+                finalPk = await this.#encryptKeyValue(String(rawPk));
             }
 
             if (shouldEncryptData) {
-                const encryptedPayload = await this.#encryptDataValue(value, secretKey);
+                const encryptedPayload = await this.#encryptDataValue(value);
                 const record = {
                     __nlib_encrypted__: true,
                     __payload__: encryptedPayload
@@ -1448,23 +1398,20 @@ export class NIndexedDB extends NObject {
      * @private
      * @param {string|string[]|null} keyPath - `keyPath` du Store source.
      * @param {any} record - Enregistrement brut extrait d'IndexedDB.
-     * @param {NIndexedDBOptions} [options={}] - Options de déchiffrement.
      * @returns {Promise<any>} Donnée en clair restaurée.
      */
-    async #restoreRecordAfterRead(keyPath, record, options = {}) {
+    async #restoreRecordAfterRead(keyPath, record) {
         if (record === null || record === undefined) {
             return record;
         }
 
-        const secretKey = this.#getEffectiveSecretKey(options?.secretKey);
-
         // A. Donnée enveloppée dans un payload chiffré
         if (record && typeof record === 'object' && record.__nlib_encrypted__ === true && typeof record.__payload__ === 'string') {
-            const decrypted = await this.#decryptData(record.__payload__, secretKey);
+            const decrypted = await this.#decryptData(record.__payload__);
             if (decrypted && typeof decrypted === 'object' && typeof keyPath === 'string') {
                 // Si la clé dans l'enveloppe était chiffrée, veiller à ce que la clé de l'objet soit en clair
                 if (this.#isEncryptedKey(record[keyPath])) {
-                    decrypted[keyPath] = await this.#decryptKey(record[keyPath], secretKey);
+                    decrypted[keyPath] = await this.#decryptKey(record[keyPath]);
                 }
             }
             return decrypted;
@@ -1473,7 +1420,7 @@ export class NIndexedDB extends NObject {
         // B. Enregistrement avec clé seule chiffrée (sans payload crypté)
         if (record && typeof record === 'object' && typeof keyPath === 'string') {
             if (this.#isEncryptedKey(record[keyPath])) {
-                const clearPk = await this.#decryptKey(record[keyPath], secretKey);
+                const clearPk = await this.#decryptKey(record[keyPath]);
                 return { ...record, [keyPath]: clearPk };
             }
         }
@@ -1873,6 +1820,25 @@ export class NIndexedDB extends NObject {
             error: msg,
             code
         };
+    }
+
+    /**
+     * Ferme la connexion IndexedDB active et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire l'instance NIndexedDB</caption>
+     * const db = new NIndexedDB({ name: 'app_db' });
+     * db.destroy();
+     * console.log(db.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier la fermeture après destruction</caption>
+     * db.destroy();
+     * console.log(db.isOpen); // false
+     */
+    destroy() {
+        this.close();
+        super.destroy();
     }
 }
 

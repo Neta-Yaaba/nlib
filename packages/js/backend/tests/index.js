@@ -1,6 +1,6 @@
 /**
  * @file tests/index.js
- * @description Point d'entrée principal exécutant les 29 fichiers de test de `@nlib/js-backend`
+ * @description Point d'entrée principal exécutant les 30 fichiers de test de `@nlib/js-backend`
  * (organisés dans les mêmes sous-dossiers que `packages/js/backend/`).
  */
 
@@ -54,6 +54,7 @@ import './requests/NNetwork.test.js';
 import './requests/NTableRequest.test.js';
 import './requests/NRequestManager.test.js';
 import './requests/NService.test.js';
+import './requests/NDataSynchronizer.test.js';
 
 // 11. worker/
 import './worker/NWorker.test.js';

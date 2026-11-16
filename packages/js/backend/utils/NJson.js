@@ -5,12 +5,6 @@
  * références circulaires, `BigInt`, `Map`, `Set`), la désérialisation tolérante aux erreurs,
  * le clonage profond, la fusion, la comparaison, l'accès par chemin (`a.b.c`) et la transformation
  * de données JSON dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -18,7 +12,8 @@ import { NUtil } from './NUtil.js';
 
 /**
  * @class NJson
- * @description Utilitaire de gestion, manipulation et sérialisation de structures JSON sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion, manipulation et sérialisation de structures JSON.
  *
  * @example <caption>Exemple 1 : Analyse sécurisée (parse), sérialisation (stringify) et validation</caption>
  * const jsonUtil = new NJson();
@@ -1068,6 +1063,57 @@ export class NJson extends NObject {
             this.set(result, pathParts, flatObj[flatKey]);
         }
         return result;
+    }
+
+    /**
+     * Parcourt les éléments d'un tableau (`Array`), d'un objet (`Object`) ou d'une chaîne JSON valide
+     * et exécute `callback(value, keyOrIndex, source)` pour chaque entrée.
+     * L'itération s'interrompt si `callback` retourne explicitement `false`.
+     *
+     * @param {Array|Object|string} data - Tableau, objet ou chaîne JSON à parcourir.
+     * @param {Function} callback - Fonction exécutée pour chaque entrée `(value, keyOrIndex, source) => boolean|void`.
+     * @returns {boolean} `true` si le parcours a été exécuté, sinon `false`.
+     *
+     * @example <caption>Exemple 1 : Parcourir un tableau</caption>
+     * const jsonUtil = new NJson();
+     * jsonUtil.forEach(['a', 'b', 'c'], (val, index) => {
+     *     console.log(index, val);
+     * });
+     *
+     * @example <caption>Exemple 2 : Parcourir un objet avec arrêt anticipé</caption>
+     * const jsonUtil = new NJson();
+     * jsonUtil.forEach({ host: 'localhost', port: 3306, ssl: true }, (val, key) => {
+     *     console.log(key, val);
+     *     if (key === 'port') return false;
+     * });
+     */
+    forEach(data, callback) {
+        if (typeof callback !== 'function' || data === null || data === undefined) {
+            return false;
+        }
+
+        const target = typeof data === 'string' ? this.parse(data, null) : data;
+        if (target === null || typeof target !== 'object') {
+            return false;
+        }
+
+        if (Array.isArray(target)) {
+            for (let i = 0; i < target.length; i++) {
+                if (callback(target[i], i, target) === false) {
+                    break;
+                }
+            }
+            return true;
+        }
+
+        const keys = Object.keys(target);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (callback(target[key], key, target) === false) {
+                break;
+            }
+        }
+        return true;
     }
 }
 

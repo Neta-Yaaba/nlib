@@ -1,21 +1,17 @@
 /**
  * @file NCache.js
  * @package @nlib/js-backend
- * @description Gestionnaire universel de cache à sélection automatique de moteur unique pour l'écosystème NLib.
+ * @description Gestionnaire de cache à sélection automatique de moteur unique pour l'écosystème NLib,
+ * accessible via `NUtil.cache` ou par instanciation directe (`new NCache(options)`).
  *
- * Règles architecturales NLib :
- * - Fonctionne comme une classe utilitaire sans aucune méthode statique (`static`), accessible via `NUtil.cache`
- *   ou par instanciation directe (`new NCache(options)`).
- * - N'hérite pas de `NObject`.
- * - **Un seul driver actif à la fois (aucune duplication d'écriture sur plusieurs moteurs)** :
- *   `NCache` détecte et sélectionne automatiquement **un unique moteur** parmi ceux disponibles dans l'environnement,
- *   du plus performant au repli universel afin que le cache fonctionne toujours :
- *   1. **`'native'`** : Pont natif OS (`NUtil.sys.invokeNative`) si exécuté dans un conteneur WebView natif (`NUtil.env.isWebView`).
- *   2. **`'caches'`** : API standard `CacheStorage` (`globalThis.caches`) si disponible (stocke données, JSON, binaires et réponses HTTP sous forme d'objets `Response` avec métadonnées d'expiration dans les en-têtes).
- *   3. **`'idb'`** : `NIndexedDB` (`NUtil.db.idb`, magasin `ntable`) si `IndexedDB` est disponible.
- *   4. **`'store'`** : `NStorage` (`NUtil.db.store`, `localStorage` / `sessionStorage`) si disponible.
- *   5. **`'memory'`** : `Map` en mémoire vive (RAM avec LRU) en dernier recours universel si aucun moteur persistant n'existe.
- * - Contrat strict **Zero Throw / Zero Reject** : aucune exception non capturée, journalisation via `NUtil.log`.
+ * Moteurs pris en charge (sélection automatique du premier disponible dans l'environnement) :
+ * 1. **`'native'`** : Pont natif OS (`NUtil.sys.invokeNative`) si exécuté dans un conteneur WebView natif (`NUtil.env.isWebView`).
+ * 2. **`'caches'`** : API standard `CacheStorage` (`globalThis.caches`, stocke données, JSON, binaires et réponses HTTP sous forme d'objets `Response` avec métadonnées d'expiration dans les en-têtes).
+ * 3. **`'idb'`** : `NIndexedDB` (`NUtil.db.idb`, magasin `ntable`).
+ * 4. **`'store'`** : `NStorage` (`NUtil.db.store`, `localStorage` / `sessionStorage`).
+ * 5. **`'memory'`** : `Map` en mémoire vive (RAM avec LRU).
+ *
+ * Les erreurs éventuelles sont capturées et journalisées via `NUtil.log`.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -40,6 +36,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NCache
+ * @extends NObject
  * @description Service utilitaire de cache universel sélectionnant automatiquement un seul moteur optimal
  * (`'native'` -> `'caches'` -> `'idb'` -> `'store'` -> `'memory'`) sans jamais dupliquer les écritures
  * sur plusieurs drivers simultanément.
@@ -1554,6 +1551,27 @@ export class NCache extends NObject {
         }
 
         return bytes;
+    }
+
+    /**
+     * Vide le tampon mémoire interne et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire une instance NCache</caption>
+     * const cache = new NCache();
+     * cache.destroy();
+     * console.log(cache.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Nettoyage avant réinstanciation</caption>
+     * if (!cache.isDestroyed) {
+     *     cache.destroy();
+     * }
+     */
+    destroy() {
+        this.#memory?.clear?.();
+        this.#memory = null;
+        super.destroy();
     }
 }
 

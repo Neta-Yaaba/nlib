@@ -14,7 +14,7 @@
  *   qui n'ont pas besoin de base SQL.
  *
  * Principes de fiabilité et robustesse :
- * - Zero Throw / Zero Reject : aucune exception bloquante non capturée, retours prévisibles et journalisation via `NUtil.log`.
+ * - Gestion des erreurs : capture les exceptions et journalise via `NUtil.log` avec retours prévisibles.
  * - Initialisation concurrente sécurisée : verrou anti-courses critiques via promesse partagée `#initPromise`.
  * - Isolation multiplateforme : fonctionne indifféremment sur Navigateur Web (WASM), Web Worker, applications hybrides/natives et Node.js.
  */
@@ -38,6 +38,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NDatabase
+ * @extends NObject
  * @description Point d'entrée central de gestion des bases de données NLib, articulé autour de SQL (`NSql`),
  * avec persistance WebAssembly via IndexedDB (`NIndexedDB`) et magasin contextuel (`NStorage`).
  *
@@ -1012,6 +1013,39 @@ export class NDatabase extends NObject {
         }
 
         return 'default';
+    }
+
+    /**
+     * Ferme les moteurs SQL/IndexedDB, annule la sauvegarde automatique en attente
+     * et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Fermer et détruire l'instance NDatabase</caption>
+     * const db = new NDatabase({ name: 'pos_db' });
+     * db.destroy();
+     * console.log(db.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Nettoyage avant arrêt de l'application</caption>
+     * if (!db.isDestroyed) {
+     *     db.destroy();
+     * }
+     */
+    destroy() {
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+        }
+        this.close();
+        this.#sqlInstance?.destroy?.();
+        this.#indexedInstance?.destroy?.();
+        this.#storageInstance?.destroy?.();
+        this.#sqlInstance = null;
+        this.#indexedInstance = null;
+        this.#storageInstance = null;
+        this.#isInitialized = false;
+        this.#initPromise = null;
+        super.destroy();
     }
 }
 

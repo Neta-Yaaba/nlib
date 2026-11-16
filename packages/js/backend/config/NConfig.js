@@ -4,9 +4,7 @@
  * @description Classe autonome de gestion de la configuration applicative (paramètres hiérarchiques par chemin
  * `a.b.c`, variables `.env`, `process.env`, valeurs par défaut, verrouillage `freeze` et accesseurs typés)
  * dans l'écosystème NLib.
- *
- * Ne dépend pas de `NObject` et est exposée sous forme d'instance partagée à initialisation paresseuse
- * via `NUtil.config`.
+ * Exposée sous forme d'instance partagée à initialisation paresseuse via `NUtil.config`.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -14,6 +12,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NConfig
+ * @extends NObject
  * @description Gestionnaire de configuration hiérarchique et de variables d'environnement (`.env` / `process.env`).
  * Conçu avec allocation mémoire à la demande (*Lazy Initialization*) : `#data` et `#defaults`
  * restent à `null` tant qu'aucune configuration n'est chargée.
@@ -726,6 +725,27 @@ export class NConfig extends NObject {
             frozen: this.#frozen,
             data: this.all()
         };
+    }
+
+    /**
+     * Réinitialise les données et valeurs par défaut en mémoire et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire une instance NConfig</caption>
+     * const cfg = new NConfig({ data: { port: 8080 } });
+     * cfg.destroy();
+     * console.log(cfg.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier que la configuration est vide après destruction</caption>
+     * cfg.destroy();
+     * console.log(cfg.isEmpty); // true
+     */
+    destroy() {
+        this.#data = null;
+        this.#defaults = null;
+        this.#frozen = false;
+        super.destroy();
     }
 }
 

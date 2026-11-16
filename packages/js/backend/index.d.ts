@@ -63,6 +63,7 @@ export class NObject {
     readonly isDestroyed: boolean;
 
     initialize(): this;
+    validate(): boolean;
     destroy(): void;
     hasState(key: string): boolean;
     getState<T = any>(key: string, defaultValue?: T): T;
@@ -380,31 +381,39 @@ export class NUtil extends NObject {
 }
 
 /**
- * Centralisation du chiffrement local (asynchrone/synchrone), du chiffrement hybride client-serveur
- * et des fonctions de hachage (`utils/NCryptography.js`).
+ * Primitives cryptographiques Web Crypto pour le hachage SHA-256, l'encodage Base64
+ * et le chiffrement symétrique, asymétrique, hybride et local (`utils/NCryptography.js`).
  */
 export class NCryptography extends NObject {
     constructor();
 
-    encryptLocal(data: any): Promise<string>;
-    decryptLocal<T = any>(cipherPayload: string, options?: { parseJson?: boolean }): Promise<T | null>;
-    encryptLocalSync(data: any): string;
-    decryptLocalSync<T = any>(cipherPayload: string, options?: { parseJson?: boolean }): T | null;
+    isWebCryptoAvailable(): boolean;
+    randomBytes(length?: number): Uint8Array;
+    bytesToBase64(bytes: Uint8Array | ArrayBuffer): string;
+    base64ToBytes(base64: string): Uint8Array;
+    encodeBase64(text: string): string;
+    decodeBase64(base64: string): string;
 
-    sha256(data: string | Uint8Array): Promise<string>;
-    sha256Sync(data: string | Uint8Array): string;
-    hmacSha256Sync(message: string | Uint8Array, key: string | Uint8Array): Uint8Array;
+    sha256(data: string | Uint8Array | any, outputFormat?: 'hex' | 'base64' | 'bytes'): Promise<string | Uint8Array>;
 
-    generateKeyPair(): Promise<{ publicKey: CryptoKey; privateKey: CryptoKey } | null>;
+    generateKeyPair(options?: { modulusLength?: 2048 | 3072 | 4096; hash?: 'SHA-1' | 'SHA-256' }): Promise<CryptoKeyPair | null>;
     exportPublicKeyToPem(publicKey: CryptoKey): Promise<string>;
-    exportPrivateKeyToPem(privateKey: CryptoKey): Promise<string>;
-    importPublicKeyFromPem(pem: string): Promise<CryptoKey | null>;
-    importPrivateKeyFromPem(pem: string): Promise<CryptoKey | null>;
+    importPublicKeyFromPem(pemKey: string): Promise<CryptoKey | null>;
 
-    encrypt(plainText: string, publicKey: CryptoKey): Promise<string>;
-    decrypt(encryptedPayload: string, privateKey: CryptoKey): Promise<string>;
-    encryptSymmetric(plainText: string, secretKey: string): Promise<string>;
-    decryptSymmetric(encryptedPayload: string, secretKey: string): Promise<string>;
+    encrypt(
+        data: any,
+        publicKey?: CryptoKey | null
+    ): Promise<{ type?: 'asymmetric' | 'hybrid'; data?: string; key?: string; iv?: string }>;
+    decrypt(encryptedPayload: Record<string, any> | string, privateKey?: CryptoKey | null): Promise<string>;
+
+    encryptSymmetric(
+        data: any,
+        secretKey: string
+    ): Promise<{ type: 'aes-256-cbc'; iv: string; data: string } | null>;
+    decryptSymmetric(payload: Record<string, any> | string, secretKey: string): Promise<string>;
+
+    encryptLocal(data: any): Promise<string>;
+    decryptLocal(encryptedData: string): Promise<string>;
 }
 
 export interface NStringCompareOptions {
@@ -750,6 +759,10 @@ export class NJson extends NObject {
     omit<T extends Record<string, any>, K extends keyof T>(obj: T, keysToOmit?: K[]): Omit<T, K>;
     flatten(obj: Record<string, any>, separator?: string, prefix?: string): Record<string, any>;
     unflatten(flatObj: Record<string, any>, separator?: string): Record<string, any>;
+    forEach(
+        data: any[] | Record<string, any> | string,
+        callback: (value: any, keyOrIndex: string | number, source: any) => boolean | void
+    ): boolean;
 }
 
 export interface NPasswordRules {
@@ -951,17 +964,26 @@ export class NSql extends NObject {
     exportBase64(): string;
     clear(): Promise<boolean>;
     deleteDb(): Promise<boolean>;
+    buildSearchClause(queryText: string, fields: string[]): { where: string; order: string; params: Record<string, string> } | null;
+    buildLimitClause(limit: number, offset?: number): string;
 }
 
 export interface NIndexedDBEncryptionOptions {
-    encrypt?: boolean;
     encryptKey?: boolean;
+    encryptData?: boolean;
+}
+
+export interface NIndexedDBResponse<T = any> {
+    ok: boolean;
+    data?: T | null;
+    error?: string | null;
+    code?: string | null;
 }
 
 export interface NIndexedDBOptions extends NIndexedDBEncryptionOptions {
     name?: string;
     version?: number;
-    stores?: Record<string, NIndexedDBStoreConfig>;
+    stores?: Array<NIndexedDBStoreConfig>;
 }
 
 /**
@@ -970,63 +992,71 @@ export interface NIndexedDBOptions extends NIndexedDBEncryptionOptions {
 export class NIndexedDB extends NObject {
     constructor(options?: NIndexedDBOptions);
 
-    readonly isAvailable: boolean;
-    readonly isOpen: boolean;
     readonly name: string;
     readonly version: number;
+    readonly isOpen: boolean;
     readonly storeNames: string[];
-    readonly encryptEnabled: boolean;
-    readonly encryptKeyEnabled: boolean;
+    readonly isKeyEncrypted: boolean;
+    readonly isDataEncrypted: boolean;
+    readonly util: typeof NUtil;
 
-    configureEncryption(options?: NIndexedDBEncryptionOptions): this;
-    open(options?: NIndexedDBOptions): Promise<boolean>;
-    ensureStore(storeName: string, storeConfig?: NIndexedDBStoreConfig): Promise<boolean>;
-    put<T = any>(storeName: string, value: T, key?: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<any>;
-    putMany<T = any>(storeName: string, items: T[], options?: NIndexedDBEncryptionOptions): Promise<boolean>;
-    get<T = any>(storeName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<T | null>;
-    getAll<T = any>(storeName: string, options?: NIndexedDBEncryptionOptions): Promise<T[]>;
-    getAllKeys(storeName: string, options?: NIndexedDBEncryptionOptions): Promise<any[]>;
-    find<T = any>(storeName: string, predicate: (item: T) => boolean, options?: NIndexedDBEncryptionOptions): Promise<T[]>;
-    count(storeName: string): Promise<number>;
-    delete(storeName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<boolean>;
-    clear(storeName: string): Promise<boolean>;
+    open(): Promise<NIndexedDBResponse<boolean>>;
     close(): void;
-    deleteDatabase(dbName?: string): Promise<boolean>;
+    deleteDatabase(): Promise<NIndexedDBResponse<boolean>>;
+    add<T = any>(storeName: string, value: T, keyOrOptions?: IDBValidKey | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<IDBValidKey>>;
+    put<T = any>(storeName: string, value: T, keyOrOptions?: IDBValidKey | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<IDBValidKey>>;
+    get<T = any>(storeName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T | null>>;
+    getAll<T = any>(storeName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T[]>>;
+    getAllKeys(storeName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<IDBValidKey[]>>;
+    delete(storeName: string, key: IDBValidKey | IDBKeyRange, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<boolean>>;
+    clear(storeName: string): Promise<NIndexedDBResponse<boolean>>;
+    count(storeName: string, query?: IDBKeyRange | IDBValidKey): Promise<NIndexedDBResponse<number>>;
+    getByIndex<T = any>(storeName: string, indexName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T | null>>;
+    getAllByIndex<T = any>(storeName: string, indexName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T[]>>;
+    getAllKeysByIndex(storeName: string, indexName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<IDBValidKey[]>>;
+    countByIndex(storeName: string, indexName: string, query?: IDBKeyRange | IDBValidKey): Promise<NIndexedDBResponse<number>>;
+    putMany<T = any>(storeName: string, items: T[], options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<number>>;
+    deleteMany(storeName: string, keys: IDBValidKey[], options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<number>>;
+    cursor<T = any>(
+        storeName: string,
+        callback: (value: T, key: IDBValidKey, cursor: IDBCursorWithValue) => boolean | Promise<boolean | void> | void,
+        options?: { query?: IDBKeyRange | IDBValidKey; direction?: IDBCursorDirection; mode?: 'readonly' | 'readwrite'; encryptKey?: boolean; encryptData?: boolean }
+    ): Promise<NIndexedDBResponse<number>>;
 }
 
-export interface NStorageOptions extends NIndexedDBEncryptionOptions {
+export interface NStorageOptions {
+    driver?: 'auto' | 'localStorage' | 'sessionStorage';
     prefix?: string;
-    type?: 'local' | 'session';
+    context?: string;
+    ttl?: number;
 }
 
 /**
- * Gestionnaire de stockage synchrone clé-valeur avec TTL et chiffrement local synchrone (`database/NStorage.js`).
+ * Gestionnaire de stockage synchrone clé-valeur avec contextes et TTL (`database/NStorage.js`).
  */
 export class NStorage extends NObject {
     constructor(options?: NStorageOptions);
 
+    readonly driver: 'localStorage' | 'sessionStorage' | null;
     readonly isAvailable: boolean;
-    readonly isPersistent: boolean;
     readonly prefix: string;
-    readonly size: number;
-    readonly encryptEnabled: boolean;
-    readonly encryptKeyEnabled: boolean;
+    context: string;
+    readonly length: number;
+    readonly util: typeof NUtil;
 
-    configureEncryption(options?: NIndexedDBEncryptionOptions): this;
-    setPrefix(prefix: string): this;
-    useSessionStorage(): this;
-    useLocalStorage(): this;
-    set(key: string, value: any, ttlSeconds?: number, options?: NIndexedDBEncryptionOptions): boolean;
-    get<T = any>(key: string, defaultValue?: T, options?: NIndexedDBEncryptionOptions): T;
-    getString(key: string, defaultValue?: string, options?: NIndexedDBEncryptionOptions): string;
-    getNumber(key: string, defaultValue?: number, options?: NIndexedDBEncryptionOptions): number;
-    getBoolean(key: string, defaultValue?: boolean, options?: NIndexedDBEncryptionOptions): boolean;
-    getObject<T = Record<string, any>>(key: string, defaultValue?: T | null, options?: NIndexedDBEncryptionOptions): T | null;
-    getJson<T = any>(key: string, defaultValue?: T | null, options?: NIndexedDBEncryptionOptions): T | null;
-    has(key: string, options?: NIndexedDBEncryptionOptions): boolean;
-    remove(key: string, options?: NIndexedDBEncryptionOptions): boolean;
-    keys(options?: NIndexedDBEncryptionOptions): string[];
+    withContext(context: string): NStorage;
+    set(key: string, value: any, optionsOrTtl?: number | NStorageOptions): boolean;
+    get<T = any>(key: string, defaultValue?: T, options?: NStorageOptions): T;
+    getString(key: string, defaultValue?: string, options?: NStorageOptions): string;
+    getNumber(key: string, defaultValue?: number, options?: NStorageOptions): number;
+    getBoolean(key: string, defaultValue?: boolean, options?: NStorageOptions): boolean;
+    getJson<T = Record<string, any>>(key: string, defaultValue?: T, options?: NStorageOptions): T;
+    getArray<T = any>(key: string, defaultValue?: T[], options?: NStorageOptions): T[];
+    has(key: string, options?: NStorageOptions): boolean;
+    remove(key: string, options?: NStorageOptions): boolean;
     clear(): boolean;
+    keys(): string[];
+    toObject(): Record<string, any>;
 }
 
 /* ========================================================================== *
@@ -1250,41 +1280,35 @@ export class NCache extends NObject {
  * 10. DOSSIER requests/ (NNetwork, NTableRequest, NRequestManager)           *
  * ========================================================================== */
 
-export type NNetworkEncryptionMode = 'asymmetric' | 'symmetric';
-
-export interface NNetworkEncryptionConfig {
-    enabled?: boolean;
-    mode?: NNetworkEncryptionMode;
-    serverPublicKey?: CryptoKey | string | null;
-    clientPublicKey?: CryptoKey | string | null;
-    clientPrivateKey?: CryptoKey | string | null;
-    sharedSecret?: string | null;
-    persistKeys?: boolean;
-    headerName?: string;
-}
-
 export interface NNetworkOptions {
+    driver?: 'auto' | 'fetch' | 'xhr' | 'native';
     baseUrl?: string;
     timeout?: number;
     headers?: Record<string, string>;
-    encryption?: NNetworkEncryptionConfig | null;
+    serverPublicKey?: CryptoKey;
+    clientPublicKey?: CryptoKey;
+    clientPrivateKey?: CryptoKey;
+    modulusLength?: 2048 | 3072 | 4096;
+    hash?: 'SHA-1' | 'SHA-256';
+    encrypt?: boolean;
+    encrypted?: boolean;
+    authUrl?: string;
 }
 
 export interface NNetworkRequestOptions {
-    url?: string;
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | string;
     headers?: Record<string, string>;
     params?: Record<string, any>;
     body?: any;
     timeout?: number;
-    responseType?: 'json' | 'text' | 'bytes' | 'blob' | 'arrayBuffer';
+    responseType?: 'json' | 'text' | 'blob' | 'arraybuffer';
     encrypt?: boolean;
-    decrypt?: boolean;
-    cacheTtl?: number;
-    retries?: number;
-    retryDelay?: number;
-    savePath?: string;
-    useNative?: boolean;
+    encrypted?: boolean;
+    driver?: 'auto' | 'fetch' | 'xhr' | 'native';
+    serverPublicKey?: CryptoKey | string;
+    clientPrivateKey?: CryptoKey;
+    onProgress?: (progress: { loaded: number; total: number; percent: number }) => void;
+    signal?: AbortSignal;
 }
 
 export interface NNetworkResponse<T = any> {
@@ -1293,155 +1317,138 @@ export interface NNetworkResponse<T = any> {
     statusText: string;
     headers: Record<string, string>;
     data: T | null;
-    raw: any;
-    url: string;
-    duration: number;
-    encrypted: boolean;
-    cached?: boolean;
-    savedToFile?: boolean;
-}
-
-export interface NNetworkWebSocketOptions {
-    id?: string;
-    protocols?: string | string[];
-    reconnect?: boolean;
-    reconnectDelay?: number;
-    maxReconnectAttempts?: number;
-    encrypt?: boolean;
-    decrypt?: boolean;
-    onOpen?: (event: any, handle: NNetworkWebSocketHandle) => void;
-    onMessage?: (data: any, rawEvent: any, handle: NNetworkWebSocketHandle) => void;
-    onError?: (error: any, handle: NNetworkWebSocketHandle) => void;
-    onClose?: (event: any, handle: NNetworkWebSocketHandle) => void;
-}
-
-export interface NNetworkWebSocketHandle {
-    readonly id: string;
-    readonly url: string;
-    readonly isConnected: boolean;
-    send: (data: any, options?: { encrypt?: boolean }) => Promise<boolean>;
-    close: (code?: number, reason?: string) => boolean;
+    raw?: any;
+    url?: string;
+    driver?: string;
 }
 
 /**
- * Client HTTP et WebSocket intégrant le chiffrement client-serveur de `NCryptography` (`requests/NNetwork.js`).
+ * Client réseau HTTP/HTTPS avec chiffrement asymétrique et hybride RSA-OAEP + AES (`requests/NNetwork.js`).
  */
 export class NNetwork extends NObject {
     constructor(options?: NNetworkOptions);
 
-    readonly isOnline: boolean;
-    readonly baseUrl: string;
-    readonly defaultTimeout: number;
-    readonly defaultHeaders: Record<string, string>;
-    readonly isEncryptionEnabled: boolean;
-    readonly encryptionMode: NNetworkEncryptionMode;
-    readonly hasEncryptionKeys: boolean;
-    readonly activeSocketCount: number;
+    driver: 'auto' | 'fetch' | 'xhr' | 'native';
+    baseUrl: string;
 
-    setBaseUrl(url?: string): this;
-    setDefaultTimeout(ms: number): this;
-    setDefaultHeader(name: string, value: string): this;
-    removeDefaultHeader(name: string): this;
-    setBearerToken(token: string | null): this;
-
-    configureEncryption(config?: NNetworkEncryptionConfig): Promise<this>;
-    generateClientKeyPair(options?: { persist?: boolean }): Promise<{ publicKey: string; privateKey: string } | null>;
-    setServerPublicKey(publicKeyOrPem: CryptoKey | string, persist?: boolean): Promise<boolean>;
-    setClientKeyPair(keyPair: { publicKey?: CryptoKey | string; privateKey: CryptoKey | string }, persist?: boolean): Promise<boolean>;
-    setSharedSecret(secretKey: string, persist?: boolean): Promise<boolean>;
-    loadKeysFromStorage(): Promise<boolean>;
-    clearEncryptionKeys(removeFromStorage?: boolean): Promise<boolean>;
-
-    encryptPayload(data: any): Promise<string | null>;
-    decryptPayload<T = any>(encryptedPayload: string, parseJson?: boolean): Promise<T | null>;
-
-    request<T = any>(options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    request<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
     get<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
     post<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
     put<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
     patch<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
     delete<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    upload<T = any>(url: string, filesOrFields?: Record<string, any>, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    download(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<Uint8Array>>;
+    head(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<any>>;
 
-    connectWebSocket(url: string, options?: NNetworkWebSocketOptions): NNetworkWebSocketHandle | null;
-    sendWebSocket(idOrUrl: string, data: any, options?: { encrypt?: boolean }): Promise<boolean>;
-    closeWebSocket(idOrUrl: string, code?: number, reason?: string): boolean;
-    closeAllWebSockets(): void;
+    requestAuthentication(url?: string | null, options?: { force?: boolean; hash?: 'SHA-1' | 'SHA-256' }): Promise<any>;
+    generateClientKeyPair(options?: { modulusLength?: 2048 | 3072 | 4096; hash?: 'SHA-1' | 'SHA-256' }): Promise<CryptoKeyPair | null>;
+    setClientKeyPair(publicKey: string | CryptoKey, privateKey: CryptoKey): Promise<boolean>;
+    setServerPublicKey(publicKey: string | CryptoKey): Promise<boolean>;
+    encryptPayload(data: any, options?: { serverPublicKey?: CryptoKey | string }): Promise<{ type?: 'asymmetric' | 'hybrid'; data?: string; key?: string; iv?: string }>;
+    decryptPayload(encryptedPayload: Record<string, any> | string, options?: { clientPrivateKey?: CryptoKey }): Promise<string>;
+    hasServerPublicKey(): boolean;
+    getServerPublicKey(): CryptoKey | null;
+    getClientKeyPair(): Promise<CryptoKeyPair | null>;
+    clearCryptoSession(): Promise<void>;
+
+    getFileInfo(url: string, options?: NNetworkRequestOptions): Promise<any>;
+    getFilesInfo(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
+    downloadFile(url: string, options?: NNetworkRequestOptions): Promise<any>;
+    downloadFiles(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
+    uploadFile(url: string, file: any, options?: NNetworkRequestOptions): Promise<any>;
+    uploadFiles(url: string, files: any[], options?: NNetworkRequestOptions): Promise<any[]>;
+}
+
+export interface NTableRequestSyncConfig {
+    collection?: string;
+    endpoint?: string;
+    primaryKey?: string;
+    versionField?: string;
+    conflictStrategy?: NDataSyncConflictStrategy;
+    mergeResolver?: (conflict: NDataSyncConflict) => Record<string, any>;
+    batchSize?: number;
+    pullLimit?: number;
+    maxPages?: number;
+    enabled?: boolean;
 }
 
 export interface NTableRequestOptions extends NObjectOptions {
-    table: string;
-    request?: NNetwork | null;
-    db?: NSql | null;
+    table?: string;
+    request?: NRequestManager | null;
+    db?: NDatabase | NSql | null;
     primaryKey?: string;
+    sync?: boolean | NTableRequestSyncConfig;
+    synchronizer?: NDataSynchronizer | null;
 }
 
 export interface NTableRequestQuery {
-    id?: string | number;
-    data?: Record<string, any> | Record<string, any>[];
+    type?: string | { table?: string; type?: string };
+    sql?: string;
+    sqlCount?: string;
+    params?: any[] | Record<string, any>;
+    paramsCount?: any[] | Record<string, any>;
+    data?: Record<string, any>;
     where?: string;
-    params?: any[];
-    limit?: number;
-    offset?: number;
-    orderBy?: string;
-    offline?: boolean;
-    url?: string;
+    asList?: boolean;
+    isLocalOnly?: boolean | number;
+    requestCode?: string;
     [key: string]: any;
 }
 
 /**
- * Synchronisation bidirectionnelle d'une table SQLite locale avec un serveur distant (`requests/NTableRequest.js`).
+ * Gestionnaire de requêtes de données sur une table avec persistance SQLite locale,
+ * appels distants et synchronisation optionnelle via `NDataSynchronizer` (`requests/NTableRequest.js`).
  */
 export class NTableRequest extends NObject {
     constructor(options?: NTableRequestOptions);
 
-    readonly table: string;
-    readonly primaryKey: string;
-    readonly db: NSql;
-    readonly request: NNetwork;
-    readonly isSyncing: boolean;
+    table: string;
+    primaryKey: string;
+    request: NRequestManager | null;
+    readonly db: any;
+    readonly syncEnabled: boolean;
+    readonly synchronizer: NDataSynchronizer | null;
 
-    getData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
+    execute<T = any>(req?: NTableRequestQuery): Promise<T>;
     get<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
-    getDatas<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T[]>;
-    gets<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T[]>;
+    getData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
+    getDataByPrimaryKey<T = Record<string, any>>(primaryKeyValue: any): Promise<T | null>;
+    gets<T = Record<string, any>>(req?: NTableRequestQuery): Promise<{ dataList: T[]; countAll: number; totalRows: number; updated?: number }>;
+    getDatas<T = Record<string, any>>(req?: NTableRequestQuery): Promise<{ dataList: T[]; countAll: number; totalRows: number; updated?: number }>;
+    insert<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
     insertData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | null>;
-    insert<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | boolean | null>;
-    updateData<T = Record<string, any>>(req?: NTableRequestQuery): Promise<T | boolean | null>;
-    update(req?: NTableRequestQuery): Promise<boolean>;
-    deleteData(req?: NTableRequestQuery): Promise<boolean>;
-    delete(req?: NTableRequestQuery): Promise<boolean>;
-    syncDatas(options?: { batchSize?: number; clearBeforeSync?: boolean; params?: Record<string, any> }): Promise<boolean>;
-
-    generateSqlSearch(textSearch: string, arrayField: string[]): string;
-    generateSqlSearchParams(textSearch: string, arrayField: string[]): { clause: string; params: string[] };
-    generateSqlLimited(limit: number, offset?: number): string;
+    update(req?: NTableRequestQuery): Promise<number>;
+    updateData(req?: NTableRequestQuery): Promise<number>;
+    delete(req?: NTableRequestQuery): Promise<number>;
+    deleteData(req?: NTableRequestQuery): Promise<number>;
+    enableSync(config?: NTableRequestSyncConfig): this;
+    disableSync(): this;
+    syncDatas(options?: { direction?: 'both' | 'push' | 'pull'; [key: string]: any }): Promise<boolean>;
+    destroy(): void;
 }
 
-export interface NRequestManagerOptions {
-    db?: NSql | null;
-    request?: NNetwork | null;
+export interface NRequestManagerOptions extends NObjectOptions {
+    tables?: Record<string, NTableRequest>;
+    synchronizer?: NDataSynchronizer | NDataSynchronizerOptions;
 }
 
 /**
- * Registre centralisant plusieurs instances de `NTableRequest` (`requests/NRequestManager.js`).
+ * Registre centralisant plusieurs instances de `NTableRequest` et une instance de `NDataSynchronizer` (`requests/NRequestManager.js`).
  */
 export class NRequestManager extends NObject {
     constructor(options?: NRequestManagerOptions);
 
-    readonly size: number;
-    readonly tables: string[];
-    readonly db: NSql;
-    readonly request: NNetwork;
+    readonly tableNames: string[];
+    readonly count: number;
+    readonly synchronizer: NDataSynchronizer | null;
 
-    register(tableName: string, instanceOrOptions?: NTableRequest | Partial<NTableRequestOptions>): NTableRequest | null;
-    table(tableName: string, options?: Partial<NTableRequestOptions>): NTableRequest | null;
-    get(tableName: string): NTableRequest | null;
-    has(tableName: string): boolean;
-    unregister(tableName: string): boolean;
-    syncAll(options?: { parallel?: boolean; batchSize?: number; clearBeforeSync?: boolean }): Promise<Record<string, boolean>>;
+    addTableRequest(tableName: string, tableRequest: NTableRequest): NTableRequest | null;
+    hasTableRequest(tableName: string): boolean;
+    getTableRequest(tableName: string): NTableRequest | null;
+    removeTableRequest(tableName: string): boolean;
     clear(): void;
+    execute<T = any>(req?: NTableRequestQuery & { table?: string }): Promise<T>;
+    sync(tableName?: string | null, options?: { direction?: 'both' | 'push' | 'pull' }): Promise<Record<string, any>>;
+    destroy(): void;
 }
 
 export type NServiceDriver = 'native' | 'websocket' | 'sse' | 'polling';
@@ -1493,6 +1500,75 @@ export class NService extends NObject {
     refreshId(customUrl?: string): Promise<number | null>;
     fetchId(customUrl?: string): Promise<number | null>;
     destroy(): void;
+}
+
+export type NDataSyncConflictStrategy = 'serverWins' | 'clientWins' | 'manual' | 'merge';
+
+export interface NDataSyncCollectionConfig {
+    endpoint: string;
+    primaryKey?: string;
+    versionField?: string;
+    enabled?: boolean;
+    conflictStrategy?: NDataSyncConflictStrategy;
+    mergeResolver?: (conflict: any) => Promise<Record<string, any> | null> | Record<string, any> | null;
+    batchSize?: number;
+    pullLimit?: number;
+    maxPages?: number;
+}
+
+export interface NDataSynchronizerOptions extends NObjectOptions {
+    network?: NNetwork;
+    metaDb?: NIndexedDB;
+    metaDbName?: string;
+    retry?: { maxAttempts?: number; baseDelayMs?: number; maxDelayMs?: number };
+    protocol?: {
+        formatPushRequest?: (col: any, operations: any[]) => any;
+        parsePushResponse?: (data: any, batch: any[]) => { confirmed: any[]; conflicts: any[]; failed: any[] };
+        formatPullRequest?: (col: any, cursor: any, limit: number) => Record<string, any>;
+        parsePullResponse?: (data: any) => { changes: any[]; nextCursor: any; hasMore: boolean };
+    };
+    autoSync?: boolean | {
+        enabled?: boolean;
+        onStart?: boolean;
+        onOnline?: boolean;
+        onLocalChange?: boolean;
+        onLocalChangeDelay?: number;
+        interval?: number;
+    };
+}
+
+/**
+ * Moteur générique de synchronisation bidirectionnelle offline-first (`requests/NDataSynchronizer.js`).
+ */
+export class NDataSynchronizer extends NObject {
+    constructor(options?: NDataSynchronizerOptions);
+
+    validate(): boolean;
+    initialize(): this;
+    destroy(): void;
+
+    on(eventName: string, callback: NEventCallback): this;
+    off(eventName?: string, callback?: NEventCallback): this;
+
+    register(collectionId: string, config: NDataSyncCollectionConfig): boolean;
+    unregister(collectionId: string): boolean;
+    configureAutoSync(autoSyncOptions?: boolean | NDataSynchronizerOptions['autoSync']): this;
+    trackChange(
+        collectionId: string,
+        action: 'create' | 'update' | 'delete',
+        recordOrKey: any,
+        options?: { baseVersion?: any; operationId?: string; force?: boolean }
+    ): Promise<Record<string, any> | null>;
+
+    sync(collectionId?: string | null, options?: { direction?: 'both' | 'push' | 'pull' }): Promise<Record<string, any>>;
+    push(collectionId?: string | null, options?: Record<string, any>): Promise<Record<string, any>>;
+    pull(collectionId?: string | null, options?: Record<string, any>): Promise<Record<string, any>>;
+    pause(collectionId?: string | null): this;
+    resume(collectionId?: string | null): Promise<Record<string, any>>;
+    stop(collectionId?: string | null): this;
+    getStatus(): Record<string, any>;
+    getCollectionStatus(collectionId: string): Record<string, any> | null;
+    resolveConflict(conflictId: string, resolution: 'serverWins' | 'clientWins' | Record<string, any>): Promise<boolean>;
 }
 
 /* ========================================================================== *

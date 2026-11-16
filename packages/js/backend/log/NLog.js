@@ -3,13 +3,12 @@
  * @package @nlib/js-backend
  * @description Classe universelle de journalisation (Logging) pour l'écosystème NLib.
  *
- * Conçue selon la philosophie **« Zero Throw / Zero Reject »** :
- * - Tous les logs (debug, info, warn, error) sont systématiquement enregistrés dans un tampon en mémoire.
- * - L'affichage sur la console peut être activé à tout moment via `consoleEnabled`.
- * - Intégration native de `NEvent` avec initialisation paresseuse via `this.event` pour écouter les événements du logger.
- * - Méthodes complètes d'exportation (`export`) et d'importation (`import`) permettant à l'utilisateur de
- *   sauvegarder les données où il le souhaite (localStorage, base SQLite, IndexedDB) ou de les expédier vers son serveur.
- * - Remplacement propre des lancers d'exceptions (`throw`) grâce à `error()` et `captureException()`.
+ * Fonctionnalités principales :
+ * - Tous les logs (debug, info, warn, error) sont enregistrés dans un tampon en mémoire.
+ * - L'affichage sur la console peut être activé via `consoleEnabled`.
+ * - Intégration de `NEvent` avec initialisation paresseuse via `this.event` pour écouter les événements du logger.
+ * - Méthodes d'exportation (`export`) et d'importation (`import`) pour la persistance ou l'envoi serveur.
+ * - Enregistrement structuré des erreurs via `error()` et `captureException()`.
  */
 
 import { NEvent } from '../core/NEvent.js';
@@ -17,6 +16,7 @@ import { NObject } from '../core/NObject.js';
 
 /**
  * @class NLog
+ * @extends NObject
  * @description Gestionnaire d'enregistrement, de capture d'erreurs, d'événements et de consultation de journaux.
  *
  * @example <caption>Exemple 1 : Utilisation basique avec affichage console</caption>
@@ -403,7 +403,7 @@ export class NLog extends NObject {
     }
 
     // =========================================================================
-    // Méthodes d'écriture de logs (Zero Throw)
+    // Méthodes d'écriture de logs
     // =========================================================================
 
     /**
@@ -1068,11 +1068,11 @@ export class NLog extends NObject {
     #getLevelLabel(num) {
         switch (num) {
             case NLog.LEVEL.DEBUG: return 'DEBUG';
-            case NLog.LEVEL.INFO:  return 'INFO';
-            case NLog.LEVEL.WARN:  return 'WARN';
+            case NLog.LEVEL.INFO: return 'INFO';
+            case NLog.LEVEL.WARN: return 'WARN';
             case NLog.LEVEL.ERROR: return 'ERROR';
-            case NLog.LEVEL.NONE:  return 'NONE';
-            default:              return 'INFO';
+            case NLog.LEVEL.NONE: return 'NONE';
+            default: return 'INFO';
         }
     }
 

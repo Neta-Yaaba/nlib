@@ -5,12 +5,6 @@
  * ou négatifs et conversion de types), le filtrage, le dédoublonnage, le tri multi-critères,
  * le regroupement (`groupBy`), la pagination, les opérations ensemblistes (`intersection`,
  * `difference`, `union`) et la manipulation de tableaux dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -18,7 +12,8 @@ import { NUtil } from './NUtil.js';
 
 /**
  * @class NArray
- * @description Utilitaire de gestion, transformation et requêtage de tableaux sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion, transformation et requêtage de tableaux.
  *
  * @example <caption>Exemple 1 : Accès sécurisé, dédoublonnage et nettoyage</caption>
  * const arrUtil = new NArray();

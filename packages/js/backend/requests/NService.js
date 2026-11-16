@@ -9,7 +9,7 @@
  *   1. `'native'`    : Communication bidirectionnelle via le pont système natif (`NUtil.sys.invokeNative` avec `type: ['app', 'service', action]`) et réception d'événements sur `window.NLibNativeBridgeEvent`.
  *   2. `'websocket'` : Connexion TCP/WebSocket persistante bidirectionnelle (`ws://` / `wss://`).
  *   3. `'sse'`       : Flux continu unidirectionnel Server-Sent Events (`EventSource`).
- *   4. `'polling'`   : Interrogation HTTP périodique (`fetch`) à intervalle configurable (`pollingInterval`).
+ *   4. `'polling'`   : Interrogation HTTP périodique (`NUtil.network` / `NNetwork`) à intervalle configurable (`pollingInterval`).
  * - Synchronisation d'identifiants entiers (`int`) : normalise les réponses serveur (entier brut, chaîne numérique ou structure JSON `{ id, lastId }`), met à jour `lastId` et émet les événements `'id'` et `'change'`.
  * - Persistance locale : stocke et restaure l'identifiant entier `lastId` dans `NIndexedDB` (`NUtil.db.idb`) sous la clé dédiée au service (`__nservice_last_id__:<serviceId>`).
  */
@@ -368,7 +368,7 @@ export class NService extends NObject {
     }
 
     /**
-     * Indique si l'API `fetch` est disponible pour exécuter des requêtes HTTP de synchronisation.
+     * Indique si le transport HTTP via `NUtil.network` (`NNetwork`) est disponible pour exécuter des requêtes de synchronisation.
      *
      * @returns {boolean} `true` si le moteur `'polling'` est utilisable.
      *
@@ -380,7 +380,11 @@ export class NService extends NObject {
      * console.log(typeof s.isPollingAvailable); // 'boolean'
      */
     get isPollingAvailable() {
-        return typeof fetch === 'function';
+        return Boolean(NUtil.network) && (
+            typeof fetch === 'function' ||
+            typeof XMLHttpRequest === 'function' ||
+            NUtil.env.isWebView
+        );
     }
 
     /**
@@ -763,26 +767,23 @@ export class NService extends NObject {
             }
         }
 
-        // 3. Envoi via requête HTTP POST
+        // 3. Envoi via requête HTTP POST centralisée (NUtil.network)
         if (this.#url && this.isPollingAvailable) {
             try {
                 const targetUrl = this.#buildUrlWithId(this.#url, intId);
-                const response = await fetch(targetUrl, {
-                    method: 'POST',
+                const response = await NUtil.network.post(targetUrl, String(intId), {
                     headers: {
                         'Content-Type': 'text/plain;charset=UTF-8',
                         'Cache-Control': 'no-store, no-cache'
                     },
-                    body: String(intId),
-                    cache: 'no-store'
+                    responseType: 'text'
                 });
 
-                if (!response.ok) {
+                if (!response || !response.ok) {
                     return false;
                 }
 
-                const text = await response.text();
-                const returnedId = this.#extractIntFromPayload(text);
+                const returnedId = this.#extractIntFromPayload(response.data);
                 if (returnedId !== null) {
                     await this.#handleIncomingId(returnedId);
                 }
@@ -820,21 +821,19 @@ export class NService extends NObject {
 
         try {
             const pollUrl = this.#buildUrlWithId(baseUrl, this.#lastId);
-            const response = await fetch(pollUrl, {
-                method: 'GET',
+            const response = await NUtil.network.get(pollUrl, {
                 headers: {
                     'Cache-Control': 'no-store, no-cache',
                     'Pragma': 'no-cache'
                 },
-                cache: 'no-store'
+                responseType: 'text'
             });
 
-            if (!response.ok) {
+            if (!response || !response.ok) {
                 return null;
             }
 
-            const text = await response.text();
-            const incomingId = this.#extractIntFromPayload(text);
+            const incomingId = this.#extractIntFromPayload(response.data);
             if (incomingId !== null) {
                 await this.#handleIncomingId(incomingId);
                 return this.#lastId;

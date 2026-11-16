@@ -10,8 +10,7 @@
  * - Performance & Temps d'activité : Temps d'exécution (`uptime`), horloge haute résolution (`hrtime`), mesure d'exécution (`measure`).
  * - Pont OS Natif : Envoi de commandes système à l'hôte natif (`invokeNative`) lorsqu'exécuté dans une WebView NLib.
  *
- * Ne dépend pas de `NObject` et est exposée sous forme d'instance partagée à initialisation paresseuse
- * via `NUtil.sys` (et son alias `NUtil.system`).
+ * Exposée sous forme d'instance partagée à initialisation paresseuse via `NUtil.sys` (et son alias `NUtil.system`).
  */
 
 import { NObject } from '../core/NObject.js';
@@ -21,6 +20,7 @@ import { NWorker } from '../worker/NWorker.js';
 
 /**
  * @class NSystem
+ * @extends NObject
  * @description Gestionnaire et inspecteur des ressources matérielles et système (Navigateur, WebView OS et Node.js).
  *
  * @example <caption>Exemple 1 : Inspecter le matériel (CPU, mémoire, écran, réseau) via NUtil.sys</caption>
@@ -342,7 +342,7 @@ export class NSystem extends NObject {
 
     /**
      * Exécute une fonction (synchrone ou asynchrone) et mesure précisément son temps d'exécution.
-     * Conforme à la règle Zero Throw : en cas d'erreur levée dans `fn`, capture l'exception, la consigne
+     * En cas d'erreur levée dans `fn`, capture l'exception, la consigne
      * dans `NLog` et retourne un rapport d'échec sans interrompre l'application.
      *
      * @param {string} label - Nom de l'opération mesurée.
@@ -581,7 +581,7 @@ export class NSystem extends NObject {
      *   via `NWorker.requestMain('invokeNative', { action, payload })`.
      * - Si l'appel est asynchrone (`result.isAsync`), attend l'événement de retour filtré par `result.requestId`
      *   avec protection automatique par temporisation (timeout configurable via `payload.timeout`, 30s par défaut).
-     * - Conforme à la règle **Zero Throw / Zero Reject** : en cas d'absence de conteneur natif ou d'erreur,
+     * - En cas d'absence de conteneur natif ou d'erreur,
      *   consigne l'anomalie dans `NLog` et retourne un objet résultat standardisé `{ success: false, code, error, message }`.
      *
      * @param {string|Object} actionOrParams - Nom de l'action native ou objet contenant l'action et son payload.
@@ -793,6 +793,26 @@ export class NSystem extends NObject {
             screen: this.screen,
             network: this.network
         };
+    }
+
+    /**
+     * Arrête la surveillance réseau active et libère les ressources de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire l'instance NSystem</caption>
+     * const sys = new NSystem();
+     * sys.destroy();
+     * console.log(sys.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Nettoyage avant fermeture</caption>
+     * if (!sys.isDestroyed) {
+     *     sys.destroy();
+     * }
+     */
+    destroy() {
+        this.watchNetwork?.(false);
+        super.destroy();
     }
 }
 

@@ -1,50 +1,27 @@
 /**
  * @file NStorage.js
  * @package @nlib/js-backend
- * @description Gestionnaire universel et résilient de stockage clé-valeur pour NLib.
- * Prend en charge les moteurs de stockage navigateur avec sélection et repli automatique :
- * 1. `localStorage` (persistance locale navigateur)
- * 2. `sessionStorage` (persistance de session d'onglet)
- *
- * Fonctionnalités de contexte et d'isolation multi-espaces :
- * - Prise en charge native d'un contexte applicatif (`context`, ex: 'app', 'admin', 'site', 'pos', etc.).
- * - Même sur un domaine ou une origine unique, les données de chaque espace sont distinctes et préfixées par le contexte.
- * - En l'absence de contexte, le stockage fonctionne en mode généralisé standard.
- * - Méthode fluide `withContext(context)` pour dériver des instances isolées tout en partageant les réglages techniques.
- *
- * Fonctionnalités de sécurité et cryptage intégrées :
- * - Cryptage optionnel configurable par instance ou par opération :
- *   1. Clé et donnée (`encryptKey: true, encryptData: true`)
- *   2. Clé seule (`encryptKey: true, encryptData: false`)
- *   3. Donnée seule (`encryptData: true, encryptKey: false`)
- *   4. Aucun cryptage (`encryptKey: false, encryptData: false` - comportement standard)
- * - Moteur cryptographique synchrone performant et autonome (SHA-256 + Stream Cipher 256 bits + IV aléatoire/déterministe).
- * - Clés chiffrées déterministes et réversibles : navigation directe par `get()` en O(1) et restitution en clair via `keys()`.
- *
- * Principes architecturaux et fiabilisation :
- * - Zero Throw / Zero Reject : aucune exception n'est propagée, toutes les erreurs sont journalisées via `NUtil.log`.
- * - Sérialisation sécurisée : gestion des erreurs de conversion JSON (références circulaires, BigInt, etc.).
- * - Isolation par espace de nommage : gestion robuste des préfixes (`prefix`) et des contextes (`context`) sans collision.
- * - Gestion du cycle de vie des données : prise en charge du TTL (expiration en secondes) avec purge automatique.
- * - Typage strict à la lecture : `get()`, `getString()`, `getNumber()`, `getBoolean()`, `getJson()`, `getArray()`.
+ * @description Gestionnaire de stockage clé-valeur pour NLib s'appuyant sur `localStorage` et `sessionStorage` :
+ * - Sélection automatique ou explicite du pilote (`localStorage` / `sessionStorage`) avec repli automatique.
+ * - Isolation multi-espaces par préfixe technique (`prefix`) et contexte applicatif (`context`, `withContext()`).
+ * - Gestion de la durée de vie des entrées via TTL en secondes avec purge automatique à la lecture.
+ * - Sérialisation JSON avec gestion de `BigInt` et accesseurs typés (`get()`, `getString()`, `getNumber()`, `getBoolean()`, `getJson()`, `getArray()`).
  */
 
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
 
 /**
- * Options de chiffrement, de contexte et de contrôle pour les opérations NStorage.
+ * Options de contexte et de durée de vie pour les opérations NStorage.
  * @typedef {Object} NStorageOptions
  * @property {number} [ttl=0] - Durée de validité en secondes (0 = infini).
  * @property {string} [context=''] - Contexte applicatif ciblé pour l'opération (ex: 'app', 'admin', 'site').
- * @property {boolean} [encryptKey=false] - Indique si la clé doit être chiffrée.
- * @property {boolean} [encryptData=false] - Indique si la valeur/donnée doit être chiffrée.
- * @property {string} [secretKey=''] - Clé secrète personnalisée pour le chiffrement.
  */
 
 /**
  * @class NStorage
- * @description Gestionnaire universel et résilient de stockage clé/valeur pour NLib avec contextes et chiffrement optionnel.
+ * @extends NObject
+ * @description Gestionnaire de stockage clé/valeur basé sur `localStorage` / `sessionStorage` avec support des contextes et du TTL.
  *
  * @example <caption>Exemple 1 : Utilisation standard avec typage automatique et objets</caption>
  * const storage = new NStorage();
@@ -60,8 +37,8 @@ import { NUtil } from '../utils/NUtil.js';
  * console.log(adminStorage.getString('theme')); // 'dark'
  * console.log(siteStorage.getString('theme'));  // 'light'
  *
- * @example <caption>Exemple 3 : Dérivation fluide avec withContext et chiffrement intégral</caption>
- * const baseStore = new NStorage({ prefix: 'my_pos:', encryptKey: true, encryptData: true });
+ * @example <caption>Exemple 3 : Dérivation fluide avec withContext et TTL</caption>
+ * const baseStore = new NStorage({ prefix: 'my_pos:', ttl: 3600 });
  * const appStore = baseStore.withContext('app');
  * appStore.set('jwt', 'token_sec_123');
  * console.log(appStore.getString('jwt')); // 'token_sec_123'
@@ -107,27 +84,6 @@ export class NStorage extends NObject {
      */
     #defaultTtl = 0;
 
-    /**
-     * Indique si les clés doivent être chiffrées par défaut sur cette instance.
-     * @type {boolean}
-     * @private
-     */
-    #encryptKey = false;
-
-    /**
-     * Indique si les données doivent être chiffrées par défaut sur cette instance.
-     * @type {boolean}
-     * @private
-     */
-    #encryptData = false;
-
-    /**
-     * Clé secrète de chiffrement configurée pour l'instance.
-     * @type {string}
-     * @private
-     */
-    #secretKey = '';
-
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -141,22 +97,17 @@ export class NStorage extends NObject {
      * @param {string} [options.prefix=''] - Préfixe technique global ajouté devant toutes les clés.
      * @param {string} [options.context=''] - Contexte applicatif (ex: 'app', 'admin', 'site').
      * @param {number} [options.ttl=0] - Durée de validité par défaut en secondes (0 = sans expiration).
-     * @param {boolean} [options.encryptKey=false] - Active le chiffrement par défaut des clés.
-     * @param {boolean} [options.encryptData=false] - Active le chiffrement par défaut des données.
-     * @param {string} [options.secretKey=''] - Clé secrète personnalisée pour le chiffrement.
      *
      * @example <caption>Exemple 1 : Instanciation par défaut en détection automatique</caption>
      * const storage = new NStorage();
      * console.log(storage.driver);
      *
-     * @example <caption>Exemple 2 : Stockage préfixé sécurisé avec contexte applicatif</caption>
+     * @example <caption>Exemple 2 : Stockage préfixé avec contexte applicatif</caption>
      * const adminCache = new NStorage({
      *     prefix: 'my_pos:',
      *     context: 'admin',
      *     driver: 'localStorage',
-     *     encryptKey: true,
-     *     encryptData: true,
-     *     secretKey: 'mon_mot_de_passe_secret'
+     *     ttl: 3600
      * });
      */
     constructor(options = {}) {
@@ -173,18 +124,6 @@ export class NStorage extends NObject {
 
         if (typeof opts.ttl === 'number' && Number.isFinite(opts.ttl) && opts.ttl > 0) {
             this.#defaultTtl = Math.floor(opts.ttl);
-        }
-
-        if (typeof opts.encryptKey === 'boolean') {
-            this.#encryptKey = opts.encryptKey;
-        }
-
-        if (typeof opts.encryptData === 'boolean') {
-            this.#encryptData = opts.encryptData;
-        }
-
-        if (typeof opts.secretKey === 'string' && opts.secretKey.trim()) {
-            this.#secretKey = opts.secretKey.trim();
         }
 
         this.#initDriver(opts.driver || 'auto');
@@ -268,34 +207,6 @@ export class NStorage extends NObject {
     }
 
     /**
-     * Indique si le chiffrement des clés est activé par défaut sur cette instance.
-     * @type {boolean}
-     *
-     * @example <caption>Exemple 1 : Vérifier le chiffrement des clés</caption>
-     * console.log(storage.isKeyEncrypted); // true ou false
-     *
-     * @example <caption>Exemple 2 : Affichage d'état de sécurité</caption>
-     * if (storage.isKeyEncrypted) { console.log('Clés obfusquées dans le navigateur'); }
-     */
-    get isKeyEncrypted() {
-        return this.#encryptKey;
-    }
-
-    /**
-     * Indique si le chiffrement des données est activé par défaut sur cette instance.
-     * @type {boolean}
-     *
-     * @example <caption>Exemple 1 : Vérifier le chiffrement des données</caption>
-     * console.log(storage.isDataEncrypted); // true ou false
-     *
-     * @example <caption>Exemple 2 : Contrôle avant écriture</caption>
-     * if (!storage.isDataEncrypted) { console.log('Données stockées en clair'); }
-     */
-    get isDataEncrypted() {
-        return this.#encryptData;
-    }
-
-    /**
      * Retourne le nombre d'éléments actuellement stockés pour cette instance (tenant compte du préfixe et du contexte).
      * @type {number}
      *
@@ -354,10 +265,7 @@ export class NStorage extends NObject {
             driver: this.#driver,
             prefix: this.#prefix,
             context: typeof context === 'string' ? context.trim() : '',
-            ttl: this.#defaultTtl,
-            encryptKey: this.#encryptKey,
-            encryptData: this.#encryptData,
-            secretKey: this.#secretKey
+            ttl: this.#defaultTtl
         });
     }
 
@@ -367,7 +275,7 @@ export class NStorage extends NObject {
 
     /**
      * Enregistre une valeur associée à une clé.
-     * Prend en charge le contexte applicatif, ainsi que le chiffrement de clé (`encryptKey`) et de donnée (`encryptData`).
+     * Prend en charge le contexte applicatif et la durée de vie (`ttl`).
      *
      * @method set
      * @param {string} key - Clé de stockage (chaîne non vide).
@@ -378,8 +286,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 1 : Enregistrer une clé standard avec TTL</caption>
      * storage.set('session', { token: 'abc' }, 3600);
      *
-     * @example <caption>Exemple 2 : Enregistrer avec contexte ponctuel et chiffrement de la donnée</caption>
-     * storage.set('api_key', 'sec_123', { context: 'admin', encryptData: true });
+     * @example <caption>Exemple 2 : Enregistrer avec contexte ponctuel</caption>
+     * storage.set('api_key', 'sec_123', { context: 'admin', ttl: 600 });
      */
     set(key, value, optionsOrTtl) {
         if (!this.#adapter) {
@@ -414,38 +322,9 @@ export class NStorage extends NObject {
             ? Math.floor(options.ttl)
             : this.#defaultTtl;
 
-        const shouldEncryptKey = options.encryptKey !== undefined
-            ? Boolean(options.encryptKey)
-            : this.#encryptKey;
-
-        const shouldEncryptData = options.encryptData !== undefined
-            ? Boolean(options.encryptData)
-            : this.#encryptData;
-
-        const secret = this.#getEffectiveSecretKey(options.secretKey);
-
-        let storedValue = value;
-        let isEncryptedPayload = false;
-
-        if (shouldEncryptData) {
-            try {
-                storedValue = this.#encryptDataValue(value, secret);
-                isEncryptedPayload = true;
-            } catch (err) {
-                NUtil.log.error('NStorage.set : Échec du chiffrement de la donnée.', {
-                    code: 'ERR_STORAGE_ENCRYPT_DATA_FAILED',
-                    key: keyStr,
-                    error: err,
-                    stack: err?.stack
-                });
-                return false;
-            }
-        }
-
         const payload = {
-            v: storedValue,
-            e: effectiveTtl > 0 ? Date.now() + (effectiveTtl * 1000) : 0,
-            ...(isEncryptedPayload ? { enc: true } : {})
+            v: value,
+            e: effectiveTtl > 0 ? Date.now() + (effectiveTtl * 1000) : 0
         };
 
         let serialized = '';
@@ -463,8 +342,7 @@ export class NStorage extends NObject {
 
         const ctxPrefix = this.#resolveContextPrefix(options.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-        const storageKeyName = shouldEncryptKey ? this.#encryptKeyValue(contextualKey, secret) : contextualKey;
-        const fullKey = this.#prefix ? `${this.#prefix}${storageKeyName}` : storageKeyName;
+        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
 
         try {
             this.#adapter.setItem(fullKey, serialized);
@@ -482,21 +360,21 @@ export class NStorage extends NObject {
     }
 
     /**
-     * Récupère la valeur désérialisée associée à une clé, avec déchiffrement automatique si nécessaire.
+     * Récupère la valeur désérialisée associée à une clé.
      * Si la clé est expirée, inexistante ou corrompue, retourne `defaultValue`.
      *
      * @method get
      * @param {string} key - Clé recherchée.
      * @param {any} [defaultValue=null] - Valeur par défaut retournée si introuvable ou expirée.
-     * @param {NStorageOptions} [options={}] - Options de contexte et de déchiffrement spécifiques.
-     * @returns {any} Valeur désérialisée (et déchiffrée) ou `defaultValue`.
+     * @param {NStorageOptions} [options={}] - Options de contexte spécifiques.
+     * @returns {any} Valeur désérialisée ou `defaultValue`.
      *
      * @example <caption>Exemple 1 : Récupérer une valeur standard</caption>
      * const user = storage.get('user', { role: 'guest' });
      * console.log(user?.role);
      *
-     * @example <caption>Exemple 2 : Récupérer dans un contexte précis avec clé chiffrée</caption>
-     * const token = storage.get('token', null, { context: 'admin', encryptKey: true });
+     * @example <caption>Exemple 2 : Récupérer dans un contexte précis</caption>
+     * const token = storage.get('token', null, { context: 'admin' });
      */
     get(key, defaultValue = null, options = {}) {
         if (!this.#adapter) return defaultValue;
@@ -506,26 +384,11 @@ export class NStorage extends NObject {
         if (keyStr.length === 0) return defaultValue;
 
         const opts = typeof options === 'object' && options !== null ? options : {};
-        const shouldEncryptKey = opts.encryptKey !== undefined
-            ? Boolean(opts.encryptKey)
-            : this.#encryptKey;
-
-        const secret = this.#getEffectiveSecretKey(opts.secretKey);
         const ctxPrefix = this.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
+        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
 
-        // Recherche prioritaire selon le mode de clé configuré, avec repli automatique
-        let raw = null;
-        const primaryKeyName = shouldEncryptKey ? this.#encryptKeyValue(contextualKey, secret) : contextualKey;
-        const primaryFullKey = this.#prefix ? `${this.#prefix}${primaryKeyName}` : primaryKeyName;
-        raw = this.#readRawFromAdapter(primaryFullKey);
-
-        // Repli croisé : si introuvable, tester l'autre représentation (chiffrée ou en clair)
-        if (raw === null || raw === undefined) {
-            const alternateKeyName = shouldEncryptKey ? contextualKey : this.#encryptKeyValue(contextualKey, secret);
-            const alternateFullKey = this.#prefix ? `${this.#prefix}${alternateKeyName}` : alternateKeyName;
-            raw = this.#readRawFromAdapter(alternateFullKey);
-        }
+        const raw = this.#readRawFromAdapter(fullKey);
 
         if (raw === null || raw === undefined) {
             return defaultValue;
@@ -540,28 +403,11 @@ export class NStorage extends NObject {
                     return defaultValue;
                 }
 
-                // Déchiffrement de la donnée si marquée chiffrée ou préfixée par encd:
-                if (parsed.enc === true || (typeof parsed.v === 'string' && parsed.v.startsWith('encd:'))) {
-                    const decrypted = this.#decryptData(parsed.v, secret);
-                    return decrypted !== null && decrypted !== undefined ? decrypted : defaultValue;
-                }
-
                 return parsed.v !== undefined ? parsed.v : defaultValue;
-            }
-
-            // Donnée stockée brute hors enveloppe
-            if (typeof raw === 'string' && raw.startsWith('encd:')) {
-                const decrypted = this.#decryptData(raw, secret);
-                return decrypted !== null && decrypted !== undefined ? decrypted : defaultValue;
             }
 
             return parsed !== undefined ? parsed : defaultValue;
         } catch {
-            // Repli sur la valeur brute non JSON si stockée sans enveloppe
-            if (typeof raw === 'string' && raw.startsWith('encd:')) {
-                const decrypted = this.#decryptData(raw, secret);
-                return decrypted !== null && decrypted !== undefined ? decrypted : defaultValue;
-            }
             return raw;
         }
     }
@@ -680,7 +526,7 @@ export class NStorage extends NObject {
     }
 
     /**
-     * Vérifie si une clé existe dans le stockage et n'est pas expirée (gère les contextes et les clés chiffrées).
+     * Vérifie si une clé existe dans le stockage et n'est pas expirée (gère les contextes).
      *
      * @method has
      * @param {string} key - Clé à tester.
@@ -701,23 +547,11 @@ export class NStorage extends NObject {
         if (keyStr.length === 0) return false;
 
         const opts = typeof options === 'object' && options !== null ? options : {};
-        const shouldEncryptKey = opts.encryptKey !== undefined
-            ? Boolean(opts.encryptKey)
-            : this.#encryptKey;
-
-        const secret = this.#getEffectiveSecretKey(opts.secretKey);
         const ctxPrefix = this.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
+        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
 
-        const primaryKeyName = shouldEncryptKey ? this.#encryptKeyValue(contextualKey, secret) : contextualKey;
-        const primaryFullKey = this.#prefix ? `${this.#prefix}${primaryKeyName}` : primaryKeyName;
-
-        let raw = this.#readRawFromAdapter(primaryFullKey);
-        if (raw === null || raw === undefined) {
-            const alternateKeyName = shouldEncryptKey ? contextualKey : this.#encryptKeyValue(contextualKey, secret);
-            const alternateFullKey = this.#prefix ? `${this.#prefix}${alternateKeyName}` : alternateKeyName;
-            raw = this.#readRawFromAdapter(alternateFullKey);
-        }
+        const raw = this.#readRawFromAdapter(fullKey);
 
         if (raw === null || raw === undefined) {
             return false;
@@ -738,7 +572,7 @@ export class NStorage extends NObject {
     }
 
     /**
-     * Supprime un élément par sa clé (supprime aussi bien la forme chiffrée que la forme en clair).
+     * Supprime un élément par sa clé.
      *
      * @method remove
      * @param {string} key - Clé à supprimer.
@@ -760,17 +594,12 @@ export class NStorage extends NObject {
         if (keyStr.length === 0) return false;
 
         const opts = typeof options === 'object' && options !== null ? options : {};
-        const secret = this.#getEffectiveSecretKey(opts.secretKey);
         const ctxPrefix = this.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-
-        const plainFullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
-        const encKeyName = this.#encryptKeyValue(contextualKey, secret);
-        const encFullKey = this.#prefix ? `${this.#prefix}${encKeyName}` : encKeyName;
+        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
 
         try {
-            this.#adapter.removeItem(plainFullKey);
-            this.#adapter.removeItem(encFullKey);
+            this.#adapter.removeItem(fullKey);
             return true;
         } catch (err) {
             NUtil.log.error('NStorage.remove : Erreur lors de la suppression de la clé.', {
@@ -834,10 +663,9 @@ export class NStorage extends NObject {
     /**
      * Retourne la liste de toutes les clés enregistrées pour cette instance.
      * Si un contexte est configuré, ne retourne que les clés de ce contexte (sans le préfixe ni le contexte).
-     * Les clés chiffrées sont automatiquement déchiffrées et restituées en clair.
      *
      * @method keys
-     * @returns {string[]} Liste des noms de clés en clair.
+     * @returns {string[]} Liste des noms de clés.
      *
      * @example <caption>Exemple 1 : Lister les clés de l'espace 'admin'</caption>
      * const adminStore = storage.withContext('admin');
@@ -850,7 +678,6 @@ export class NStorage extends NObject {
         if (!this.#adapter) return [];
 
         const result = [];
-        const secret = this.#getEffectiveSecretKey();
         const ctxPrefix = this.#resolveContextPrefix();
 
         try {
@@ -865,10 +692,7 @@ export class NStorage extends NObject {
 
             for (const fullKey of rawKeysList) {
                 if (!this.#prefix || fullKey.startsWith(this.#prefix)) {
-                    const strippedPrefixKey = this.#prefix ? fullKey.slice(this.#prefix.length) : fullKey;
-                    const plainContextualKey = this.#isEncryptedKey(strippedPrefixKey)
-                        ? this.#decryptKey(strippedPrefixKey, secret)
-                        : strippedPrefixKey;
+                    const plainContextualKey = this.#prefix ? fullKey.slice(this.#prefix.length) : fullKey;
 
                     // Si un contexte est configuré sur l'instance, filtrer strictement sur ce contexte
                     if (ctxPrefix) {
@@ -926,114 +750,11 @@ export class NStorage extends NObject {
     }
 
     // =========================================================================
-    // Moteur Cryptographique Synchrone Privé (SHA-256 + Stream Cipher)
+    // Méthodes Internes Privées (Lecture Adaptateur, Contextes et Pilotes)
     // =========================================================================
 
     /**
-     * Retourne la clé secrète effective (surcharge passée en paramètre ou clé d'instance ;
-     * si vide, `NUtil.crypto` utilise automatiquement l'empreinte du navigateur courant).
-     * @private
-     * @param {string} [customSecret] - Clé secrète ponctuelle optionnelle.
-     * @returns {string} Clé secrète résolue (ou `''` pour utiliser la clé du navigateur).
-     */
-    #getEffectiveSecretKey(customSecret) {
-        if (typeof customSecret === 'string' && customSecret.trim()) {
-            return customSecret.trim();
-        }
-        return this.#secretKey || '';
-    }
-
-    /**
-     * Vérifie si une chaîne représente une clé chiffrée NStorage (`enck:...`).
-     * @private
-     * @param {string} key - Clé à tester.
-     * @returns {boolean}
-     */
-    #isEncryptedKey(key) {
-        return typeof key === 'string' && key.startsWith('enck:');
-    }
-
-    /**
-     * Chiffre une clé de manière déterministe et réversible via `NUtil.crypto.encryptLocalSync`.
-     * Permet la recherche directe en O(1) sans scanner l'espace de stockage.
-     *
-     * @private
-     * @param {string} plainKey - Clé en clair.
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
-     * @returns {string} Clé chiffrée préfixée (`enck:...`).
-     */
-    #encryptKeyValue(plainKey, secretKey) {
-        if (this.#isEncryptedKey(plainKey)) {
-            return plainKey;
-        }
-        const cipherB64 = NUtil.crypto.encryptLocalSync(String(plainKey), {
-            secretKey,
-            deterministic: true
-        });
-        return cipherB64 ? `enck:${cipherB64}` : String(plainKey);
-    }
-
-    /**
-     * Déchiffre une clé chiffrée via `NUtil.crypto.decryptLocalSync` pour restituer son nom en clair.
-     *
-     * @private
-     * @param {string} encryptedKey - Clé chiffrée (`enck:...`).
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
-     * @returns {string} Nom de clé en clair.
-     */
-    #decryptKey(encryptedKey, secretKey) {
-        if (!this.#isEncryptedKey(encryptedKey)) {
-            return encryptedKey;
-        }
-        const rawBase64 = encryptedKey.slice(5);
-        const plain = NUtil.crypto.decryptLocalSync(rawBase64, secretKey);
-        return plain || encryptedKey;
-    }
-
-    /**
-     * Chiffre une valeur quelconque de manière synchrone via `NUtil.crypto.encryptLocalSync`.
-     *
-     * @private
-     * @param {any} value - Valeur à protéger.
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
-     * @returns {string} Chaîne chiffrée Base64 préfixée (`encd:...`).
-     */
-    #encryptDataValue(value, secretKey) {
-        const jsonStr = JSON.stringify(value, this.#jsonReplacer);
-        const cipherB64 = NUtil.crypto.encryptLocalSync(jsonStr, secretKey);
-        return `encd:${cipherB64}`;
-    }
-
-    /**
-     * Déchiffre une chaîne chiffrée `encd:...` via `NUtil.crypto.decryptLocalSync` et parse son JSON.
-     *
-     * @private
-     * @param {string} encryptedString - Donnée chiffrée.
-     * @param {string} secretKey - Clé secrète (si vide, utilise l'empreinte du navigateur).
-     * @returns {any} Donnée originale déchiffrée et typée.
-     */
-    #decryptData(encryptedString, secretKey) {
-        if (typeof encryptedString !== 'string' || !encryptedString.startsWith('encd:')) {
-            return encryptedString;
-        }
-        try {
-            const rawBase64 = encryptedString.slice(5);
-            const jsonStr = NUtil.crypto.decryptLocalSync(rawBase64, secretKey);
-            if (!jsonStr) {
-                return null;
-            }
-            return JSON.parse(jsonStr);
-        } catch (err) {
-            NUtil.log.warn('NStorage : Échec du déchiffrement de la donnée.', {
-                code: 'WARN_STORAGE_DECRYPT_FAILED',
-                error: err
-            });
-            return null;
-        }
-    }
-
-    /**
-     * Lit la valeur brute dans l'adaptateur sans lever d'erreur.
+     * Lit la valeur brute dans l'adaptateur et retourne `null` en cas d'erreur.
      * @private
      * @param {string} fullKey - Clé complète avec préfixe.
      * @returns {string|null}
@@ -1174,6 +895,26 @@ export class NStorage extends NObject {
             return Number(value);
         }
         return value;
+    }
+
+    /**
+     * Libère les références internes de pilote et d'état de l'instance.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Détruire l'instance NStorage</caption>
+     * const storage = new NStorage({ prefix: 'tmp:' });
+     * storage.destroy();
+     * console.log(storage.isDestroyed); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier la disponibilité après destruction</caption>
+     * storage.destroy();
+     * console.log(storage.isAvailable); // false
+     */
+    destroy() {
+        this.#adapter = null;
+        this.#driver = null;
+        super.destroy();
     }
 }
 

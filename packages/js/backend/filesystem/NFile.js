@@ -1,22 +1,19 @@
 /**
  * @file NFile.js
  * @package @nlib/js-backend
- * @description Classe utilitaire universelle de gestion des fichiers pour l'écosystème NLib.
+ * @description Classe utilitaire de gestion des fichiers pour l'écosystème NLib,
+ * accessible via `NUtil.file` ou par instanciation directe (`new NFile()`).
  *
- * Règles architecturales NLib :
- * - Fonctionne comme une classe utilitaire sans aucune méthode statique (`static`), accessible via `NUtil.file`
- *   ou par instanciation directe (`new NFile()`).
- * - N'hérite pas de `NObject`.
- * - Stratégie de stockage adaptative multiplateforme à 3 niveaux :
- *   1. **Conteneur Natif / WebView (`native`)** : si `NUtil.env.isWebView` est actif, délègue les opérations
- *      au système d'exploitation hôte via `NUtil.sys.invokeNative`.
- *   2. **File System Access API / OPFS (`fs`)** : sinon, si l'API `navigator.storage.getDirectory` (Origin Private
- *      File System / File System Access API) est disponible, opère directement sur le système de fichiers local
- *      du navigateur ou Web Worker.
- *   3. **IndexedDB (`idb`)** : sinon, bascule automatiquement sur `NUtil.db.idb` (magasin `ntable`) pour garantir
- *      une persistance complète des fichiers (binaires, textes, JSON) dans tous les environnements.
- * - Contrat strict **Zero Throw / Zero Reject** : aucune exception non capturée, journalisation via `NUtil.log`
- *   et retours normalisés prévisibles.
+ * Stratégie de stockage adaptative multiplateforme à 3 niveaux :
+ * 1. **Conteneur Natif / WebView (`native`)** : si `NUtil.env.isWebView` est actif, délègue les opérations
+ *    au système d'exploitation hôte via `NUtil.sys.invokeNative`.
+ * 2. **File System Access API / OPFS (`fs`)** : si l'API `navigator.storage.getDirectory` (Origin Private
+ *    File System / File System Access API) est disponible, opère sur le système de fichiers local
+ *    du navigateur ou Web Worker.
+ * 3. **IndexedDB (`idb`)** : s'appuie sur `NUtil.db.idb` (magasin `ntable`) pour persister les fichiers
+ *    (binaires, textes, JSON).
+ *
+ * Les erreurs sont journalisées via `NUtil.log` avec retours normalisés.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -51,6 +48,7 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NFile
+ * @extends NObject
  * @description Service utilitaire de manipulation et de persistance des fichiers (CRUD, métadonnées,
  * chemins, conversions binaires/texte/Base64/JSON) avec bascule automatique entre Pont Natif (`invokeNative`),
  * File System Access API (`navigator.storage.getDirectory`) et IndexedDB (`NUtil.db.idb`).
@@ -1166,7 +1164,7 @@ export class NFile extends NObject {
      * const res = await NUtil.file.read('docs/info.txt', { format: 'text' });
      * console.log(res.ok, res.data); // true, 'Contenu NLib'
      *
-     * @example <caption>Exemple 2 : Gestion propre d'un fichier introuvable (Zero Throw)</caption>
+     * @example <caption>Exemple 2 : Lecture d'un fichier introuvable</caption>
      * const missing = await NUtil.file.read('docs/inconnu.txt');
      * console.log(missing.ok, missing.code); // false, 'ERR_FILE_NOT_FOUND'
      */

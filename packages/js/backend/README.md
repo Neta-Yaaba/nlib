@@ -46,6 +46,7 @@ Documentation complète de l'API du paquet `@nlib/js-backend`, organisée dossie
     - [`NTableRequest`](#102-classe-ntablerequest-requestsntablerequestjs)
     - [`NRequestManager`](#103-classe-nrequestmanager-requestsnrequestmanagerjs)
     - [`NService`](#104-classe-nservice-requestsnservicejs)
+    - [`NDataSynchronizer`](#105-classe-ndatasynchronizer-requestsndatasynchronizerjs)
 12. [Dossier `worker/`](#11-dossier-worker)
     - [`NWorker`](#111-classe-nworker-workernworkerjs)
     - [`NWorkerManager`](#112-classe-nworkermanager-workernworkermanagerjs)
@@ -78,6 +79,7 @@ import {
     NTableRequest,
     NRequestManager,
     NService,
+    NDataSynchronizer,
     NWorker,
     NWorkerManager,
     NServiceWorker
@@ -118,8 +120,9 @@ Classe mère universelle de l'écosystème NLib (toutes les classes du package, 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `initialize` | `initialize()` | `this` | Initialise l'objet et émet l'événement `'init'`. |
-| `destroy` | `destroy()` | `void` | Émet `'destroy'`, vide l'état et détache tous les écouteurs d'événements. |
+| `initialize` | `initialize()` | `this` | Valide via `validate()`, initialise l'objet et émet `'initialize'`. |
+| `validate` | `validate()` | `boolean` | Vérifie la validité de l'instance avant initialisation (surchargeable). |
+| `destroy` | `destroy()` | `void` | Émet `'beforeDestroy'`, vide l'état et détache tous les écouteurs d'événements. |
 | `hasState` | `hasState(key)` | `boolean` | Vérifie si une clé existe dans l'état interne. |
 | `getState` | `getState(key, defaultValue = undefined)` | `any` | Récupère la valeur d'une clé d'état ou retourne `defaultValue`. |
 | `setState` | `setState(keyOrObject, value)` | `this` | Définit une clé ou fusionne un objet dans l'état et émet `'stateChange'`. |
@@ -530,49 +533,45 @@ await NUtil.sleep(100);
 
 ### 6.2. Classe `NCryptography` (`utils/NCryptography.js`)
 
-Centralise tous les systèmes de chiffrement et de hachage du paquet :
-1. **Chiffrement local sans clé externe (`encryptLocal` / `decryptLocal` et `encryptLocalSync` / `decryptLocalSync`)** : dérive automatiquement une clé de 256 bits à partir de l'empreinte interne du navigateur/appareil sans jamais stocker de clé en persistant. Utilisé notamment par `NIndexedDB` (asynchrone) et `NStorage` (synchrone).
-2. **Chiffrement hybride client-serveur (`RSA-OAEP` + `AES-GCM`)** et **chiffrement symétrique (`PBKDF2` + `AES-GCM`)** : utilisé par `NNetwork` pour sécuriser les échanges HTTP/WebSocket.
-3. **Hachage et signatures (`sha256`, `sha256Sync`, `hmacSha256Sync`)**.
+Fournit les primitives cryptographiques basées sur l'API Web Crypto (`globalThis.crypto.subtle`) :
+1. **Aléatoire et encodage Base64 / UTF-8 (`randomBytes`, `bytesToBase64`, `base64ToBytes`, `encodeBase64`, `decodeBase64`)**.
+2. **Hachage SHA-256 (`sha256`)** en formats `'hex'`, `'base64'` ou `'bytes'`.
+3. **Chiffrement local déterministe AES-256-GCM (`encryptLocal` / `decryptLocal`)** : utilise une clé locale non exportable persistée dans IndexedDB (`NUtil.db.idb`) et un IV dérivé du SHA-256 de la donnée.
+4. **Chiffrement asymétrique / hybride RSA-OAEP + AES-256-CBC (`generateKeyPair`, `exportPublicKeyToPem`, `importPublicKeyFromPem`, `encrypt`, `decrypt`)** et **symétrique AES-256-CBC (`encryptSymmetric`, `decryptSymmetric`)**.
 
 Accessible via `NUtil.crypto` ou `new NCryptography()`.
 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `encryptLocal` | `encryptLocal(data)` | `Promise<string>` | Chiffre localement (AES-GCM 256 bits via Web Crypto, ou repli local) une donnée sans clé à fournir (liée au navigateur courant). |
-| `decryptLocal` | `decryptLocal(cipherPayload, options = {})` | `Promise<any>` | Déchiffre une donnée chiffrée avec `encryptLocal` (ou `encryptLocalSync`). Si `options.parseJson !== false`, reconstruit automatiquement les objets/tableaux JSON. |
-| `encryptLocalSync` | `encryptLocalSync(data)` | `string` | Chiffre localement et de manière **synchrone** une donnée sans clé à fournir (`NLOC1:...`, flux XOR256 + HMAC-SHA256 liés au navigateur). |
-| `decryptLocalSync` | `decryptLocalSync(cipherPayload, options = {})` | `any` | Vérifie l'intégrité HMAC-SHA256 et déchiffre de manière **synchrone** une donnée produite par `encryptLocalSync`. |
-| `sha256` | `sha256(data)` | `Promise<string>` | Calcule l'empreinte SHA-256 hexadécimale (64 caractères) d'une chaîne ou d'un `Uint8Array`. |
-| `sha256Sync` | `sha256Sync(data)` | `string` | Calcule de manière synchrone l'empreinte SHA-256 hexadécimale. |
-| `hmacSha256Sync` | `hmacSha256Sync(message, key)` | `Uint8Array` | Calcule de manière synchrone le code d'authentification HMAC-SHA256 (32 octets). |
-| `generateKeyPair` | `generateKeyPair()` | `Promise<{ publicKey: CryptoKey, privateKey: CryptoKey }\|null>` | Génère une paire de clés asymétriques RSA-OAEP (2048 bits, SHA-256). |
-| `exportPublicKeyToPem` | `exportPublicKeyToPem(publicKey)` | `Promise<string>` | Exporte une clé publique `CryptoKey` au format PEM (`-----BEGIN PUBLIC KEY-----`). |
-| `exportPrivateKeyToPem` | `exportPrivateKeyToPem(privateKey)` | `Promise<string>` | Exporte une clé privée `CryptoKey` au format PEM (`-----BEGIN PRIVATE KEY-----`). |
-| `importPublicKeyFromPem` | `importPublicKeyFromPem(pem)` | `Promise<CryptoKey\|null>` | Importe une clé publique RSA-OAEP depuis une chaîne PEM. |
-| `importPrivateKeyFromPem` | `importPrivateKeyFromPem(pem)` | `Promise<CryptoKey\|null>` | Importe une clé privée RSA-OAEP depuis une chaîne PEM. |
-| `encrypt` | `encrypt(plainText, publicKey)` | `Promise<string>` | Chiffrement hybride RSA-OAEP + AES-256-GCM pour la communication client-serveur (format `<encryptedAesKeyB64>:<ivB64>:<cipherB64>`). |
-| `decrypt` | `decrypt(encryptedPayload, privateKey)` | `Promise<string>` | Déchiffre un payload hybride RSA-OAEP + AES-256-GCM avec la clé privée RSA. |
-| `encryptSymmetric` | `encryptSymmetric(plainText, secretKey)` | `Promise<string>` | Chiffre avec une clé secrète partagée via PBKDF2 (100 000 itérations) + AES-256-GCM (`<saltB64>:<ivB64>:<cipherB64>`). |
-| `decryptSymmetric` | `decryptSymmetric(encryptedPayload, secretKey)` | `Promise<string>` | Déchiffre un payload symétrique PBKDF2 + AES-256-GCM. |
+| `isWebCryptoAvailable` | `isWebCryptoAvailable()` | `boolean` | Vérifie la disponibilité de `crypto.subtle` et `crypto.getRandomValues`. |
+| `randomBytes` | `randomBytes(length = 16)` | `Uint8Array` | Génère `length` octets aléatoires cryptographiquement sûrs. |
+| `bytesToBase64` | `bytesToBase64(bytes)` | `string` | Convertit un `Uint8Array` ou `ArrayBuffer` en Base64. |
+| `base64ToBytes` | `base64ToBytes(base64)` | `Uint8Array` | Décode une chaîne Base64 en `Uint8Array`. |
+| `encodeBase64` | `encodeBase64(text)` | `string` | Encode une chaîne UTF-8 en Base64. |
+| `decodeBase64` | `decodeBase64(base64)` | `string` | Décode une chaîne Base64 en texte UTF-8. |
+| `sha256` | `sha256(data, outputFormat = 'hex')` | `Promise<string\|Uint8Array>` | Calcule l'empreinte SHA-256 (`'hex'`, `'base64'` ou `'bytes'`). |
+| `generateKeyPair` | `generateKeyPair(options = {})` | `Promise<CryptoKeyPair\|null>` | Génère une paire RSA-OAEP (`modulusLength`: `2048`/`3072`/`4096`, `hash`: `'SHA-1'`/`'SHA-256'`). |
+| `exportPublicKeyToPem` | `exportPublicKeyToPem(publicKey)` | `Promise<string>` | Exporte une clé publique `CryptoKey` au format PEM SPKI. |
+| `importPublicKeyFromPem` | `importPublicKeyFromPem(pemKey)` | `Promise<CryptoKey\|null>` | Importe une clé publique RSA-OAEP (`SHA-1`) depuis une chaîne PEM SPKI. |
+| `encrypt` | `encrypt(data, publicKey = null)` | `Promise<Object>` | Chiffre avec un `CryptoKey` public (RSA-OAEP direct <= 190 o, hybride RSA-OAEP + AES-256-CBC au-delà). |
+| `decrypt` | `decrypt(encryptedPayload, privateKey = null)` | `Promise<string>` | Déchiffre une charge `'asymmetric'` ou `'hybrid'` avec le `CryptoKey` privé. |
+| `encryptSymmetric` | `encryptSymmetric(data, secretKey)` | `Promise<Object\|null>` | Chiffre en AES-256-CBC à partir d'un secret dérivé par SHA-256. |
+| `decryptSymmetric` | `decryptSymmetric(payload, secretKey)` | `Promise<string>` | Déchiffre une charge `'aes-256-cbc'`. |
+| `encryptLocal` | `encryptLocal(data)` | `Promise<string>` | Chiffre localement en AES-256-GCM déterministe avec clé persistée dans IndexedDB. |
+| `decryptLocal` | `decryptLocal(encryptedData)` | `Promise<string>` | Déchiffre une donnée produite par `encryptLocal()`. |
 
 #### Exemple d'utilisation
 ```js
 import { NUtil } from '@nlib/js-backend';
 
-// 1. Chiffrement local asynchrone (sans clé externe, lié au navigateur)
+// 1. Chiffrement local AES-256-GCM
 const jetonLocal = await NUtil.crypto.encryptLocal({ userId: 42, role: 'admin' });
-const objetRestaure = await NUtil.crypto.decryptLocal(jetonLocal);
+const objetRestaure = JSON.parse(await NUtil.crypto.decryptLocal(jetonLocal));
 console.log(objetRestaure); // { userId: 42, role: 'admin' }
 
-// 2. Chiffrement local synchrone
-const chiffreSync = NUtil.crypto.encryptLocalSync('Secret Local Synchrone');
-const clairSync = NUtil.crypto.decryptLocalSync(chiffreSync);
-console.log(clairSync); // 'Secret Local Synchrone'
-
-// 3. Chiffrement hybride Client <-> Serveur (RSA-OAEP + AES-GCM)
-const pair = await NUtil.crypto.generateKeyPair();
+// 2. Chiffrement asymétrique / hybride (RSA-OAEP + AES-256-CBC)
+const pair = await NUtil.crypto.generateKeyPair({ modulusLength: 2048 });
 const pubPem = await NUtil.crypto.exportPublicKeyToPem(pair.publicKey);
 const pubKeyImportee = await NUtil.crypto.importPublicKeyFromPem(pubPem);
 
@@ -934,6 +933,7 @@ Validation, parsing et sérialisation JSON tolérante aux références circulair
 | `omit` | `omit(obj, keysToOmit = [])` | `Object` | Retourne un nouvel objet excluant les clés listées. |
 | `flatten` | `flatten(obj, separator = '.', prefix = '')` | `Object` | Aplatit un objet imbriqué en clés à un seul niveau. |
 | `unflatten` | `unflatten(flatObj, separator = '.')` | `Object` | Reconstruit un objet imbriqué à partir d'un objet aplati. |
+| `forEach` | `forEach(data, callback)` | `boolean` | Parcourt un tableau, un objet ou une chaîne JSON avec arrêt anticipé si `callback` retourne `false`. |
 
 #### Exemple d'utilisation
 ```js
@@ -1090,6 +1090,17 @@ await NUtil.db.flushAutoSave();
 
 Moteur de base de données relationnelle SQLite fonctionnant aussi bien via le pont natif qu'en WebAssembly (`sql.js`) dans le navigateur. Accessible via `NUtil.db.sql` ou en instanciant `new NSql(options)`.
 
+#### Prérequis `sql.js` (mode WebAssembly)
+Pour que `NSql` fonctionne avec `sql.js` (hors pont natif) :
+1. **Exposer `initSqlJs` globalement** (`globalThis.initSqlJs`, `window.initSqlJs` ou `self.initSqlJs`) :
+   - Via balise `<script src="/file/sqljs/sql-wasm.js"></script>` dans le navigateur, ou
+   - Via import ES / bundler : `import initSqlJs from 'sql.js'; globalThis.initSqlJs = initSqlJs;`.
+2. **Fournir le binaire `sql-wasm.wasm`** et indiquer son emplacement via `wasmPath` dans `new NSql({ wasmPath })` ou `await sql.init({ wasmPath })` :
+   - Chemin direct vers le fichier `.wasm` (ex. `'/assets/sql-wasm.wasm'`),
+   - Chemin de dossier contenant `sql-wasm.wasm` (ex. `'/assets/sqljs'`),
+   - Ou fonction `locateFile(filename)` personnalisée.
+   - Si `wasmPath` est omis dans le navigateur, `NSql` tente par défaut `${location.origin}/file/sqljs/sql-wasm.wasm`.
+
 #### Constructeur
 - `new NSql({ name = 'main', wasmPath = null })`
 
@@ -1131,6 +1142,8 @@ Moteur de base de données relationnelle SQLite fonctionnant aussi bien via le p
 | `exportBase64` | `exportBase64()` | `string` | Exporte la base SQLite sous forme de chaîne Base64. |
 | `clear` | `clear()` | `Promise<boolean>` | Vide toutes les tables utilisateur de la base. |
 | `deleteDb` | `deleteDb()` | `Promise<boolean>` | Supprime ou réinitialise complètement la base de données. |
+| `buildSearchClause` | `buildSearchClause(queryText, fields)` | `{ where, order, params }\|null` | Construit une clause SQL `WHERE` / `ORDER BY` paramétrée pour la recherche textuelle pondérée. |
+| `buildLimitClause` | `buildLimitClause(limit, offset = 0)` | `string` | Construit une clause SQL `LIMIT` / `OFFSET` pour la pagination. |
 
 #### Exemple
 ```javascript
@@ -1172,114 +1185,103 @@ await sql.delete('products', 'price < ?', [40]);
 
 ### 7.3. Classe `NIndexedDB` (`database/NIndexedDB.js`)
 
-Moteur NoSQL asynchrone basé sur IndexedDB avec création dynamique d'Object Stores et chiffrement local optionnel des valeurs et des clés via `NUtil.crypto.encryptLocal` / `decryptLocal`. Accessible via `NUtil.db.idb` (ou `NUtil.db.indexed`) ou en instanciant `new NIndexedDB(options)`.
+Moteur NoSQL asynchrone basé sur IndexedDB avec création dynamique d'Object Stores et chiffrement local optionnel des valeurs et des clés via `NUtil.crypto.encryptLocal()` / `decryptLocal()` (AES-256-GCM). Accessible via `NUtil.db.idb` (ou `NUtil.db.indexed`) ou en instanciant `new NIndexedDB(options)`.
 
 #### Constructeur
-- `new NIndexedDB({ name = 'NLibDB', version = 1, stores = {}, encrypt = false, encryptKey = false })`
+- `new NIndexedDB({ name = 'nlib_db', version = 1, stores = [], encryptKey = false, encryptData = false })`
 
 #### Propriétés (Getters)
 | Propriété | Type | Description |
 | :--- | :--- | :--- |
-| `isAvailable` | `boolean` | Indique si l'API `indexedDB` est disponible dans l'environnement. |
-| `isOpen` | `boolean` | Indique si la connexion à la base IndexedDB est ouverte. |
 | `name` | `string` | Nom de la base IndexedDB. |
 | `version` | `number` | Version actuelle de la base. |
+| `isOpen` | `boolean` | Indique si la connexion à la base IndexedDB est ouverte. |
 | `storeNames` | `Array<string>` | Liste des Object Stores existants dans la base. |
-| `encryptEnabled` | `boolean` | Indique si le chiffrement automatique des valeurs est actif par défaut. |
-| `encryptKeyEnabled` | `boolean` | Indique si le chiffrement déterministe des clés est actif par défaut. |
+| `isKeyEncrypted` | `boolean` | Indique si le chiffrement des clés est actif par défaut. |
+| `isDataEncrypted` | `boolean` | Indique si le chiffrement des données est actif par défaut. |
 
 #### Méthodes
+Toutes les opérations retournent un objet normalisé `{ ok, data, error, code }`.
+
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `configureEncryption` | `configureEncryption({ encrypt, encryptKey })` | `this` | Active ou désactive le chiffrement par défaut des valeurs et/ou des clés. |
-| `open` | `open({ name, version, stores } = {})` | `Promise<boolean>` | Ouvre la base IndexedDB et crée les Object Stores configurés. |
-| `ensureStore` | `ensureStore(storeName, storeConfig = { keyPath: 'id' })` | `Promise<boolean>` | Vérifie l'existence d'un store et met à niveau la version de la base pour le créer s'il manque. |
-| `put` | `put(storeName, value, key, options = {})` | `Promise<any>` | Insère ou met à jour un enregistrement (options : `{ encrypt, encryptKey }`). |
-| `putMany` | `putMany(storeName, items = [], options = {})` | `Promise<boolean>` | Insère ou met à jour plusieurs enregistrements en une seule transaction. |
-| `get` | `get(storeName, key, options = {})` | `Promise<any>` | Récupère et déchiffre un enregistrement par sa clé (retourne `null` si introuvable). |
-| `getAll` | `getAll(storeName, options = {})` | `Promise<Array<any>>` | Récupère et déchiffre tous les enregistrements d'un store. |
-| `getAllKeys` | `getAllKeys(storeName, options = {})` | `Promise<Array<any>>` | Récupère toutes les clés d'un store (et les déchiffre si `encryptKey` est actif). |
-| `find` | `find(storeName, predicate, options = {})` | `Promise<Array<any>>` | Filtre les enregistrements d'un store à l'aide d'une fonction `predicate(item)`. |
-| `count` | `count(storeName)` | `Promise<number>` | Retourne le nombre d'enregistrements contenus dans un store. |
-| `delete` | `delete(storeName, key, options = {})` | `Promise<boolean>` | Supprime un enregistrement par sa clé. |
-| `clear` | `clear(storeName)` | `Promise<boolean>` | Vide tous les enregistrements d'un store. |
+| `open` | `open()` | `Promise<NIndexedDBResponse>` | Ouvre la base IndexedDB et crée/met à niveau les Object Stores configurés. |
 | `close` | `close()` | `void` | Ferme la connexion IndexedDB active. |
-| `deleteDatabase` | `deleteDatabase(dbName = this.#dbName)` | `Promise<boolean>` | Supprime complètement la base IndexedDB du navigateur. |
+| `deleteDatabase` | `deleteDatabase()` | `Promise<NIndexedDBResponse>` | Supprime complètement la base IndexedDB du navigateur. |
+| `add` | `add(storeName, value, keyOrOptions, options = {})` | `Promise<NIndexedDBResponse>` | Insère un nouvel enregistrement (échoue si la clé existe déjà). |
+| `put` | `put(storeName, value, keyOrOptions, options = {})` | `Promise<NIndexedDBResponse>` | Insère ou met à jour un enregistrement (`{ encryptKey, encryptData }`). |
+| `putMany` | `putMany(storeName, items = [], options = {})` | `Promise<NIndexedDBResponse>` | Insère ou met à jour plusieurs enregistrements en une seule transaction. |
+| `get` | `get(storeName, key, options = {})` | `Promise<NIndexedDBResponse>` | Récupère et déchiffre un enregistrement par sa clé. |
+| `getAll` | `getAll(storeName, query, count, options = {})` | `Promise<NIndexedDBResponse>` | Récupère et déchiffre tous les enregistrements d'un store. |
+| `getAllKeys` | `getAllKeys(storeName, query, count, options = {})` | `Promise<NIndexedDBResponse>` | Récupère toutes les clés d'un store. |
+| `getByIndex` | `getByIndex(storeName, indexName, key, options = {})` | `Promise<NIndexedDBResponse>` | Récupère un enregistrement via un index. |
+| `getAllByIndex` | `getAllByIndex(storeName, indexName, query, count, options = {})` | `Promise<NIndexedDBResponse>` | Récupère plusieurs enregistrements via un index. |
+| `count` | `count(storeName, query)` | `Promise<NIndexedDBResponse>` | Retourne le nombre d'enregistrements contenus dans un store. |
+| `delete` | `delete(storeName, key, options = {})` | `Promise<NIndexedDBResponse>` | Supprime un enregistrement par sa clé. |
+| `deleteMany` | `deleteMany(storeName, keys, options = {})` | `Promise<NIndexedDBResponse>` | Supprime plusieurs clés en une seule transaction. |
+| `clear` | `clear(storeName)` | `Promise<NIndexedDBResponse>` | Vide tous les enregistrements d'un store. |
+| `cursor` | `cursor(storeName, callback, options = {})` | `Promise<NIndexedDBResponse>` | Parcourt le store via curseur avec déchiffrement transparent. |
 
 #### Exemple
 ```javascript
-import { NUtil } from '@nlib/js-backend';
+import { NIndexedDB } from '@nlib/js-backend';
 
-const idb = NUtil.db.idb;
+const idb = new NIndexedDB({
+    name: 'secure_db',
+    encryptKey: true,
+    encryptData: true,
+    stores: [{ name: 'sessions', keyPath: 'id' }]
+});
 
-// Activer le chiffrement local (lié à l'empreinte du navigateur)
-idb.configureEncryption({ encrypt: true, encryptKey: true });
-
-// Stocker un objet avec clé explicite ou via keyPath 'id'
 await idb.put('sessions', { id: 'sess_01', token: 'xyz-987', role: 'admin' });
-
-// Lecture et déchiffrement transparents
 const session = await idb.get('sessions', 'sess_01');
-console.log(session); // { id: 'sess_01', token: 'xyz-987', role: 'admin' }
-
-// Recherche par prédicat
-const admins = await idb.find('sessions', (item) => item.role === 'admin');
+console.log(session.data); // { id: 'sess_01', token: 'xyz-987', role: 'admin' }
 ```
 
 ---
 
 ### 7.4. Classe `NStorage` (`database/NStorage.js`)
 
-Gestionnaire de stockage synchrone clé-valeur (`localStorage` / `sessionStorage` avec repli en mémoire), supportant l'expiration automatique (TTL), le préfixage des clés et le chiffrement local synchrone via `NUtil.crypto.encryptLocalSync` / `decryptLocalSync`. Accessible via `NUtil.db.store` (ou `NUtil.db.storage`) ou en instanciant `new NStorage(options)`.
+Gestionnaire de stockage synchrone clé-valeur (`localStorage` / `sessionStorage`) supportant l'expiration automatique (TTL), le préfixage des clés et l'isolation par contexte applicatif (`context`, `withContext()`). Accessible via `NUtil.db.store` (ou `NUtil.db.storage`) ou en instanciant `new NStorage(options)`.
 
 #### Constructeur
-- `new NStorage({ prefix = 'nlib_', type = 'local', encrypt = false, encryptKey = false })`
+- `new NStorage({ driver = 'auto', prefix = '', context = '', ttl = 0 })`
 
-#### Propriétés (Getters)
+#### Propriétés (Getters / Setters)
 | Propriété | Type | Description |
 | :--- | :--- | :--- |
+| `driver` | `'localStorage'\|'sessionStorage'\|null` | Pilote de stockage actuellement actif. |
 | `isAvailable` | `boolean` | Indique si le stockage est opérationnel. |
-| `isPersistent` | `boolean` | `true` si adossé à `localStorage`/`sessionStorage`, `false` si repli en mémoire. |
-| `prefix` | `string` | Préfixe appliqué aux clés stockées. |
-| `size` | `number` | Nombre d'entrées appartenant au préfixe actuel. |
-| `encryptEnabled` | `boolean` | Indique si le chiffrement synchrone des valeurs est actif. |
-| `encryptKeyEnabled` | `boolean` | Indique si le chiffrement déterministe des clés est actif. |
+| `prefix` | `string` | Préfixe technique appliqué aux clés stockées. |
+| `context` | `string` | Contexte applicatif actif (ex: `'admin'`, `'app'`). Modifiable en écriture. |
+| `length` | `number` | Nombre d'entrées appartenant au préfixe et au contexte actuels. |
 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `configureEncryption` | `configureEncryption({ encrypt, encryptKey })` | `this` | Configure le chiffrement synchrone par défaut des valeurs et des clés. |
-| `setPrefix` | `setPrefix(prefix)` | `this` | Modifie le préfixe utilisé pour isoler les clés. |
-| `useSessionStorage` | `useSessionStorage()` | `this` | Bascule le moteur vers `window.sessionStorage`. |
-| `useLocalStorage` | `useLocalStorage()` | `this` | Bascule le moteur vers `window.localStorage`. |
-| `set` | `set(key, value, ttlSeconds = 0, options = {})` | `boolean` | Enregistre une valeur avec une durée de vie optionnelle (en secondes) et options `{ encrypt, encryptKey }`. |
+| `withContext` | `withContext(context)` | `NStorage` | Retourne une nouvelle instance isolée dans le contexte spécifié. |
+| `set` | `set(key, value, optionsOrTtl)` | `boolean` | Enregistre une valeur avec TTL optionnel (en secondes) ou `{ ttl, context }`. |
 | `get` | `get(key, defaultValue = null, options = {})` | `any` | Récupère une valeur (retourne `defaultValue` si absente ou expirée). |
 | `getString` | `getString(key, defaultValue = '', options = {})` | `string` | Récupère une valeur convertie en chaîne de caractères. |
 | `getNumber` | `getNumber(key, defaultValue = 0, options = {})` | `number` | Récupère une valeur convertie en nombre. |
 | `getBoolean` | `getBoolean(key, defaultValue = false, options = {})` | `boolean` | Récupère une valeur convertie en booléen. |
-| `getObject` / `getJson` | `getObject(key, defaultValue = null, options = {})` | `Object\|Array\|null` | Récupère une valeur sous forme d'objet ou de tableau. |
+| `getJson` | `getJson(key, defaultValue = {}, options = {})` | `Object` | Récupère une valeur sous forme d'objet JSON. |
+| `getArray` | `getArray(key, defaultValue = [], options = {})` | `Array` | Récupère une valeur sous forme de tableau. |
 | `has` | `has(key, options = {})` | `boolean` | Vérifie si une clé existe et n'est pas expirée. |
 | `remove` | `remove(key, options = {})` | `boolean` | Supprime une clé du stockage. |
-| `keys` | `keys(options = {})` | `Array<string>` | Liste toutes les clés (sans leur préfixe, déchiffrées si `encryptKey` est actif). |
-| `clear` | `clear()` | `boolean` | Supprime uniquement les entrées portant le préfixe actuel. |
+| `keys` | `keys()` | `Array<string>` | Liste toutes les clés du contexte courant. |
+| `clear` | `clear()` | `boolean` | Supprime uniquement les entrées du préfixe et contexte actuels. |
+| `toObject` | `toObject()` | `Object<string, any>` | Exporte toutes les entrées actives du contexte sous forme d'objet. |
 
 #### Exemple
 ```javascript
-import { NUtil } from '@nlib/js-backend';
+import { NStorage } from '@nlib/js-backend';
 
-const store = NUtil.db.store;
-
-// Activer le chiffrement synchrone local
-store.configureEncryption({ encrypt: true, encryptKey: true });
-
-// Stocker une préférence valable 1 heure (3600 secondes)
+const store = new NStorage({ prefix: 'my_pos:', context: 'admin' });
 store.set('user_theme', { mode: 'dark', contrast: 'high' }, 3600);
 
-// Lecture typée
-const theme = store.getObject('user_theme', { mode: 'light' });
+const theme = store.getJson('user_theme', { mode: 'light' });
 console.log(theme.mode); // 'dark'
-
-// Lister les clés en clair et supprimer
 console.log(store.keys()); // ['user_theme']
 store.remove('user_theme');
 ```
@@ -1493,70 +1495,48 @@ Client HTTP (`fetch` / pont natif) et WebSocket intégrant nativement le chiffre
 #### Constructeur
 - `new NNetwork({ baseUrl = '', timeout = 30000, headers = {}, encryption = null })`
 
-#### Propriétés (Getters)
+#### Propriétés (Getters / Setters)
 | Propriété | Type | Description |
 | :--- | :--- | :--- |
-| `isOnline` | `boolean` | Indique si l'appareil est connecté au réseau. |
+| `driver` | `'auto'\|'fetch'\|'xhr'\|'native'` | Moteur de transport HTTP actif. |
 | `baseUrl` | `string` | URL de base préfixée aux requêtes relatives. |
-| `defaultTimeout` | `number` | Délai d'expiration par défaut des requêtes (en ms). |
-| `defaultHeaders` | `Object` | En-têtes HTTP envoyés par défaut à chaque requête. |
-| `isEncryptionEnabled` | `boolean` | Indique si le chiffrement automatique des requêtes/réponses est activé. |
-| `encryptionMode` | `string` | Mode de chiffrement configuré (`'asymmetric'` ou `'symmetric'`). |
-| `hasEncryptionKeys` | `boolean` | Indique si les clés nécessaires au mode de chiffrement choisi sont chargées. |
-| `activeSocketCount` | `number` | Nombre de connexions WebSocket actuellement ouvertes. |
 
-#### Méthodes de configuration et de chiffrement
+#### Méthodes cryptographiques
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `setBaseUrl` | `setBaseUrl(url = '')` | `this` | Définit l'URL de base du serveur. |
-| `setDefaultTimeout` | `setDefaultTimeout(ms)` | `this` | Définit le timeout par défaut en millisecondes. |
-| `setDefaultHeader` | `setDefaultHeader(name, value)` | `this` | Ajoute ou remplace un en-tête HTTP par défaut. |
-| `removeDefaultHeader` | `removeDefaultHeader(name)` | `this` | Supprime un en-tête HTTP par défaut. |
-| `setBearerToken` | `setBearerToken(token)` | `this` | Définit ou supprime l'en-tête `Authorization: Bearer <token>`. |
-| `configureEncryption` | `configureEncryption(config = {})` | `Promise<this>` | Configure le chiffrement (`{ enabled, mode, serverPublicKey, clientPublicKey, clientPrivateKey, sharedSecret, persistKeys }`). |
-| `generateClientKeyPair` | `generateClientKeyPair(options = {})` | `Promise<Object\|null>` | Génère une paire de clés RSA client via `NUtil.crypto.generateKeyPair`, la sauvegarde dans IndexedDB et retourne `{ publicKey, privateKey }` en PEM. |
-| `setServerPublicKey` | `setServerPublicKey(publicKeyOrPem, persist = true)` | `Promise<boolean>` | Importe et enregistre la clé publique RSA du serveur pour chiffrer les requêtes sortantes. |
-| `setClientKeyPair` | `setClientKeyPair({ publicKey, privateKey }, persist = true)` | `Promise<boolean>` | Importe et enregistre la paire de clés RSA du client pour déchiffrer les réponses entrantes. |
-| `setSharedSecret` | `setSharedSecret(secretKey, persist = true)` | `Promise<boolean>` | Définit le secret partagé pour le mode `'symmetric'` (`AES-GCM`). |
-| `loadKeysFromStorage` | `loadKeysFromStorage()` | `Promise<boolean>` | Recharge les clés depuis `NUtil.db.idb` (chiffrées localement). |
-| `clearEncryptionKeys` | `clearEncryptionKeys(removeFromStorage = true)` | `Promise<boolean>` | Efface les clés en mémoire et optionnellement dans IndexedDB. |
-| `encryptPayload` | `encryptPayload(data)` | `Promise<string\|null>` | Chiffre une charge utile selon le mode actif (`NUtil.crypto.encrypt` ou `encryptSymmetric`). |
-| `decryptPayload` | `decryptPayload(encryptedPayload, parseJson = true)` | `Promise<any>` | Déchiffre une charge utile reçue du serveur (`NUtil.crypto.decrypt` ou `decryptSymmetric`). |
+| `requestAuthentication` | `requestAuthentication(url = null, options = {})` | `Promise<any>` | Négocie l'échange de clés publiques RSA client ↔ serveur. |
+| `generateClientKeyPair` | `generateClientKeyPair(options = {})` | `Promise<CryptoKeyPair\|null>` | Génère une paire de clés RSA client (`CryptoKey`) et la persiste dans IndexedDB. |
+| `setServerPublicKey` | `setServerPublicKey(publicKey)` | `Promise<boolean>` | Définit la clé publique RSA du serveur (`CryptoKey` ou PEM converti en `CryptoKey`). |
+| `setClientKeyPair` | `setClientKeyPair(publicKey, privateKey)` | `Promise<boolean>` | Configure la paire de clés RSA du client (`privateKey` en `CryptoKey`). |
+| `encryptPayload` | `encryptPayload(data, options = {})` | `Promise<Object>` | Chiffre une charge utile avec la clé publique serveur (`NUtil.crypto.encrypt`). |
+| `decryptPayload` | `decryptPayload(encryptedPayload, options = {})` | `Promise<string>` | Déchiffre une charge utile reçue du serveur (`NUtil.crypto.decrypt`). |
+| `hasServerPublicKey` | `hasServerPublicKey()` | `boolean` | Indique si la clé publique serveur (`CryptoKey`) est chargée. |
+| `getServerPublicKey` | `getServerPublicKey()` | `CryptoKey\|null` | Retourne la clé publique serveur (`CryptoKey`). |
+| `getClientKeyPair` | `getClientKeyPair()` | `Promise<CryptoKeyPair\|null>` | Retourne la paire de clés RSA du client (`CryptoKey`). |
+| `clearCryptoSession` | `clearCryptoSession()` | `Promise<void>` | Efface les clés en mémoire et dans IndexedDB. |
 
-#### Méthodes HTTP et WebSocket
+#### Méthodes HTTP et transferts de fichiers
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `request` | `request(options = {})` | `Promise<Object>` | Exécute une requête complète et retourne `{ ok, status, statusText, headers, data, raw, url, duration, encrypted }`. |
-| `get` | `get(url, options = {})` | `Promise<Object>` | Exécute une requête `GET` (supporte `options.params`, `options.cacheTtl`, `options.retries`). |
-| `post` | `post(url, body = null, options = {})` | `Promise<Object>` | Exécute une requête `POST` (chiffre automatiquement `body` si le chiffrement est actif). |
-| `put` | `put(url, body = null, options = {})` | `Promise<Object>` | Exécute une requête `PUT`. |
-| `patch` | `patch(url, body = null, options = {})` | `Promise<Object>` | Exécute une requête `PATCH`. |
+| `request` | `request(url, options = {})` | `Promise<Object>` | Exécute une requête HTTP complète et retourne `{ ok, status, statusText, headers, data }`. |
+| `get` | `get(url, options = {})` | `Promise<Object>` | Exécute une requête `GET`. |
+| `post` | `post(url, body, options = {})` | `Promise<Object>` | Exécute une requête `POST` (chiffre automatiquement si `options.encrypt` est actif). |
+| `put` | `put(url, body, options = {})` | `Promise<Object>` | Exécute une requête `PUT`. |
+| `patch` | `patch(url, body, options = {})` | `Promise<Object>` | Exécute une requête `PATCH`. |
 | `delete` | `delete(url, options = {})` | `Promise<Object>` | Exécute une requête `DELETE`. |
-| `upload` | `upload(url, filesOrFields = {}, options = {})` | `Promise<Object>` | Envoie un `FormData` contenant des fichiers et des champs. |
-| `download` | `download(url, options = {})` | `Promise<Object>` | Télécharge une ressource binaire (`Uint8Array`) et peut l'enregistrer directement via `NUtil.file` si `options.savePath` est fourni. |
-| `connectWebSocket` | `connectWebSocket(url, options = {})` | `Object\|null` | Ouvre un WebSocket avec reconnexion automatique et chiffrement optionnel des messages. |
-| `sendWebSocket` | `sendWebSocket(idOrUrl, data, options = {})` | `Promise<boolean>` | Envoie un message (chiffré ou non) sur un WebSocket ouvert. |
-| `closeWebSocket` | `closeWebSocket(idOrUrl, code = 1000, reason)` | `boolean` | Ferme proprement une connexion WebSocket et stoppe sa reconnexion automatique. |
-| `closeAllWebSockets` | `closeAllWebSockets()` | `void` | Ferme toutes les connexions WebSocket actives. |
+| `head` | `head(url, options = {})` | `Promise<Object>` | Exécute une requête `HEAD`. |
+| `getFileInfo` / `getFilesInfo` | `getFileInfo(url, options = {})` | `Promise<Object>` | Récupère les métadonnées d'un ou plusieurs fichiers distants. |
+| `downloadFile` / `downloadFiles` | `downloadFile(url, options = {})` | `Promise<Object>` | Télécharge un ou plusieurs fichiers (direct ou par tranches de 1 Mo max). |
+| `uploadFile` / `uploadFiles` | `uploadFile(url, file, options = {})` | `Promise<Object>` | Téléverse un ou plusieurs fichiers (direct ou par tranches de 1 Mo max). |
 
 #### Exemple
 ```javascript
-import { NUtil } from '@nlib/js-backend';
+import { NNetwork } from '@nlib/js-backend';
 
-NUtil.net.setBaseUrl('https://api.exemple.com');
-NUtil.net.setBearerToken('mon-jwt-token');
+const net = new NNetwork({ baseUrl: 'https://api.exemple.com' });
+await net.requestAuthentication('/auth');
 
-// 1. Générer les clés RSA du client et configurer la clé publique du serveur
-const clientPem = await NUtil.net.generateClientKeyPair();
-await NUtil.net.configureEncryption({
-    enabled: true,
-    mode: 'asymmetric',
-    serverPublicKey: '-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'
-});
-
-// 2. Envoyer une requête POST (le corps est chiffré avec la clé publique du serveur
-// et la réponse chiffrée est déchiffrée avec la clé privée du client)
-const res = await NUtil.net.post('/orders', { item: 'Laptop', qty: 1 });
+const res = await net.post('/orders', { item: 'Laptop', qty: 1 }, { encrypt: true });
 if (res.ok) {
     console.log('Réponse déchiffrée :', res.data);
 }
@@ -1566,100 +1546,99 @@ if (res.ok) {
 
 ### 10.2. Classe `NTableRequest` (`requests/NTableRequest.js`)
 
-Synchronisation bidirectionnelle d'une table SQLite locale (`NSql`) avec un serveur distant (`NNetwork`). Chaque opération peut cibler le serveur (`getData`, `insertData`, etc.) et mettre à jour automatiquement la base SQLite locale (`get`, `insert`, `update`, `delete`, `syncDatas`). Hérite de `NObject`.
+Gestionnaire de requêtes de données sur une table SQLite locale (`NSql`) avec appels réseau distants (`NNetwork` / `NRequestManager`) et synchronisation bidirectionnelle optionnelle via `NDataSynchronizer` (`sync` / `enableSync`). Hérite de `NObject`.
 
 #### Constructeur
-- `new NTableRequest({ table = '', request = null, db = null, primaryKey = 'id', state })`
+- `new NTableRequest({ request = null, table = '', primaryKey = 'id', db = null, sync = false, synchronizer = null } = {})`
 
-#### Propriétés (Getters)
+#### Propriétés (Getters / Setters)
 | Propriété | Type | Description |
 | :--- | :--- | :--- |
-| `table` | `string` | Nom de la table SQLite et de la ressource serveur. |
-| `primaryKey` | `string` | Nom de la colonne clé primaire (`'id'` par défaut). |
-| `db` | `NSql` | Instance SQLite utilisée (`NUtil.db.sql` par défaut). |
-| `request` | `NNetwork` | Instance réseau utilisée (`NUtil.net` par défaut). |
-| `isSyncing` | `boolean` | Indique si une synchronisation complète (`syncDatas`) est en cours. |
+| `table` | `string` | Nom de la table SQLite ciblée (lecture/écriture). |
+| `primaryKey` | `string` | Nom de la colonne clé primaire (`'id'` par défaut, lecture/écriture). |
+| `request` | `NRequestManager\|null` | Gestionnaire parent associé (lecture/écriture). |
+| `db` | `any` | Instance de base de données utilisée (`NUtil.db` par défaut). |
+| `syncEnabled` | `boolean` | Indique si la synchronisation via `NDataSynchronizer` est activée. |
+| `synchronizer` | `NDataSynchronizer\|null` | Instance `NDataSynchronizer` associée (partagée avec `request` ou locale). |
 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `getData` | `getData(req = {})` | `Promise<Object\|null>` | Récupère un enregistrement unique depuis le serveur sans modifier la base locale. |
-| `get` | `get(req = {})` | `Promise<Object\|null>` | Récupère un enregistrement depuis le serveur et l'insère/met à jour dans SQLite (repli sur SQLite si hors-ligne). |
-| `getDatas` | `getDatas(req = {})` | `Promise<Array<Object>>` | Récupère une liste d'enregistrements depuis le serveur. |
-| `gets` | `gets(req = {})` | `Promise<Array<Object>>` | Récupère une liste depuis le serveur, synchronise les lignes dans SQLite et retourne la liste (repli sur SQLite si hors-ligne). |
-| `insertData` | `insertData(req = {})` | `Promise<Object\|null>` | Envoie une demande de création au serveur et retourne l'objet créé. |
-| `insert` | `insert(req = {})` | `Promise<Object\|boolean\|null>` | Crée l'enregistrement sur le serveur puis l'insère dans la table SQLite locale (ou localement si `req.offline = true`). |
-| `updateData` | `updateData(req = {})` | `Promise<Object\|boolean\|null>` | Envoie une demande de mise à jour au serveur. |
-| `update` | `update(req = {})` | `Promise<boolean>` | Met à jour l'enregistrement sur le serveur puis dans la table SQLite locale. |
-| `deleteData` | `deleteData(req = {})` | `Promise<boolean>` | Envoie une demande de suppression au serveur. |
-| `delete` | `delete(req = {})` | `Promise<boolean>` | Supprime l'enregistrement sur le serveur puis dans la table SQLite locale. |
-| `syncDatas` | `syncDatas(options = {})` | `Promise<boolean>` | Synchronise par lots (pagination `batchSize`) les données distantes avec la table SQLite locale et émet `'sync:progress'` / `'sync:complete'`. |
-| `generateSqlSearch` | `generateSqlSearch(textSearch, arrayField)` | `string` | Génère une clause SQL `LIKE` multi-mots et multi-colonnes. |
-| `generateSqlSearchParams` | `generateSqlSearchParams(textSearch, arrayField)` | `Object` | Génère une clause SQL paramétrée `{ clause, params }` sécurisée contre les injections. |
-| `generateSqlLimited` | `generateSqlLimited(limit, offset = 0)` | `string` | Génère une clause `LIMIT <limit> OFFSET <offset>`. |
+| `execute` | `execute(req = {})` | `Promise<any>` | Exécute une opération polymorphe (`'GET'`, `'GETS'`, `'INSERT'`, `'UPDATE'`, `'DELETE'`). |
+| `get` / `getData` | `get(req = {})` | `Promise<Object\|null>` | Sélectionne un enregistrement local ou distant. |
+| `getDataByPrimaryKey` | `getDataByPrimaryKey(value)` | `Promise<Object\|null>` | Sélectionne un enregistrement par clé primaire. |
+| `gets` / `getDatas` | `gets(req = {})` | `Promise<Object>` | Sélectionne une liste d'enregistrements (`{ dataList, countAll, totalRows, updated }`). |
+| `insert` / `insertData` | `insert(req = {})` | `Promise<Object\|null>` | Insère localement (`n_local = 2`), enregistre l'opération dans l'outbox si `sync` est actif, puis synchronise. |
+| `update` / `updateData` | `update(req = {})` | `Promise<number>` | Met à jour localement (`n_local = 3`), suit les lignes modifiées si `sync` est actif, puis synchronise. |
+| `delete` / `deleteData` | `delete(req = {})` | `Promise<number>` | Supprime localement, suit les suppressions si `sync` est actif, puis synchronise. |
+| `enableSync` | `enableSync(config = {})` | `this` | Active la synchronisation `NDataSynchronizer` pour cette table et attache les écouteurs `'apply'` et `'confirmed'`. |
+| `disableSync` | `disableSync()` | `this` | Désactive la synchronisation `NDataSynchronizer` et désenregistre la collection. |
+| `syncDatas` | `syncDatas(options = {})` | `Promise<boolean>` | Lance la synchronisation bidirectionnelle de la table (délègue à `NDataSynchronizer` si activé). |
 
 #### Exemple
 ```javascript
-import { NTableRequest } from '@nlib/js-backend';
+import { NRequestManager, NTableRequest, NNetwork } from '@nlib/js-backend';
+
+const manager = new NRequestManager({
+    synchronizer: { network: new NNetwork({ baseURL: 'https://api.monapp.com' }) }
+});
 
 const clientsReq = new NTableRequest({
+    request: manager,
     table: 'clients',
-    primaryKey: 'id'
+    primaryKey: 'id',
+    sync: {
+        endpoint: '/sync/clients',
+        conflictStrategy: 'serverWins'
+    }
 });
+manager.addTableRequest('clients', clientsReq);
 
-// Écouter la progression de synchronisation
-clientsReq.on('sync:progress', ({ synced }) => {
-    console.log(`${synced} clients synchronisés...`);
-});
-
-// Synchroniser tous les clients par lots de 200
-await clientsReq.syncDatas({ batchSize: 200 });
-
-// Construire une recherche SQL sécurisée
-const { clause, params } = clientsReq.generateSqlSearchParams('dupont paris', ['nom', 'ville']);
+await clientsReq.insert({ data: { id: 1, nom: 'Dupont', version: 0 } });
+await clientsReq.syncDatas();
 ```
 
 ---
 
 ### 10.3. Classe `NRequestManager` (`requests/NRequestManager.js`)
 
-Registre centralisant plusieurs instances de `NTableRequest` pour gérer et synchroniser facilement l'ensemble des tables d'une application.
+Registre centralisant plusieurs instances de `NTableRequest` et portant une instance de `NDataSynchronizer` partagée pour orchestrer et synchroniser les tables d'une application. Hérite de `NObject`.
 
 #### Constructeur
-- `new NRequestManager({ db = null, request = null } = {})`
+- `new NRequestManager({ tables = {}, synchronizer } = {})`
 
 #### Propriétés (Getters)
 | Propriété | Type | Description |
 | :--- | :--- | :--- |
-| `size` | `number` | Nombre de tables enregistrées dans le gestionnaire. |
-| `tables` | `Array<string>` | Liste des noms de tables enregistrées. |
-| `db` | `NSql` | Instance SQLite partagée par les tables. |
-| `request` | `NNetwork` | Instance réseau partagée par les tables. |
+| `tableNames` | `string[]` | Liste des noms de tables enregistrées. |
+| `count` | `number` | Nombre total de tables enregistrées. |
+| `synchronizer` | `NDataSynchronizer\|null` | Instance centralisée de `NDataSynchronizer`. |
 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `register` | `register(tableName, instanceOrOptions = {})` | `NTableRequest\|null` | Enregistre une table dans le gestionnaire et retourne son instance `NTableRequest`. |
-| `table` | `table(tableName, options = {})` | `NTableRequest\|null` | Récupère l'instance `NTableRequest` d'une table ou la crée automatiquement si elle n'existe pas encore. |
-| `get` | `get(tableName)` | `NTableRequest\|null` | Récupère l'instance d'une table enregistrée (ou `null`). |
-| `has` | `has(tableName)` | `boolean` | Vérifie si une table est enregistrée. |
-| `unregister` | `unregister(tableName)` | `boolean` | Retire une table du gestionnaire. |
-| `syncAll` | `syncAll(options = {})` | `Promise<Object>` | Lance `syncDatas` sur toutes les tables (en séquence ou en parallèle avec `options.parallel = true`). |
+| `addTableRequest` | `addTableRequest(tableName, tableRequest)` | `NTableRequest\|null` | Enregistre ou remplace une instance `NTableRequest` et lui rattache le gestionnaire. |
+| `hasTableRequest` | `hasTableRequest(tableName)` | `boolean` | Vérifie si une table est enregistrée. |
+| `getTableRequest` | `getTableRequest(tableName)` | `NTableRequest\|null` | Récupère l'instance `NTableRequest` d'une table ou la crée automatiquement liée au gestionnaire. |
+| `removeTableRequest` | `removeTableRequest(tableName)` | `boolean` | Retire une table du gestionnaire. |
 | `clear` | `clear()` | `void` | Vide le registre de toutes ses tables. |
+| `execute` | `execute(req = {})` | `Promise<any>` | Route l'exécution d'une requête vers le `NTableRequest` correspondant. |
+| `sync` | `sync(tableName = null, options = {})` | `Promise<Object>` | Lance la synchronisation via `synchronizer.sync(tableName, options)`. |
 
 #### Exemple
 ```javascript
-import { NRequestManager } from '@nlib/js-backend';
+import { NRequestManager, NTableRequest } from '@nlib/js-backend';
 
-const manager = new NRequestManager();
+const manager = new NRequestManager({
+    synchronizer: { autoSync: { enabled: true, onOnline: true } }
+});
 
-// Accès direct (création à la volée)
-const usersTable = manager.table('users', { primaryKey: 'id' });
-const invoicesTable = manager.table('invoices', { primaryKey: 'invoice_id' });
+const usersTable = manager.getTableRequest('users');
+usersTable.enableSync({ endpoint: '/sync/users' });
 
-// Synchroniser toutes les tables en parallèle
-const resultats = await manager.syncAll({ parallel: true, batchSize: 500 });
-console.log(resultats); // { users: true, invoices: true }
+// Synchroniser toutes les tables actives
+const report = await manager.sync();
+console.log(report.ok, report.results);
 ```
 
 ---
@@ -1728,6 +1707,42 @@ await service.send(42);
 const refreshedId = await service.refreshId();
 console.log('Identifiant actualisé en HTTP :', refreshedId);
 await service.resetLastId(0);
+```
+
+---
+
+### 10.5. Classe `NDataSynchronizer` (`requests/NDataSynchronizer.js`)
+
+Moteur événementiel générique de synchronisation bidirectionnelle (Push / Pull) offline-first entre le client et un serveur distant via `NNetwork`. Hérite de `NObject`.
+
+#### Constructeur
+- `new NDataSynchronizer({ network = NUtil.network, metaDb, metaDbName = 'nlib_sync_meta', retry, protocol, autoSync })`
+
+#### Méthodes
+| Méthode | Signature | Retour | Description |
+| :--- | :--- | :--- | :--- |
+| `register` | `register(collectionId, config)` | `boolean` | Enregistre et valide une collection (`endpoint`, `conflictStrategy`, `batchSize`, `pullLimit`). |
+| `unregister` | `unregister(collectionId)` | `boolean` | Retire une collection du registre. |
+| `trackChange` | `trackChange(collectionId, action, recordOrKey, options = {})` | `Promise<Object\|null>` | Enregistre une modification locale (`'create'`, `'update'`, `'delete'`) dans la file persistante. |
+| `sync` / `push` / `pull` | `sync(collectionId = null, options = {})` | `Promise<Object>` | Exécute la synchronisation bidirectionnelle, Push ou Pull (sans concurrence sur une même collection). |
+| `pause` / `resume` / `stop` | `pause(collectionId = null)` | `this` / `Promise<Object>` | Met en pause, reprend ou interrompt la synchronisation sans perdre les opérations en attente. |
+| `getStatus` / `getCollectionStatus` | `getStatus()` | `Object` | Retourne les états et compteurs (`pendingCount`, `sentCount`, `receivedCount`, `confirmedCount`, `conflictCount`, `errorCount`). |
+| `resolveConflict` | `resolveConflict(conflictId, resolution)` | `Promise<boolean>` | Résout un conflit manuel (`'serverWins'`, `'clientWins'` ou objet fusionné). |
+| `on` / `off` | `on(eventName, callback)` | `this` | Écoute/détache les événements (`'start'`, `'progress'`, `'push'`, `'confirmed'`, `'pull'`, `'apply'`, `'conflict'`, `'error'`, `'complete'`, `'pause'`, `'resume'`). |
+
+#### Exemple
+```javascript
+import { NDataSynchronizer } from '@nlib/js-backend';
+
+const sync = new NDataSynchronizer({ network: myNetwork });
+sync.register('clients', { endpoint: 'https://api.exemple.com/sync/clients' });
+
+sync.on('apply', async ({ collection, action, recordId, record }) => {
+    // Persister dans votre base locale (NIndexedDB, NSql, etc.)
+});
+
+await sync.trackChange('clients', 'create', { id: 'c1', nom: 'Dupont', version: 0 });
+await sync.sync();
 ```
 
 ---

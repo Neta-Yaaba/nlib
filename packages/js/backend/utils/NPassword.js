@@ -1,17 +1,11 @@
 /**
  * @file NPassword.js
  * @package @nlib/js-backend
- * @description Classe utilitaire pure pour la validation de politiques de mots de passe,
+ * @description Classe utilitaire pour la validation de politiques de mots de passe,
  * l'évaluation de robustesse (score 0-100, entropie en bits, niveau de sécurité), la génération
- * aléatoire cryptographique de mots de passe et de codes PIN / OTP, ainsi que le hachage salé
- * (PBKDF2-SHA256 compatible PHP `hash_pbkdf2`, Python `hashlib.pbkdf2_hmac` et Node.js, avec
- * moteur de repli pur JS) et la comparaison en temps constant dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
+ * aléatoire cryptographique de mots de passe et de codes PIN / OTP, le hachage salé
+ * PBKDF2-SHA256 via Web Crypto (compatible PHP `hash_pbkdf2`, Python `hashlib.pbkdf2_hmac` et Node.js)
+ * et la comparaison en temps constant dans l'écosystème NLib.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -19,7 +13,8 @@ import { NUtil } from './NUtil.js';
 
 /**
  * @class NPassword
- * @description Utilitaire de gestion, validation, génération et hachage de mots de passe sans état interne.
+ * @extends NObject
+ * @description Utilitaire de validation, évaluation, génération et hachage PBKDF2-SHA256 de mots de passe.
  *
  * @example <caption>Exemple 1 : Validation et évaluation de la robustesse d'un mot de passe</caption>
  * const pwdUtil = new NPassword();
@@ -41,11 +36,11 @@ import { NUtil } from './NUtil.js';
 export class NPassword extends NObject {
 
     // =========================================================================
-    // Méthodes privées internes (Aléatoire cryptographique & SHA-256 / HMAC de repli)
+    // Méthodes privées internes (Aléatoire cryptographique)
     // =========================================================================
 
     /**
-     * Retourne un entier aléatoire cryptographiquement sûr compris dans `[0, max - 1]`.
+     * Retourne un entier aléatoire compris dans `[0, max - 1]`.
      *
      * @param {number} max - Borne supérieure exclusive.
      * @returns {number} Entier aléatoire.
@@ -64,17 +59,6 @@ export class NPassword extends NObject {
             return arr[0] % limit;
         }
         return Math.floor(Math.random() * limit);
-    }
-
-    /**
-     * Calcule HMAC-SHA256 en pur JavaScript via `NUtil.crypto.hmacSha256Sync`.
-     *
-     * @param {Uint8Array} keyBytes - Clé secrète.
-     * @param {Uint8Array} dataBytes - Message à authentifier.
-     * @returns {Uint8Array} Signature HMAC-SHA256 de 32 octets.
-     */
-    #hmacSha256Fallback(keyBytes, dataBytes) {
-        return NUtil.crypto.hmacSha256Sync(keyBytes, dataBytes, 'bytes');
     }
 
     // =========================================================================
@@ -397,6 +381,12 @@ export class NPassword extends NObject {
         if (typeof password !== 'string' || password.length === 0) {
             return '';
         }
+
+        if (!NUtil.crypto.isWebCryptoAvailable() || typeof globalThis.crypto.subtle.importKey !== 'function') {
+            NUtil.log.warn('NPassword.hash: Web Crypto indisponible.');
+            return '';
+        }
+
         const iterations = Math.max(1000, Math.trunc(options?.iterations ?? 100000));
 
         let saltBytes;
@@ -406,9 +396,9 @@ export class NPassword extends NObject {
                 saltBytes[i] = parseInt(options.saltHex.slice(i * 2, i * 2 + 2), 16);
             }
         } else {
-            saltBytes = new Uint8Array(16);
-            for (let i = 0; i < 16; i++) {
-                saltBytes[i] = this.#randomIndex(256);
+            saltBytes = NUtil.crypto.randomBytes(16);
+            if (!saltBytes.length) {
+                return '';
             }
         }
 
@@ -417,64 +407,38 @@ export class NPassword extends NObject {
             .join('');
 
         const pwdBytes = new TextEncoder().encode(password);
-        let derivedBytes;
 
-        if (
-            typeof globalThis !== 'undefined' &&
-            globalThis.crypto &&
-            globalThis.crypto.subtle &&
-            typeof globalThis.crypto.subtle.importKey === 'function'
-        ) {
-            try {
-                const baseKey = await globalThis.crypto.subtle.importKey(
-                    'raw',
-                    pwdBytes,
-                    { name: 'PBKDF2' },
-                    false,
-                    ['deriveBits']
-                );
-                const derivedBuffer = await globalThis.crypto.subtle.deriveBits(
-                    {
-                        name: 'PBKDF2',
-                        salt: saltBytes,
-                        iterations,
-                        hash: 'SHA-256'
-                    },
-                    baseKey,
-                    256
-                );
-                derivedBytes = new Uint8Array(derivedBuffer);
-            } catch (err) {
-                NUtil.log.warn('NPassword.hash: Échec WebCrypto PBKDF2, bascule sur le moteur de repli pur JS.', {
-                    code: 'WARN_PBKDF2_FALLBACK',
-                    cause: err
-                });
-            }
+        try {
+            const baseKey = await globalThis.crypto.subtle.importKey(
+                'raw',
+                pwdBytes,
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits']
+            );
+            const derivedBuffer = await globalThis.crypto.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: saltBytes,
+                    iterations,
+                    hash: 'SHA-256'
+                },
+                baseKey,
+                256
+            );
+            const derivedBytes = new Uint8Array(derivedBuffer);
+            const hashHex = Array.from(derivedBytes)
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('');
+
+            return `$pbkdf2-sha256$${iterations}$${saltHex}$${hashHex}`;
+        } catch (err) {
+            NUtil.log.error('NPassword.hash: Échec WebCrypto PBKDF2.', {
+                code: 'ERR_PBKDF2_FAILED',
+                cause: err
+            });
+            return '';
         }
-
-        if (!derivedBytes) {
-            // Alternative PBKDF2-HMAC-SHA256 en pur JS (1 bloc de 32 octets = 256 bits)
-            const saltAndIndex = new Uint8Array(saltBytes.length + 4);
-            saltAndIndex.set(saltBytes, 0);
-            saltAndIndex[saltBytes.length + 3] = 1;
-
-            let u = this.#hmacSha256Fallback(pwdBytes, saltAndIndex);
-            const t = new Uint8Array(u);
-            const fallbackIterations = Math.min(iterations, 10000);
-            for (let c = 1; c < fallbackIterations; c++) {
-                u = this.#hmacSha256Fallback(pwdBytes, u);
-                for (let k = 0; k < 32; k++) {
-                    t[k] ^= u[k];
-                }
-            }
-            derivedBytes = t;
-        }
-
-        const hashHex = Array.from(derivedBytes)
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('');
-
-        return `$pbkdf2-sha256$${iterations}$${saltHex}$${hashHex}`;
     }
 
     /**

@@ -4,12 +4,6 @@
  * @description Classe utilitaire pure pour la validation, la conversion, le calcul financier exact
  * (en centimes / sous-unités pour éviter les erreurs de virgule flottante), la gestion des taxes (TVA),
  * des remises, des devises et le formatage des montants dans l'écosystème NLib.
- *
- * Règles architecturales des utilitaires NLib :
- * - N'hérite pas de `NObject`.
- * - Ne contient aucune variable / propriété d'état (empreinte mémoire nulle).
- * - Ne contient aucune méthode statique : chaque méthode d'instance reçoit ses paramètres,
- *   effectue le traitement et retourne directement le résultat.
  */
 
 import { NObject } from '../core/NObject.js';
@@ -17,7 +11,8 @@ import { NUtil } from './NUtil.js';
 
 /**
  * @class NAmount
- * @description Utilitaire de gestion et traitement des montants financiers sans état interne.
+ * @extends NObject
+ * @description Utilitaire de gestion et traitement des montants financiers.
  *
  * @example <caption>Exemple 1 : Calculs financiers exacts et formatage</caption>
  * const amt = new NAmount();
