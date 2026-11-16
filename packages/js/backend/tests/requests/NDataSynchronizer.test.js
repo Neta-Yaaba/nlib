@@ -670,4 +670,128 @@ describe('NDataSynchronizer (requests/NDataSynchronizer.js)', () => {
         assert.equal(res3.pushed, 1);
         assert.equal((await metaDb.get('outbox', op.operationId)).data, null);
     });
+
+    it('17. vérifie les échecs de suppression outbox (Push confirmé et serverWins)', async () => {
+        const metaDb = createMockMetaDb();
+        const origDelete = metaDb.delete.bind(metaDb);
+        let failOutboxDelete = true;
+        metaDb.delete = async (storeName, key) => {
+            if (storeName === 'outbox' && failOutboxDelete) {
+                return { ok: false, data: false, error: 'DELETE_FAILED' };
+            }
+            return origDelete(storeName, key);
+        };
+
+        const network = {
+            async post(_url, body) {
+                return {
+                    ok: true,
+                    status: 200,
+                    data: {
+                        confirmed: body.operations.map((o) => ({ operationId: o.operationId, version: 1 })),
+                        conflicts: [],
+                        failed: []
+                    }
+                };
+            },
+            async get() {
+                return {
+                    ok: true,
+                    status: 200,
+                    data: {
+                        changes: [{ action: 'update', recordId: 'c1', version: 2, data: { id: 'c1', nom: 'Srv', version: 2 } }],
+                        nextCursor: 'cur_sw',
+                        hasMore: false
+                    }
+                };
+            }
+        };
+
+        // 1. Push confirmé mais suppression outbox échoue -> opération conservée, ok = false, confirmedCount = 0
+        const sync = new NDataSynchronizer({ metaDb, network });
+        sync.register('clients', { endpoint: 'https://api.nlib.dev/sync/clients', conflictStrategy: 'serverWins' });
+        createAppStore().attach(sync);
+
+        const op = await sync.trackChange('clients', 'create', { id: 'c1', nom: 'Local' });
+        const pushRes = await sync.push('clients');
+        assert.equal(pushRes.ok, false);
+        assert.equal(sync.getCollectionStatus('clients').confirmedCount, 0);
+        assert.ok((await metaDb.get('outbox', op.operationId)).data);
+
+        // 2. serverWins avec échec de suppression outbox -> conflit non marqué résolu, pull échoue, curseur intact
+        const pullRes = await sync.pull('clients');
+        assert.equal(pullRes.ok, false);
+        assert.equal(sync.getCollectionStatus('clients').cursor, null);
+        assert.ok((await metaDb.get('outbox', op.operationId)).data);
+
+        // 3. Reprise après rétablissement de delete()
+        failOutboxDelete = false;
+        const okPull = await sync.pull('clients');
+        assert.equal(okPull.ok, true);
+        assert.equal((await metaDb.get('outbox', op.operationId)).data, null);
+        assert.equal(sync.getCollectionStatus('clients').cursor, 'cur_sw');
+    });
+
+    it('18. rejette les modifications distantes invalides et réconcilie le fallback mémoire avec IndexedDB', async () => {
+        const metaDb = createMockMetaDb();
+        const networkInvalid = {
+            async post() { return { ok: true, status: 200, data: { confirmed: [], conflicts: [], failed: [] } }; },
+            async get() {
+                return {
+                    ok: true,
+                    status: 200,
+                    data: {
+                        changes: [{ action: 'update', data: { nom: 'SansID' } }],
+                        nextCursor: 'cur_bad',
+                        hasMore: false
+                    }
+                };
+            }
+        };
+
+        const syncInvalid = new NDataSynchronizer({ metaDb, network: networkInvalid });
+        syncInvalid.register('clients', { endpoint: 'https://api.nlib.dev/sync/clients' });
+        createAppStore().attach(syncInvalid);
+        const badPull = await syncInvalid.pull('clients');
+        assert.equal(badPull.ok, false);
+        assert.equal(syncInvalid.getCollectionStatus('clients').cursor, null);
+
+        // Fallback mémoire -> retour d'IndexedDB sans perte ni résurrection après suppression
+        let idbOnline = false;
+        const realMeta = createMockMetaDb();
+        const flakyMeta = {
+            get isAvailable() { return idbOnline; },
+            put: (...args) => realMeta.put(...args),
+            get: (...args) => realMeta.get(...args),
+            getAll: (...args) => realMeta.getAll(...args),
+            delete: (...args) => realMeta.delete(...args)
+        };
+
+        const syncFlaky = new NDataSynchronizer({
+            metaDb: flakyMeta,
+            network: {
+                async post(_u, body) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        data: { confirmed: body.operations.map((o) => ({ operationId: o.operationId, version: 1 })), conflicts: [], failed: [] }
+                    };
+                },
+                async get() { return { ok: true, status: 200, data: { changes: [], nextCursor: null, hasMore: false } }; }
+            }
+        });
+        syncFlaky.register('clients', { endpoint: 'https://api.nlib.dev/sync/clients' });
+
+        // Enregistré pendant la panne IDB -> stocké en mémoire
+        const opMem = await syncFlaky.trackChange('clients', 'create', { id: 'm1', nom: 'Mem' });
+        assert.equal(syncFlaky.getStatus().isPersistent, false);
+
+        // IDB redevient disponible -> l'opération mémoire reste visible et est poussée puis supprimée
+        idbOnline = true;
+        const pushOk = await syncFlaky.push('clients');
+        assert.equal(pushOk.ok, true);
+        assert.equal(pushOk.pushed, 1);
+        assert.equal(syncFlaky.getCollectionStatus('clients').pendingCount, 0);
+        assert.equal((await realMeta.get('outbox', opMem.operationId)).data, null);
+    });
 });

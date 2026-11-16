@@ -20,17 +20,39 @@ describe('NIndexedDB (database/NIndexedDB.js)', () => {
         assert.equal(idbPlain.isKeyEncrypted, false);
 
         if (idb.isAvailable) {
-            await idb.put('kv', { id: 'k1', secret: 'val123' }, 'k1');
+            const put1 = await idb.put('kv', { id: 'k1', secret: 'val123' }, 'k1');
+            assert.equal(put1.ok, true);
+            assert.equal(put1.data, 'k1');
+
             await idb.put('kv', { id: 'k1', secret: 'val456' }, 'k1');
             const restored = await idb.get('kv', 'k1');
             assert.equal(restored.ok, true);
             assert.deepEqual(restored.data, { id: 'k1', secret: 'val456' });
+
             const allKeys = await idb.getAllKeys('kv');
             assert.equal(allKeys.data.length, 1);
-            await idb.delete('kv', 'k1');
+
+            const delRes = await idb.delete('kv', 'k1');
+            assert.equal(delRes.ok, true);
+            assert.equal(delRes.data, undefined);
+
             const afterDel = await idb.get('kv', 'k1');
             assert.equal(afterDel.data, null);
-            await idb.clear('kv');
+
+            // Store inexistant -> échec explicite (ok: false)
+            const badStore = await idb.get('inexistant_store', 'k1');
+            assert.equal(badStore.ok, false);
+
+            // Persistance d'une CryptoKey AES-GCM non extractible
+            if (typeof globalThis.crypto?.subtle?.generateKey === 'function') {
+                const ck = await globalThis.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+                const putKey = await idb.put('kv', { id: 'ck1', key: ck });
+                assert.equal(putKey.ok, true);
+            }
+
+            const clr = await idb.clear('kv');
+            assert.equal(clr.ok, true);
+            assert.equal(clr.data, undefined);
             idb.close();
         } else {
             const val = await idb.get('kv', 'k1');

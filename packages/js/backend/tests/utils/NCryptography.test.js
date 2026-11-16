@@ -1,5 +1,5 @@
 import { describe, it, assert } from '../test-helper.js';
-import { NCryptography } from '../../index.js';
+import { NCryptography, NUtil } from '../../index.js';
 
 describe('NCryptography (utils/NCryptography.js)', () => {
     const crypto = new NCryptography();
@@ -81,6 +81,38 @@ describe('NCryptography (utils/NCryptography.js)', () => {
             const cipherHybrid = await crypto.encrypt(longMsg, keyPair.publicKey);
             assert.equal(cipherHybrid.type, 'hybrid');
             assert.equal(await crypto.decrypt(cipherHybrid, keyPair.privateKey), longMsg);
+        }
+    });
+
+    it('gère les appels concurrents, le rechargement de clé et l\'échec de persistance IDB', async () => {
+        if (!crypto.isWebCryptoAvailable()) {
+            return;
+        }
+
+        // 1. Appels concurrents et rechargement d'instance
+        const [c1, c2] = await Promise.all([
+            crypto.encryptLocal('Concurrence-1'),
+            crypto.encryptLocal('Concurrence-2')
+        ]);
+        if (c1 && c2) {
+            const cryptoReloaded = new NCryptography();
+            assert.equal(await cryptoReloaded.decryptLocal(c1), 'Concurrence-1');
+            assert.equal(await cryptoReloaded.decryptLocal(c2), 'Concurrence-2');
+        }
+
+        // 2. Échec d'enregistrement de la clé dans IndexedDB -> refuse de chiffrer sans clé persistée
+        const origGet = NUtil.db.idb.get.bind(NUtil.db.idb);
+        const origPut = NUtil.db.idb.put.bind(NUtil.db.idb);
+        try {
+            NUtil.db.idb.get = async () => ({ ok: true, data: null, error: null, code: null });
+            NUtil.db.idb.put = async () => ({ ok: false, data: null, error: 'WRITE_FAILED', code: 'IDB_ERROR' });
+
+            const freshCrypto = new NCryptography();
+            const failedCipher = await freshCrypto.encryptLocal('NeDoitPasPasser');
+            assert.equal(failedCipher, '');
+        } finally {
+            NUtil.db.idb.get = origGet;
+            NUtil.db.idb.put = origPut;
         }
     });
 });

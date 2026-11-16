@@ -1015,8 +1015,8 @@ export class NIndexedDB extends NObject {
     get<T = any>(storeName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T | null>>;
     getAll<T = any>(storeName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T[]>>;
     getAllKeys(storeName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<IDBValidKey[]>>;
-    delete(storeName: string, key: IDBValidKey | IDBKeyRange, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<boolean>>;
-    clear(storeName: string): Promise<NIndexedDBResponse<boolean>>;
+    delete(storeName: string, key: IDBValidKey | IDBKeyRange, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<undefined>>;
+    clear(storeName: string): Promise<NIndexedDBResponse<undefined>>;
     count(storeName: string, query?: IDBKeyRange | IDBValidKey): Promise<NIndexedDBResponse<number>>;
     getByIndex<T = any>(storeName: string, indexName: string, key: IDBValidKey, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T | null>>;
     getAllByIndex<T = any>(storeName: string, indexName: string, query?: IDBKeyRange | IDBValidKey | NIndexedDBEncryptionOptions, count?: number | NIndexedDBEncryptionOptions, options?: NIndexedDBEncryptionOptions): Promise<NIndexedDBResponse<T[]>>;
@@ -1594,6 +1594,16 @@ export interface NWorkerOptions extends NObjectOptions {
     type?: 'classic' | 'module';
 }
 
+export interface NWorkerResponse<T = unknown> {
+    success: boolean;
+    id?: string;
+    action: string;
+    params?: unknown;
+    result?: T;
+    error?: string | null;
+    code?: string;
+}
+
 export type NWorkerUpdateCallback = (updateData: any) => void;
 export type NWorkerActionHandler = (params: any, onUpdate?: NWorkerUpdateCallback) => Promise<any> | any;
 
@@ -1607,14 +1617,14 @@ export class NWorker extends NObject {
     readonly isRunning: boolean;
     readonly pendingCount: number;
 
-    request<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
+    request<T = unknown>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<NWorkerResponse<T>>;
     onRequest(action: string, params: any, onUpdate?: NWorkerUpdateCallback): Promise<any>;
     terminate(): void;
     destroy(): void;
 
     static addActionInstance(action: string, initFunction: NWorkerActionHandler): void;
     static getActionInstance(action: string): NWorkerActionHandler | null;
-    static requestMain<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
+    static requestMain<T = unknown>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<NWorkerResponse<T>>;
 }
 
 /**
@@ -1638,7 +1648,7 @@ export class NWorkerManager extends NObject {
     createPool(name: string, options?: NWorkerOptions, size?: number): NWorker[];
     has(name: string): boolean;
     get(name: string): NWorker | null;
-    request<T = any>(name: string, action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<T | null>;
+    request<T = unknown>(name: string, action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<NWorkerResponse<T>>;
     terminate(name: string): boolean;
     terminateAll(): void;
     toJSON(): Record<string, any>;

@@ -43,6 +43,13 @@ import { NUtil } from './NUtil.js';
  */
 export class NCryptography extends NObject {
 
+    /**
+     * Promesse en cours pour la récupération ou génération de la clé locale AES-256-GCM.
+     * @type {Promise<CryptoKey|null>|null}
+     * @private
+     */
+    #localKeyPromise = null;
+
     // =========================================================================
     // Méthodes publiques — Environnement, Aléatoire & Encodage Base64
     // =========================================================================
@@ -910,8 +917,29 @@ export class NCryptography extends NObject {
     // =========================================================================
 
     /**
+     * Vérifie qu'une clé est une `CryptoKey` AES-GCM valide avec usages `encrypt` et `decrypt`
+     * et non extractible.
+     * @private
+     * @param {any} key - Clé candidate.
+     * @returns {boolean}
+     */
+    #isValidLocalKey(key) {
+        return Boolean(
+            key &&
+            typeof key === 'object' &&
+            key.type === 'secret' &&
+            key.algorithm?.name === 'AES-GCM' &&
+            key.extractable === false &&
+            Array.isArray(key.usages) &&
+            key.usages.includes('encrypt') &&
+            key.usages.includes('decrypt')
+        );
+    }
+
+    /**
      * Récupère ou génère la clé locale AES-256-GCM non exportable stockée dans IndexedDB
      * sous la clé `"n_local_key"` de la table `"ntable"`.
+     * Sécurise les appels concurrents et vérifie la persistance effective avant de retourner la clé.
      *
      * @returns {Promise<CryptoKey|null>} Clé `CryptoKey` AES-GCM, ou `null` si Web Crypto ou le stockage échoue.
      * @private
@@ -928,13 +956,32 @@ export class NCryptography extends NObject {
             return null;
         }
 
-        try {
-            let key = await NUtil.db.idb.get("ntable", "n_local_key");
-            if (key) {
-                key = key.data;
-            }
-            if (!key) {
-                key = await globalThis.crypto.subtle.generateKey(
+        if (this.#localKeyPromise) {
+            return await this.#localKeyPromise;
+        }
+
+        this.#localKeyPromise = (async () => {
+            try {
+                const existingRes = await NUtil.db.idb.get('ntable', 'n_local_key');
+                if (!existingRes || !existingRes.ok) {
+                    NUtil.log?.error?.(
+                        'NCryptography.#generateLocalKey: Impossible de lire la clé locale depuis IndexedDB.',
+                        existingRes
+                    );
+                    return null;
+                }
+
+                if (existingRes.data) {
+                    if (!this.#isValidLocalKey(existingRes.data)) {
+                        NUtil.log?.error?.(
+                            'NCryptography.#generateLocalKey: Clé locale stockée invalide ou extractible pour AES-GCM.'
+                        );
+                        return null;
+                    }
+                    return existingRes.data;
+                }
+
+                const newKey = await globalThis.crypto.subtle.generateKey(
                     {
                         name: 'AES-GCM',
                         length: 256
@@ -942,13 +989,26 @@ export class NCryptography extends NObject {
                     false,
                     ['encrypt', 'decrypt']
                 );
-                await NUtil.db.idb.put("ntable", key, "n_local_key");
+
+                const putRes = await NUtil.db.idb.put('ntable', newKey, 'n_local_key');
+                if (!putRes || !putRes.ok) {
+                    NUtil.log?.error?.(
+                        'NCryptography.#generateLocalKey: Échec de persistance de la clé locale dans IndexedDB.',
+                        putRes
+                    );
+                    return null;
+                }
+
+                return newKey;
+            } catch (error) {
+                NUtil.log?.error?.('NCryptography.#generateLocalKey: Échec de récupération ou création de la clé locale.', error);
+                return null;
+            } finally {
+                this.#localKeyPromise = null;
             }
-            return key;
-        } catch (error) {
-            NUtil.log?.error?.('NCryptography.#generateLocalKey: Échec de récupération ou création de la clé locale.', error);
-            return null;
-        }
+        })();
+
+        return await this.#localKeyPromise;
     }
 }
 

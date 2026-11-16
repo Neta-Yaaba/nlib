@@ -74,6 +74,17 @@ export class NDataSynchronizer extends NObject {
     };
 
     /**
+     * Tombstones mémoire des clés supprimées lorsque la persistance IndexedDB doit être réconciliée.
+     * @type {{ outbox: Set<string>, cursors: Set<string>, conflicts: Set<string> }}
+     * @private
+     */
+    #memoryTombstones = {
+        outbox: new Set(),
+        cursors: new Set(),
+        conflicts: new Set()
+    };
+
+    /**
      * Registre des collections configurées (`collectionId -> config`).
      * @type {Map<string, Object>}
      * @private
@@ -830,7 +841,16 @@ export class NDataSynchronizer extends NObject {
             if (!emittedOk) return false;
 
             if (conflict.operationId) {
-                await this.#metaDelete('outbox', conflict.operationId);
+                const deleted = await this.#metaDelete('outbox', conflict.operationId);
+                if (!deleted) {
+                    this.event.emit('error', {
+                        collection: col.id,
+                        phase: 'conflict-resolution',
+                        code: 'OUTBOX_DELETE_FAILED',
+                        operationId: conflict.operationId
+                    });
+                    return false;
+                }
             }
         } else if (resolution === 'clientWins') {
             const enqueued = await this.#enqueueClientWin(col, conflict);
@@ -857,13 +877,25 @@ export class NDataSynchronizer extends NObject {
             if (!newOp) return false;
 
             if (conflict.operationId && conflict.operationId !== newOp.operationId) {
-                await this.#metaDelete('outbox', conflict.operationId);
+                const deleted = await this.#metaDelete('outbox', conflict.operationId);
+                if (!deleted) {
+                    this.event.emit('error', {
+                        collection: col.id,
+                        phase: 'conflict-resolution',
+                        code: 'OUTBOX_DELETE_FAILED',
+                        operationId: conflict.operationId
+                    });
+                    return false;
+                }
             }
         } else {
             return false;
         }
 
-        await this.#metaDelete('conflicts', conflictId);
+        const conflictDeleted = await this.#metaDelete('conflicts', conflictId);
+        if (!conflictDeleted) {
+            return false;
+        }
         await this.#refreshPendingCount(col.id);
         await this.#refreshConflictCount(col.id);
         return true;
@@ -990,9 +1022,12 @@ export class NDataSynchronizer extends NObject {
             const parsed = this.#protocol.parsePushResponse(netRes.data, batch);
             const batchById = new Map(batch.map((o) => [o.operationId, o]));
             const processedOpIds = new Set();
+            const seenConfirmedIds = new Set();
             const confirmedItems = [];
             const ignoredConfirmations = [];
             let rejectedCount = 0;
+            let conflictErrorCount = 0;
+            let persistenceErrorCount = 0;
 
             // 1. Confirmations individuelles strictement validées contre le lot courant
             for (const conf of parsed.confirmed) {
@@ -1026,17 +1061,28 @@ export class NDataSynchronizer extends NObject {
                     continue;
                 }
 
-                if (processedOpIds.has(opId)) {
+                if (seenConfirmedIds.has(opId) || processedOpIds.has(opId)) {
                     ignoredConfirmations.push({ operationId: opId, reason: 'duplicate' });
                     continue;
                 }
 
-                processedOpIds.add(opId);
+                seenConfirmedIds.add(opId);
                 const deleted = await this.#metaDelete('outbox', opId);
                 if (!deleted) {
+                    persistenceErrorCount += 1;
+                    st.errorCount += 1;
+                    st.lastError = `Échec de suppression dans l'outbox pour l'opération confirmée "${opId}".`;
+                    this.event.emit('error', {
+                        collection: col.id,
+                        phase: 'push',
+                        code: 'OUTBOX_DELETE_FAILED',
+                        operationId: opId,
+                        error: st.lastError
+                    });
                     continue;
                 }
 
+                processedOpIds.add(opId);
                 totalConfirmed += 1;
                 st.confirmedCount += 1;
 
@@ -1060,15 +1106,12 @@ export class NDataSynchronizer extends NObject {
                     continue;
                 }
                 const confOpId = typeof conflictData.operationId === 'string' ? conflictData.operationId.trim() : null;
-                if (confOpId && (!batchById.has(confOpId) || processedOpIds.has(confOpId))) {
+                if (confOpId && (!batchById.has(confOpId) || processedOpIds.has(confOpId) || seenConfirmedIds.has(confOpId))) {
                     ignoredConfirmations.push({ operationId: confOpId, reason: 'foreign_or_duplicate_conflict' });
                     continue;
                 }
-                if (confOpId) {
-                    processedOpIds.add(confOpId);
-                }
                 const matchingOp = confOpId ? batchById.get(confOpId) : null;
-                await this.#handleConflict(col, st, {
+                const resolvedOk = await this.#handleConflict(col, st, {
                     operationId: confOpId,
                     recordId: conflictData.recordId ?? matchingOp?.recordId,
                     clientVersion: conflictData.clientVersion ?? matchingOp?.baseVersion ?? null,
@@ -1076,6 +1119,14 @@ export class NDataSynchronizer extends NObject {
                     clientRecord: matchingOp?.data || null,
                     serverRecord: conflictData.serverRecord ?? null
                 });
+                if (resolvedOk) {
+                    if (confOpId) {
+                        processedOpIds.add(confOpId);
+                    }
+                } else {
+                    conflictErrorCount += 1;
+                    st.errorCount += 1;
+                }
             }
 
             // 3. Opérations explicitement rejetées / échouées : conservées dans outbox
@@ -1083,7 +1134,7 @@ export class NDataSynchronizer extends NObject {
                 const failOpId = (fail && typeof fail === 'object' && typeof fail.operationId === 'string')
                     ? fail.operationId.trim()
                     : null;
-                if (!failOpId || !batchById.has(failOpId) || processedOpIds.has(failOpId)) {
+                if (!failOpId || !batchById.has(failOpId) || processedOpIds.has(failOpId) || seenConfirmedIds.has(failOpId)) {
                     ignoredConfirmations.push({ raw: fail, reason: 'invalid_or_duplicate_failed' });
                     continue;
                 }
@@ -1096,7 +1147,7 @@ export class NDataSynchronizer extends NObject {
                 rejectedCount += 1;
             }
 
-            // 4. Opérations absentes de la réponse : restent dans outbox en attente
+            // 4. Opérations absentes de la réponse (ou dont la suppression locale a échoué) : restent dans outbox en attente
             const omittedCount = batch.filter((op) => !processedOpIds.has(op.operationId)).length;
 
             if (ignoredConfirmations.length > 0) {
@@ -1113,12 +1164,22 @@ export class NDataSynchronizer extends NObject {
                 confirmed: confirmedItems.length,
                 rejected: rejectedCount,
                 ignored: ignoredConfirmations.length,
+                conflictErrors: conflictErrorCount,
+                persistenceErrors: persistenceErrorCount,
                 pending: omittedCount
             });
             this.event.emit('progress', { ...st, collection: col.id });
 
-            if (rejectedCount > 0) {
-                return { ok: false, confirmed: totalConfirmed, rejected: rejectedCount, ignored: ignoredConfirmations.length, pending: omittedCount };
+            if (rejectedCount > 0 || conflictErrorCount > 0 || persistenceErrorCount > 0) {
+                return {
+                    ok: false,
+                    confirmed: totalConfirmed,
+                    rejected: rejectedCount,
+                    ignored: ignoredConfirmations.length,
+                    conflictErrors: conflictErrorCount,
+                    persistenceErrors: persistenceErrorCount,
+                    pending: omittedCount
+                };
             }
         }
 
@@ -1207,12 +1268,44 @@ export class NDataSynchronizer extends NObject {
      * @private
      */
     async #processRemoteChange(col, st, change) {
-        const action = this.#normalizeAction(change?.action || 'update') || 'update';
-        const remoteRecord = change?.data || change?.record || null;
-        const recordId = change?.recordId ?? change?.id ?? remoteRecord?.[col.primaryKey];
+        if (!change || typeof change !== 'object') {
+            NUtil.log?.warn?.(`NDataSynchronizer: Modification distante invalide sur "${col.id}".`, {
+                code: 'INVALID_REMOTE_CHANGE',
+                change
+            });
+            this.event.emit('error', {
+                collection: col.id,
+                phase: 'pull',
+                code: 'INVALID_REMOTE_CHANGE',
+                error: 'Modification distante malformée.',
+                change
+            });
+            return false;
+        }
 
-        if (recordId === undefined || recordId === null) {
-            return true;
+        const action = this.#normalizeAction(change.action || 'update');
+        const remoteRecord = change.data || change.record || null;
+        const recordId = change.recordId ?? change.id ?? remoteRecord?.[col.primaryKey];
+
+        if (
+            !action ||
+            recordId === undefined ||
+            recordId === null ||
+            recordId === '' ||
+            (action !== 'delete' && (!remoteRecord || typeof remoteRecord !== 'object' || Array.isArray(remoteRecord)))
+        ) {
+            NUtil.log?.warn?.(`NDataSynchronizer: Modification distante sans identifiant ou charge valide sur "${col.id}".`, {
+                code: 'INVALID_REMOTE_CHANGE',
+                change
+            });
+            this.event.emit('error', {
+                collection: col.id,
+                phase: 'pull',
+                code: 'INVALID_REMOTE_CHANGE',
+                error: 'Modification distante incomplète (identifiant, action ou charge manquant).',
+                change
+            });
+            return false;
         }
 
         const pendingOps = await this.#getPendingOpsForCollection(col.id);
@@ -1362,7 +1455,16 @@ export class NDataSynchronizer extends NObject {
             if (!appliedOk) return false;
 
             if (conflict.operationId) {
-                await this.#metaDelete('outbox', conflict.operationId);
+                const deleted = await this.#metaDelete('outbox', conflict.operationId);
+                if (!deleted) {
+                    this.event.emit('error', {
+                        collection: col.id,
+                        phase: 'conflict-resolution',
+                        code: 'OUTBOX_DELETE_FAILED',
+                        operationId: conflict.operationId
+                    });
+                    return false;
+                }
             }
             this.event.emit('conflict', { ...conflict, resolved: true, resolution: 'serverWins' });
             return true;
@@ -1403,7 +1505,16 @@ export class NDataSynchronizer extends NObject {
                     if (!newOp) return false;
 
                     if (conflict.operationId && conflict.operationId !== newOp.operationId) {
-                        await this.#metaDelete('outbox', conflict.operationId);
+                        const deleted = await this.#metaDelete('outbox', conflict.operationId);
+                        if (!deleted) {
+                            this.event.emit('error', {
+                                collection: col.id,
+                                phase: 'conflict-resolution',
+                                code: 'OUTBOX_DELETE_FAILED',
+                                operationId: conflict.operationId
+                            });
+                            return false;
+                        }
                     }
                     this.event.emit('conflict', { ...conflict, resolved: true, resolution: 'merge', mergedRecord: finalRecord });
                     return true;
@@ -1533,42 +1644,87 @@ export class NDataSynchronizer extends NObject {
         }
     }
 
+    #getMetaKeyField(storeName) {
+        return storeName === 'outbox' ? 'operationId' : (storeName === 'conflicts' ? 'conflictId' : 'collection');
+    }
+
     async #metaPut(storeName, value) {
+        const keyField = this.#getMetaKeyField(storeName);
+        const key = value?.[keyField];
+        if (key !== undefined && key !== null) {
+            this.#memoryTombstones[storeName].delete(key);
+        }
+
         if (this.#metaDb && this.#metaDb.isAvailable !== false) {
             const res = await this.#metaDb.put(storeName, value);
-            if (res?.ok) return true;
+            if (res?.ok) {
+                if (key !== undefined && key !== null) {
+                    this.#memoryFallback[storeName].delete(key);
+                }
+                return true;
+            }
         }
         this.#markMemoryFallback();
-        const keyField = storeName === 'outbox' ? 'operationId' : (storeName === 'conflicts' ? 'conflictId' : 'collection');
-        this.#memoryFallback[storeName].set(value[keyField], value);
+        this.#memoryFallback[storeName].set(key, value);
         return true;
     }
 
     async #metaGet(storeName, key) {
+        if (this.#memoryTombstones[storeName].has(key)) {
+            return null;
+        }
+        if (this.#memoryFallback[storeName].has(key)) {
+            return this.#memoryFallback[storeName].get(key) || null;
+        }
         if (this.#metaDb && this.#metaDb.isAvailable !== false) {
             const res = await this.#metaDb.get(storeName, key);
-            if (res?.ok) return res.data;
+            if (res?.ok) return res.data ?? null;
+            this.#markMemoryFallback();
         }
-        this.#markMemoryFallback();
-        return this.#memoryFallback[storeName].get(key) || null;
+        return null;
     }
 
     async #metaDelete(storeName, key) {
         if (this.#metaDb && this.#metaDb.isAvailable !== false) {
             const res = await this.#metaDb.delete(storeName, key);
-            if (res?.ok) return true;
+            if (res?.ok) {
+                this.#memoryFallback[storeName].delete(key);
+                this.#memoryTombstones[storeName].delete(key);
+                return true;
+            }
+            return false;
         }
         this.#markMemoryFallback();
-        return this.#memoryFallback[storeName].delete(key);
+        this.#memoryFallback[storeName].delete(key);
+        this.#memoryTombstones[storeName].add(key);
+        return true;
     }
 
     async #metaGetAll(storeName) {
+        const keyField = this.#getMetaKeyField(storeName);
+        const merged = new Map();
+
         if (this.#metaDb && this.#metaDb.isAvailable !== false) {
             const res = await this.#metaDb.getAll(storeName);
-            if (res?.ok && Array.isArray(res.data)) return res.data;
+            if (res?.ok && Array.isArray(res.data)) {
+                for (const item of res.data) {
+                    const k = item?.[keyField];
+                    if (k !== undefined && k !== null && !this.#memoryTombstones[storeName].has(k)) {
+                        merged.set(k, item);
+                    }
+                }
+            } else {
+                this.#markMemoryFallback();
+            }
         }
-        this.#markMemoryFallback();
-        return Array.from(this.#memoryFallback[storeName].values());
+
+        for (const [k, item] of this.#memoryFallback[storeName].entries()) {
+            if (!this.#memoryTombstones[storeName].has(k)) {
+                merged.set(k, item);
+            }
+        }
+
+        return Array.from(merged.values());
     }
 
     async #getPendingOpsForCollection(collectionId) {
