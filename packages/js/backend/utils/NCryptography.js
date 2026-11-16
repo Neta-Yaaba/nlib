@@ -768,8 +768,8 @@ export class NCryptography extends NObject {
 
     /**
      * Chiffre localement une donnée (chaîne ou objet sérialisable en JSON) en AES-256-GCM
-     * de manière déterministe à l'aide d'une clé locale non exportable conservée dans IndexedDB (`NUtil.db.idb`)
-     * et d'un IV de 96 bits dérivé du SHA-256 de la donnée.
+     * à l'aide d'une clé locale non exportable conservée dans IndexedDB (`NUtil.db.idb`)
+     * et d'un IV aléatoire de 96 bits.
      * Le résultat Base64 préfixe l'octet de version (`0x04`), l'IV de 12 octets et le texte chiffré authentifié.
      *
      * @param {any} data - Donnée à chiffrer localement.
@@ -806,12 +806,11 @@ export class NCryptography extends NObject {
                 return '';
             }
 
-            // Dérivation déterministe d'un IV de 96 bits à partir du SHA-256 de la donnée.
-            const hash = await this.sha256(bytes, 'bytes');
-            if (hash.length < 12) {
+            // Génération d'un IV aléatoire de 96 bits.
+            const iv = this.randomBytes(12);
+            if (iv.length !== 12) {
                 return '';
             }
-            const iv = hash.subarray(0, 12);
 
             const encrypted = await globalThis.crypto.subtle.encrypt(
                 {
@@ -931,6 +930,9 @@ export class NCryptography extends NObject {
 
         try {
             let key = await NUtil.db.idb.get("ntable", "n_local_key");
+            if (key) {
+                key = key.data;
+            }
             if (!key) {
                 key = await globalThis.crypto.subtle.generateKey(
                     {

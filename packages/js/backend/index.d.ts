@@ -11,12 +11,10 @@
 
 export interface NObjectOptions {
     state?: Record<string, any>;
-    autoInit?: boolean;
 }
 
 export interface NObjectSerialized {
     className: string;
-    isInitialized: boolean;
     state: Record<string, any>;
 }
 
@@ -40,7 +38,6 @@ export class NEvent {
     once(event: string, callback: NEventCallback): this;
     off(event?: string, callback?: NEventCallback): this;
     emit(event: string, ...args: any[]): this;
-    emitAsync(event: string, ...args: any[]): Promise<any[]>;
     waitFor<T = any>(event: string, timeout?: number): Promise<T | null>;
     clear(): this;
 
@@ -59,17 +56,13 @@ export class NObject {
     readonly event: NEvent;
     readonly className: string;
     readonly util: typeof NUtil;
-    readonly isInitialized: boolean;
     readonly isDestroyed: boolean;
 
-    initialize(): this;
-    validate(): boolean;
     destroy(): void;
     hasState(key: string): boolean;
     getState<T = any>(key: string, defaultValue?: T): T;
     setState(keyOrObject: string | Record<string, any>, value?: any): this;
-    deleteState(key: string): boolean;
-    clearState(): this;
+    toString(): string;
     toJSON(): NObjectSerialized;
     fromJSON(json: string | Record<string, any>): this;
     clone(): this;
@@ -113,13 +106,6 @@ export interface NLogFilter {
  * Gestionnaire de journalisation centralisé avec historique circulaire en mémoire (`log/NLog.js`).
  */
 export class NLog extends NObject {
-    static readonly LEVEL: {
-        readonly DEBUG: 'debug';
-        readonly INFO: 'info';
-        readonly WARN: 'warn';
-        readonly ERROR: 'error';
-    };
-
     constructor(options?: NLogOptions);
 
     readonly event: NEvent;
@@ -139,12 +125,12 @@ export class NLog extends NObject {
     write(level: NLogLevel, message: string, details?: any): NLogEntry;
     captureException(err: unknown, customMessage?: string | null, extraDetails?: Record<string, any>): NLogEntry;
     getLogs(filter?: NLogLevel | ((entry: NLogEntry) => boolean) | NLogFilter | null): NLogEntry[];
-    getLastLog(level?: NLogLevel | null): NLogEntry | null;
-    count(level?: NLogLevel | null): number;
     export(pretty?: boolean): string;
     import(jsonOrArray: string | NLogEntry[], append?: boolean): number;
     clear(): this;
     destroy(): void;
+
+    static create(options?: NLogOptions): NLog;
 }
 
 /* ========================================================================== *
@@ -174,15 +160,16 @@ export class NConfig extends NObject {
     set(path: NConfigPath, value: any): this;
     setDefaults(defaultsObj: Record<string, any>): this;
     merge(configObj: Record<string, any>): this;
-    delete(path: NConfigPath): boolean;
+    remove(path: NConfigPath): boolean;
     reset(): this;
     clear(): this;
     freeze(): this;
     require(keys: NConfigPath[]): { valid: boolean; missing: string[] };
     loadFromDotEnv(envContent: string, prefix?: string): this;
     loadFromProcess(prefix?: string): this;
-    toObject(): Record<string, any>;
+    all(sectionPath?: string): Record<string, any>;
     toJSON(pretty?: boolean): string;
+    destroy(): void;
 }
 
 /* ========================================================================== *
@@ -318,6 +305,8 @@ export class NSystem extends NObject {
     watchNetwork(callback: (state: NSystemNetworkInfo) => void): () => void;
     invokeNative<T = any>(payload: Record<string, any>): Promise<T>;
     getSnapshot(): Promise<Record<string, any>>;
+    toJSON(): Record<string, any>;
+    destroy(): void;
 }
 
 /* ========================================================================== *
@@ -370,7 +359,6 @@ export class NUtil extends NObject {
     static getType(value: any): string;
     static isEmpty(value: any): boolean;
     static isDefined<T>(value: T | null | undefined): value is T;
-    static isEqual(a: any, b: any): boolean;
     static toBoolean(value: any): boolean;
     static sleep(ms: number): Promise<void>;
     static setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): any;
@@ -378,6 +366,10 @@ export class NUtil extends NObject {
     static debounce<T extends (...args: any[]) => any>(fn: T, delay?: number): NDebouncedFunction<T>;
     static throttle<T extends (...args: any[]) => any>(fn: T, limit?: number): (...args: Parameters<T>) => void;
     static retry<T = any>(fn: (attempt: number) => Promise<T> | T, options?: NRetryOptions): Promise<T | null>;
+    static isUuid(value: any): boolean;
+    static isBoolean(value: any): value is boolean;
+    static isFunction(value: any): value is (...args: any[]) => any;
+    static isPromise<T = any>(value: any): value is Promise<T>;
 }
 
 /**
@@ -438,16 +430,17 @@ export class NString extends NObject {
 
     isString(value: any): value is string;
     isEmpty(text: any, trim?: boolean): boolean;
-    isNotEmpty(text: any, trim?: boolean): boolean;
-    length(text: string, trim?: boolean): number;
+    isEmail(text: string): boolean;
+    isAlphanumeric(text: string): boolean;
     equals(textA: string, textB: string, options?: NStringCompareOptions): boolean;
     contains(text: string, search: string, options?: NStringCompareOptions): boolean;
+    indexOf(text: string, search: string, options?: NStringCompareOptions): number;
     startsWith(text: string, prefix: string, options?: NStringCompareOptions): boolean;
     endsWith(text: string, suffix: string, options?: NStringCompareOptions): boolean;
-    toUpperCase(text: string): string;
-    toLowerCase(text: string): string;
+    toUpper(text: string): string;
+    toLower(text: string): string;
     capitalize(text: string, lowerRest?: boolean): string;
-    capitalizeWords(text: string): string;
+    toTitleCase(text: string): string;
     toCamelCase(text: string): string;
     toPascalCase(text: string): string;
     toSnakeCase(text: string): string;
@@ -502,7 +495,6 @@ export class NNumber extends NObject {
     isOdd(value: any): boolean;
     isBetween(value: any, min: number, max: number, inclusive?: boolean): boolean;
     equals(a: any, b: any, epsilon?: number): boolean;
-    toNumber(value: any, defaultValue?: number): number;
     toInt(value: any, defaultValue?: number, radix?: number): number;
     toFloat(value: any, defaultValue?: number): number;
     round(value: any, decimals?: number): number;
@@ -532,7 +524,10 @@ export class NDateTime extends NObject {
     constructor();
 
     now(): Date;
+    nowDate(format?: string, utc?: boolean): string;
+    nowTime(format?: string, utc?: boolean): string;
     timestamp(inSeconds?: boolean): number;
+    create(year: number, month?: number, day?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
     toDate(value: NDateInput, defaultValue?: Date | null): Date | null;
     isValid(value: any): boolean;
     isLeapYear(yearOrDate?: number | NDateInput): boolean;
@@ -540,7 +535,8 @@ export class NDateTime extends NObject {
     isPast(value: NDateInput): boolean;
     isFuture(value: NDateInput): boolean;
     isWeekend(value: NDateInput): boolean;
-    isSameDay(dateA: NDateInput, dateB: NDateInput): boolean;
+    isWeekday(value: NDateInput): boolean;
+    equals(dateA: NDateInput, dateB: NDateInput, options?: { unit?: string; ignoreTime?: boolean }): boolean;
     isBefore(dateA: NDateInput, dateB: NDateInput): boolean;
     isAfter(dateA: NDateInput, dateB: NDateInput): boolean;
     isBetween(value: NDateInput, start: NDateInput, end: NDateInput, inclusive?: boolean): boolean;
@@ -582,13 +578,13 @@ export class NAmount extends NObject {
 
     isValid(value: any, allowNegative?: boolean): boolean;
     parse(value: any, fallback?: number | null): number | null;
-    toCents(amount: any, decimals?: number): number;
-    fromCents(cents: number, decimals?: number): number;
+    equals(amountA: any, amountB: any, decimals?: number): boolean;
+    toMinorUnits(amount: any, decimals?: number): number;
+    fromMinorUnits(minorUnits: number, decimals?: number): number;
     add(amountA: any, amountB: any, decimals?: number): number;
     subtract(amountA: any, amountB: any, decimals?: number): number;
     multiply(amount: any, factor: number, decimals?: number): number;
     divide(amount: any, divisor: number, decimals?: number): number;
-    sum(amounts?: any[], decimals?: number): number;
     allocate(amount: any, parts?: number, decimals?: number): number[];
     taxAmount(amountHT: any, taxRate: number, decimals?: number): number;
     addTax(amountHT: any, taxRate: number, decimals?: number): number;
@@ -621,7 +617,8 @@ export class NEmail extends NObject {
     isValid(email: any): boolean;
     isFreeProvider(email: string): boolean;
     isDisposable(email: string): boolean;
-    isCorporate(email: string): boolean;
+    isBusiness(email: string): boolean;
+    hasDomain(email: string, allowedDomains: string | string[], allowSubdomains?: boolean): boolean;
     normalize(email: string, options?: NEmailNormalizeOptions): string;
     equals(emailA: string, emailB: string, options?: NEmailNormalizeOptions): boolean;
     parse(email: string): NEmailParsed | null;
@@ -649,17 +646,19 @@ export class NPhoneNumber extends NObject {
     constructor();
 
     clean(phone: string, keepPlus?: boolean): string;
-    digitsOnly(phone: string): string;
     isValid(phone: any, options?: { countryCode?: string; minLength?: number; maxLength?: number }): boolean;
+    isE164(phone: string): boolean;
     equals(phoneA: string, phoneB: string, defaultCountryCode?: string): boolean;
-    parse(phone: string, defaultCountryCode?: string): NPhoneParsed | null;
     toE164(phone: string, defaultCountryCode?: string): string;
+    toNational(phone: string, countryCode?: string, nationalPrefix?: string): string;
     format(
         phone: string,
         style?: 'e164' | 'international' | 'national' | 'rfc3966',
         options?: { defaultCountryCode?: string; groupSize?: number; separator?: string }
     ): string;
     mask(phone: string, options?: NStringMaskOptions): string;
+    toTelUri(phone: string, scheme?: string): string;
+    toWhatsAppUrl(phone: string, message?: string): string;
 }
 
 export interface NUrlParsed {
@@ -699,6 +698,7 @@ export class NUrl extends NObject {
     isRelative(url: string): boolean;
     isHttps(url: string): boolean;
     isSameOrigin(urlA: string, urlB: string): boolean;
+    equals(urlA: string, urlB: string, options?: Record<string, any>): boolean;
     parse(url: string): NUrlParsed | null;
     getProtocol(url: string): string;
     getDomain(url: string, stripWww?: boolean): string;
@@ -731,10 +731,9 @@ export class NJson extends NObject {
 
     isValid(jsonString: any): boolean;
     isPlainObject(value: any): value is Record<string, any>;
-    isValidObject(value: any): boolean;
-    isValidArray(value: any): boolean;
     isEmpty(value: any): boolean;
     size(data: any): number;
+    count(value: any, path?: NJsonPath): number;
     parse<T = any>(value: any, fallback?: T, reviver?: ((key: string, value: any) => any) | null): T;
     stringify(
         value: any,
@@ -794,9 +793,10 @@ export interface NPasswordStrengthResult {
 export class NPassword extends NObject {
     constructor();
 
-    validate(password: string, rules?: NPasswordRules): NPasswordValidationResult;
-    isStrong(password: string, rules?: NPasswordRules): boolean;
-    strength(password: string): NPasswordStrengthResult;
+    isValid(password: string, options?: NPasswordRules): boolean;
+    evaluate(password: string, options?: NPasswordRules): NPasswordStrengthResult & { valid: boolean; errors: string[] };
+    calculateEntropy(password: string): number;
+    isCommon(password: string): boolean;
     generate(
         length?: number,
         options?: {
@@ -810,6 +810,7 @@ export class NPassword extends NObject {
     generatePin(length?: number): string;
     hash(password: string, iterations?: number): Promise<string>;
     verify(password: string, storedHash: string): Promise<boolean>;
+    timingSafeEquals(a: string, b: string): boolean;
 }
 
 export interface NPaginatedResult<T = any> {
@@ -830,13 +831,14 @@ export class NArray extends NObject {
 
     isArray(value: any): value is any[];
     isEmpty(list: any): boolean;
-    isNotEmpty(list: any): boolean;
+    size<T = any>(list: T[], predicate?: (item: T) => boolean): number;
+    count<T = any>(list: T[], predicate?: (item: T) => boolean): number;
     toArray<T = any>(value: any): T[];
-    clone<T = any>(list: T[]): T[];
     equals(listA: any[], listB: any[]): boolean;
+    contains<T = any>(list: T[], target: any, key?: keyof T): boolean;
+    get<T = any>(list: T[], index: number, fallback?: any): T | any;
     first<T = any>(list: T[], count?: number, defaultValue?: any): T | T[] | any;
     last<T = any>(list: T[], count?: number, defaultValue?: any): T | T[] | any;
-    at<T = any>(list: T[], index: number, defaultValue?: any): T | any;
     insertAt<T = any>(list: T[], index: number, ...items: T[]): T[];
     removeAt<T = any>(list: T[], index: number): T[];
     removeValue<T = any>(list: T[], valueToRemove: T): T[];
@@ -903,14 +905,18 @@ export class NDatabase extends NObject {
     readonly idb: NIndexedDB;
     readonly storage: NStorage;
     readonly store: NStorage;
+    readonly util: typeof NUtil;
 
     init(options?: NDatabaseOptions): Promise<boolean>;
     saveSql(snapshotKey?: string): Promise<boolean>;
     loadSql(snapshotKey?: string): Promise<Uint8Array | null>;
+    scheduleAutoSave(delayMs?: number): void;
     flushAutoSave(): Promise<boolean>;
     cancelAutoSave(): this;
     clearAll(): Promise<boolean>;
     close(): Promise<boolean>;
+    drop(): Promise<boolean>;
+    destroy(): void;
 }
 
 export interface NSqlOptions {
@@ -966,6 +972,7 @@ export class NSql extends NObject {
     deleteDb(): Promise<boolean>;
     buildSearchClause(queryText: string, fields: string[]): { where: string; order: string; params: Record<string, string> } | null;
     buildLimitClause(limit: number, offset?: number): string;
+    destroy(): void;
 }
 
 export interface NIndexedDBEncryptionOptions {
@@ -1022,6 +1029,7 @@ export class NIndexedDB extends NObject {
         callback: (value: T, key: IDBValidKey, cursor: IDBCursorWithValue) => boolean | Promise<boolean | void> | void,
         options?: { query?: IDBKeyRange | IDBValidKey; direction?: IDBCursorDirection; mode?: 'readonly' | 'readwrite'; encryptKey?: boolean; encryptData?: boolean }
     ): Promise<NIndexedDBResponse<number>>;
+    destroy(): void;
 }
 
 export interface NStorageOptions {
@@ -1057,6 +1065,7 @@ export class NStorage extends NObject {
     clear(): boolean;
     keys(): string[];
     toObject(): Record<string, any>;
+    destroy(): void;
 }
 
 /* ========================================================================== *
@@ -1274,6 +1283,7 @@ export class NCache extends NObject {
 
     cacheFile(keyOrPath: string, data: any, options?: NCacheItemOptions): Promise<boolean>;
     getFile<T = Uint8Array | string | Blob | null>(keyOrPath: string, options?: NCacheItemOptions): Promise<T>;
+    destroy(): void;
 }
 
 /* ========================================================================== *
@@ -1326,6 +1336,8 @@ export interface NNetworkResponse<T = any> {
  * Client réseau HTTP/HTTPS avec chiffrement asymétrique et hybride RSA-OAEP + AES (`requests/NNetwork.js`).
  */
 export class NNetwork extends NObject {
+    static readonly CHUNK_SIZE: number;
+
     constructor(options?: NNetworkOptions);
 
     driver: 'auto' | 'fetch' | 'xhr' | 'native';
@@ -1356,6 +1368,7 @@ export class NNetwork extends NObject {
     downloadFiles(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
     uploadFile(url: string, file: any, options?: NNetworkRequestOptions): Promise<any>;
     uploadFiles(url: string, files: any[], options?: NNetworkRequestOptions): Promise<any[]>;
+    destroy(): void;
 }
 
 export interface NTableRequestSyncConfig {
@@ -1520,6 +1533,7 @@ export interface NDataSynchronizerOptions extends NObjectOptions {
     network?: NNetwork;
     metaDb?: NIndexedDB;
     metaDbName?: string;
+    allowUnappliedPull?: boolean;
     retry?: { maxAttempts?: number; baseDelayMs?: number; maxDelayMs?: number };
     protocol?: {
         formatPushRequest?: (col: any, operations: any[]) => any;
@@ -1543,8 +1557,6 @@ export interface NDataSynchronizerOptions extends NObjectOptions {
 export class NDataSynchronizer extends NObject {
     constructor(options?: NDataSynchronizerOptions);
 
-    validate(): boolean;
-    initialize(): this;
     destroy(): void;
 
     on(eventName: string, callback: NEventCallback): this;
@@ -1630,6 +1642,7 @@ export class NWorkerManager extends NObject {
     terminate(name: string): boolean;
     terminateAll(): void;
     toJSON(): Record<string, any>;
+    destroy(): void;
 }
 
 export type NServiceWorkerStrategy =
@@ -1688,4 +1701,5 @@ export class NServiceWorker extends NObject {
     handleRequest(requestOrUrl: Request | string, init?: RequestInit): Promise<Response>;
     resolveFileUrl(urlOrPath: string, options?: { preferBlobUrl?: boolean; mimeType?: string }): Promise<string | null>;
     installServiceWorkerListeners(): boolean;
+    destroy(): void;
 }

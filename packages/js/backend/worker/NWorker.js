@@ -146,7 +146,7 @@ export class NWorker extends NObject {
      * });
      */
     constructor(options = {}) {
-        super({ state: options?.state, autoInit: false });
+        super({ state: options?.state });
 
         if (typeof options?.name === 'string' && options.name.trim().length > 0) {
             this.#name = options.name.trim();
@@ -159,7 +159,6 @@ export class NWorker extends NObject {
             });
             this.#worker = null;
             this.#isRunning = false;
-            this.initialize();
             return;
         }
 
@@ -217,8 +216,6 @@ export class NWorker extends NObject {
                 this.#isRunning = false;
             }
         }
-
-        this.initialize();
     }
 
     // =========================================================================

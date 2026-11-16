@@ -429,6 +429,15 @@ export class NIndexedDB extends NObject {
             return this.#fail('IndexedDB n\'est pas supporté ou accessible dans cet environnement.', 'IDB_NOT_SUPPORTED');
         }
         const keyPath = this.#getStoreKeyPath(db, storeName);
+        const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
+        const plainKey = this.#extractPlainKey(keyPath, value, explicitKey);
+        if (shouldEncryptKey && plainKey !== undefined && plainKey !== null && !this.#isEncryptedKey(plainKey)) {
+            const lookup = await this.#findMatchingRawKeys(storeName, [plainKey]);
+            if (lookup.ok && (lookup.map.get(plainKey)?.length || 0) > 0) {
+                return this.#fail('Un enregistrement avec cette clé existe déjà.', 'ConstraintError');
+            }
+        }
+
         const prepared = await this.#prepareRecordForWrite(keyPath, value, explicitKey, opts);
 
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
@@ -473,9 +482,21 @@ export class NIndexedDB extends NObject {
             return this.#fail('IndexedDB n\'est pas supporté ou accessible dans cet environnement.', 'IDB_NOT_SUPPORTED');
         }
         const keyPath = this.#getStoreKeyPath(db, storeName);
+        const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
+        const plainKey = this.#extractPlainKey(keyPath, value, explicitKey);
+        let existingKeys = [];
+        if (shouldEncryptKey && plainKey !== undefined && plainKey !== null && !this.#isEncryptedKey(plainKey)) {
+            const lookup = await this.#findMatchingRawKeys(storeName, [plainKey]);
+            if (!lookup.ok) return lookup.res;
+            existingKeys = lookup.map.get(plainKey) || [];
+        }
+
         const prepared = await this.#prepareRecordForWrite(keyPath, value, explicitKey, opts);
 
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
+            for (const oldKey of existingKeys) {
+                store.delete(oldKey);
+            }
             return prepared.key !== undefined
                 ? store.put(prepared.value, prepared.key)
                 : store.put(prepared.value);
@@ -510,9 +531,17 @@ export class NIndexedDB extends NObject {
 
         const opts = options && typeof options === 'object' ? options : {};
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
-        const lookupKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? await this.#encryptKeyValue(String(key))
-            : key;
+        let lookupKey = key;
+
+        if (shouldEncryptKey && !this.#isEncryptedKey(key)) {
+            const lookup = await this.#findMatchingRawKeys(storeName, [key]);
+            if (!lookup.ok) return lookup.res;
+            const matches = lookup.map.get(key) || [];
+            if (matches.length === 0) {
+                return this.#success(null);
+            }
+            lookupKey = matches[0];
+        }
 
         return this.#executeStoreRequest(storeName, 'readonly', (store) => {
             return store.get(lookupKey);
@@ -639,12 +668,25 @@ export class NIndexedDB extends NObject {
 
         const opts = options && typeof options === 'object' ? options : {};
         const shouldEncryptKey = opts.encryptKey ?? this.#encryptKey;
-        const targetKey = (shouldEncryptKey && !this.#isEncryptedKey(key))
-            ? await this.#encryptKeyValue(String(key))
-            : key;
+
+        if (shouldEncryptKey && !this.#isEncryptedKey(key)) {
+            const lookup = await this.#findMatchingRawKeys(storeName, [key]);
+            if (!lookup.ok) return lookup.res;
+            const matches = lookup.map.get(key) || [];
+            if (matches.length === 0) {
+                return this.#success(undefined);
+            }
+            return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
+                let lastReq = null;
+                for (const m of matches) {
+                    lastReq = store.delete(m);
+                }
+                return lastReq;
+            });
+        }
 
         return this.#executeStoreRequest(storeName, 'readwrite', (store) => {
-            return store.delete(targetKey);
+            return store.delete(key);
         });
     }
 
@@ -985,14 +1027,21 @@ export class NIndexedDB extends NObject {
                 return this.#fail(`L'Object Store "${storeName}" n'existe pas dans la base "${this.#name}".`, 'IDB_STORE_NOT_FOUND');
             }
 
-            // Chiffrement asynchrone des clés via encryptLocal AVANT l'ouverture de la transaction
-            const targetKeys = [];
-            for (const key of keys) {
-                targetKeys.push(
-                    shouldEncryptKey && !this.#isEncryptedKey(key)
-                        ? await this.#encryptKeyValue(String(key))
-                        : key
-                );
+            // Résolution des clés par déchiffrement des clés stockées AVANT l'ouverture de la transaction
+            let targetKeys = [];
+            if (shouldEncryptKey) {
+                const lookup = await this.#findMatchingRawKeys(storeName, keys);
+                if (!lookup.ok) return lookup.res;
+                for (const key of keys) {
+                    if (this.#isEncryptedKey(key)) {
+                        targetKeys.push(key);
+                    } else {
+                        const matched = lookup.map.get(key) || [];
+                        targetKeys.push(...matched);
+                    }
+                }
+            } else {
+                targetKeys = [...keys];
             }
 
             return new Promise((resolve) => {
@@ -1251,6 +1300,67 @@ export class NIndexedDB extends NObject {
      */
     #isEncryptedKey(key) {
         return typeof key === 'string' && key.startsWith('enck:');
+    }
+
+    /**
+     * Extrait la clé primaire en clair d'un enregistrement ou d'une clé explicite.
+     * @private
+     */
+    #extractPlainKey(keyPath, value, explicitKey) {
+        if (!keyPath) {
+            return explicitKey;
+        }
+        if (typeof keyPath === 'string') {
+            return (value && typeof value === 'object' && value[keyPath] !== undefined)
+                ? value[keyPath]
+                : explicitKey;
+        }
+        return explicitKey;
+    }
+
+    /**
+     * Déchiffre les clés stockées dans `storeName` pour retrouver les clés brutes correspondant
+     * aux clés en clair demandées (compatible avec un chiffrement non déterministe).
+     * @private
+     */
+    async #findMatchingRawKeys(storeName, targetKeys) {
+        const res = await this.#executeStoreRequest(storeName, 'readonly', (store) => store.getAllKeys());
+        if (!res?.ok) {
+            return { ok: false, res, map: new Map() };
+        }
+
+        const resultMap = new Map();
+        const rawKeys = Array.isArray(res.data) ? res.data : [];
+        if (rawKeys.length === 0 || !Array.isArray(targetKeys) || targetKeys.length === 0) {
+            return { ok: true, map: resultMap };
+        }
+
+        const byPlainString = new Map();
+        const rawSet = new Set(rawKeys);
+
+        for (const rawKey of rawKeys) {
+            const plain = this.#isEncryptedKey(rawKey)
+                ? await this.#decryptKey(rawKey)
+                : String(rawKey);
+            if (!byPlainString.has(plain)) {
+                byPlainString.set(plain, []);
+            }
+            byPlainString.get(plain).push(rawKey);
+        }
+
+        for (const target of targetKeys) {
+            if (target === undefined || target === null) continue;
+            if (rawSet.has(target)) {
+                resultMap.set(target, [target]);
+                continue;
+            }
+            const matches = byPlainString.get(String(target));
+            if (matches && matches.length > 0) {
+                resultMap.set(target, matches);
+            }
+        }
+
+        return { ok: true, map: resultMap };
     }
 
     /**

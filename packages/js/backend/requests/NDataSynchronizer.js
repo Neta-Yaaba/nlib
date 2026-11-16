@@ -151,6 +151,34 @@ export class NDataSynchronizer extends NObject {
         debounceTimers: new Map()
     };
 
+    /**
+     * Écouteurs `'apply'` enregistrés via `on('apply', cb)` afin de contrôler leur retour synchrone/asynchrone et exceptions.
+     * @type {Set<Function>}
+     * @private
+     */
+    #applyListeners = new Set();
+
+    /**
+     * Autorise explicitement le Pull sans écouteur `'apply'` enregistré.
+     * @type {boolean}
+     * @private
+     */
+    #allowUnappliedPull = false;
+
+    /**
+     * Indique si le moteur utilise le repli mémoire non durable au lieu d'IndexedDB.
+     * @type {boolean}
+     * @private
+     */
+    #usingMemoryFallback = false;
+
+    /**
+     * Évite la répétition du journal d'avertissement de repli mémoire.
+     * @type {boolean}
+     * @private
+     */
+    #memoryWarningLogged = false;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -166,7 +194,6 @@ export class NDataSynchronizer extends NObject {
      * @param {Object} [options.retry] - Politique de tentatives (`{ maxAttempts, baseDelayMs, maxDelayMs }`).
      * @param {Object} [options.protocol] - Adaptateurs de sérialisation/désérialisation (`formatPushRequest`, `parsePushResponse`, `formatPullRequest`, `parsePullResponse`).
      * @param {Object|boolean} [options.autoSync] - Configuration de la synchronisation automatique (`enabled`, `onStart`, `onOnline`, `onLocalChange`, `onLocalChangeDelay`, `interval`).
-     * @param {boolean} [options.autoInit=true] - Appelle automatiquement `initialize()` à la construction.
      *
      * @example <caption>Exemple 1 : Instanciation avec réseau explicite</caption>
      * const sync = new NDataSynchronizer({ network: net });
@@ -179,7 +206,7 @@ export class NDataSynchronizer extends NObject {
      * });
      */
     constructor(options = {}) {
-        super({ ...options, autoInit: false });
+        super(options);
         const opts = (options && typeof options === 'object') ? options : {};
 
         this.#network = opts.network || NUtil.network || null;
@@ -210,54 +237,15 @@ export class NDataSynchronizer extends NObject {
         }
 
         this.#protocol = this.#buildProtocol(opts.protocol);
+        this.#allowUnappliedPull = Boolean(opts.allowUnappliedPull);
+        this.#usingMemoryFallback = Boolean(this.#metaDb && this.#metaDb.isAvailable === false);
         this.configureAutoSync(opts.autoSync);
-
-        if (opts.autoInit !== false) {
-            this.initialize();
-        }
+        this.#applyAutoSyncTriggers();
     }
 
     // =========================================================================
     // Cycle de vie (NObject)
     // =========================================================================
-
-    /**
-     * Valide la présence de la dépendance réseau (`network`).
-     *
-     * @returns {boolean} `true` si la configuration est valide, sinon `false`.
-     *
-     * @example <caption>Exemple 1 : Vérifier la validité du synchroniseur</caption>
-     * const sync = new NDataSynchronizer({ network: net });
-     * console.log(sync.validate()); // true
-     *
-     * @example <caption>Exemple 2 : Détecter une configuration sans réseau</caption>
-     * const badSync = new NDataSynchronizer({ network: null, autoInit: false });
-     * console.log(badSync.validate()); // false
-     */
-    validate() {
-        return Boolean(this.#network);
-    }
-
-    /**
-     * Initialise le synchroniseur et active les déclencheurs automatiques configurés.
-     *
-     * @returns {this} L'instance courante.
-     *
-     * @example <caption>Exemple 1 : Initialisation différée</caption>
-     * const sync = new NDataSynchronizer({ network: net, autoInit: false });
-     * sync.initialize();
-     *
-     * @example <caption>Exemple 2 : Chaînage fluide après initialize()</caption>
-     * sync.initialize().register('clients', { endpoint: '/sync/clients' });
-     */
-    initialize() {
-        super.initialize();
-        if (!this.isInitialized || this.isDestroyed) {
-            return this;
-        }
-        this.#applyAutoSyncTriggers();
-        return this;
-    }
 
     /**
      * Arrête les synchronisations en cours, détache tous les minuteurs et écouteurs,
@@ -284,6 +272,7 @@ export class NDataSynchronizer extends NObject {
         this.#collectionStates.clear();
         this.#activeSyncs.clear();
         this.#controlFlags.clear();
+        this.#applyListeners.clear();
         super.destroy();
     }
 
@@ -309,6 +298,10 @@ export class NDataSynchronizer extends NObject {
      *     .on('error', (ev) => console.error('Erreur :', ev));
      */
     on(eventName, callback) {
+        if (eventName === 'apply' && typeof callback === 'function') {
+            this.#applyListeners.add(callback);
+            return this;
+        }
         this.event.on(eventName, callback);
         return this;
     }
@@ -327,6 +320,18 @@ export class NDataSynchronizer extends NObject {
      * sync.off('error');
      */
     off(eventName, callback) {
+        if (!eventName) {
+            this.#applyListeners.clear();
+            this.event.off();
+            return this;
+        }
+        if (eventName === 'apply') {
+            if (typeof callback === 'function') {
+                this.#applyListeners.delete(callback);
+            } else {
+                this.#applyListeners.clear();
+            }
+        }
         this.event.off(eventName, callback);
         return this;
     }
@@ -466,7 +471,7 @@ export class NDataSynchronizer extends NObject {
             };
         }
 
-        if (this.isInitialized && !this.isDestroyed) {
+        if (!this.isDestroyed) {
             this.#clearAutoSyncTriggers();
             this.#applyAutoSyncTriggers();
         }
@@ -755,6 +760,8 @@ export class NDataSynchronizer extends NObject {
         return {
             status: this.#globalStatus,
             isSyncing: this.#activeSyncs.size > 0,
+            isPersistent: !this.#usingMemoryFallback,
+            persistenceMode: this.#usingMemoryFallback ? 'memory' : 'indexeddb',
             autoSync: { ...this.#autoSync },
             pendingCount,
             sentCount,
@@ -826,8 +833,9 @@ export class NDataSynchronizer extends NObject {
                 await this.#metaDelete('outbox', conflict.operationId);
             }
         } else if (resolution === 'clientWins') {
-            await this.#enqueueClientWin(col, conflict);
-        } else if (resolution && typeof resolution === 'object') {
+            const enqueued = await this.#enqueueClientWin(col, conflict);
+            if (!enqueued) return false;
+        } else if (resolution && typeof resolution === 'object' && !Array.isArray(resolution) && Object.keys(resolution).length > 0) {
             const merged = {
                 ...resolution,
                 [col.primaryKey]: conflict.recordId,
@@ -842,13 +850,15 @@ export class NDataSynchronizer extends NObject {
             });
             if (!emittedOk) return false;
 
-            if (conflict.operationId) {
-                await this.#metaDelete('outbox', conflict.operationId);
-            }
-            await this.trackChange(col.id, 'update', merged, {
+            const newOp = await this.trackChange(col.id, 'update', merged, {
                 baseVersion: merged[col.versionField],
                 force: true
             });
+            if (!newOp) return false;
+
+            if (conflict.operationId && conflict.operationId !== newOp.operationId) {
+                await this.#metaDelete('outbox', conflict.operationId);
+            }
         } else {
             return false;
         }
@@ -978,24 +988,64 @@ export class NDataSynchronizer extends NObject {
             }
 
             const parsed = this.#protocol.parsePushResponse(netRes.data, batch);
+            const batchById = new Map(batch.map((o) => [o.operationId, o]));
+            const processedOpIds = new Set();
             const confirmedItems = [];
+            const ignoredConfirmations = [];
+            let rejectedCount = 0;
 
-            // 1. Confirmations individuelles uniquement : jamais sur la seule base du statut HTTP
+            // 1. Confirmations individuelles strictement validées contre le lot courant
             for (const conf of parsed.confirmed) {
-                const opId = typeof conf === 'string' ? conf : conf?.operationId;
-                if (!opId) continue;
+                let opId = null;
+                let confObj = null;
 
-                const matchingOp = batch.find((o) => o.operationId === opId);
-                await this.#metaDelete('outbox', opId);
+                if (typeof conf === 'string') {
+                    opId = conf.trim() || null;
+                } else if (conf && typeof conf === 'object' && !Array.isArray(conf)) {
+                    if (
+                        typeof conf.operationId === 'string' &&
+                        conf.operationId.trim() &&
+                        conf.ok !== false &&
+                        conf.accepted !== false &&
+                        conf.status !== 'rejected' &&
+                        conf.status !== 'failed'
+                    ) {
+                        opId = conf.operationId.trim();
+                        confObj = conf;
+                    }
+                }
+
+                if (!opId) {
+                    ignoredConfirmations.push({ raw: conf, reason: 'malformed' });
+                    continue;
+                }
+
+                const matchingOp = batchById.get(opId);
+                if (!matchingOp) {
+                    ignoredConfirmations.push({ operationId: opId, reason: 'unknown_or_foreign' });
+                    continue;
+                }
+
+                if (processedOpIds.has(opId)) {
+                    ignoredConfirmations.push({ operationId: opId, reason: 'duplicate' });
+                    continue;
+                }
+
+                processedOpIds.add(opId);
+                const deleted = await this.#metaDelete('outbox', opId);
+                if (!deleted) {
+                    continue;
+                }
+
                 totalConfirmed += 1;
                 st.confirmedCount += 1;
 
                 confirmedItems.push({
                     operationId: opId,
-                    recordId: matchingOp?.recordId ?? conf?.recordId ?? null,
-                    action: matchingOp?.action ?? null,
-                    version: conf?.version ?? null,
-                    record: conf?.record ?? null
+                    recordId: matchingOp.recordId ?? confObj?.recordId ?? null,
+                    action: matchingOp.action ?? null,
+                    version: confObj?.version ?? null,
+                    record: confObj?.record ?? null
                 });
             }
 
@@ -1005,9 +1055,21 @@ export class NDataSynchronizer extends NObject {
 
             // 2. Conflits signalés par le serveur
             for (const conflictData of parsed.conflicts) {
-                const matchingOp = batch.find((o) => o.operationId === conflictData.operationId);
+                if (!conflictData || typeof conflictData !== 'object') {
+                    ignoredConfirmations.push({ raw: conflictData, reason: 'malformed_conflict' });
+                    continue;
+                }
+                const confOpId = typeof conflictData.operationId === 'string' ? conflictData.operationId.trim() : null;
+                if (confOpId && (!batchById.has(confOpId) || processedOpIds.has(confOpId))) {
+                    ignoredConfirmations.push({ operationId: confOpId, reason: 'foreign_or_duplicate_conflict' });
+                    continue;
+                }
+                if (confOpId) {
+                    processedOpIds.add(confOpId);
+                }
+                const matchingOp = confOpId ? batchById.get(confOpId) : null;
                 await this.#handleConflict(col, st, {
-                    operationId: conflictData.operationId,
+                    operationId: confOpId,
                     recordId: conflictData.recordId ?? matchingOp?.recordId,
                     clientVersion: conflictData.clientVersion ?? matchingOp?.baseVersion ?? null,
                     serverVersion: conflictData.serverVersion ?? null,
@@ -1018,18 +1080,46 @@ export class NDataSynchronizer extends NObject {
 
             // 3. Opérations explicitement rejetées / échouées : conservées dans outbox
             for (const fail of parsed.failed) {
-                const op = batch.find((o) => o.operationId === fail.operationId);
-                if (op) {
-                    op.attempts += 1;
-                    op.lastError = fail.error || 'SERVER_REJECTED';
-                    await this.#metaPut('outbox', op);
+                const failOpId = (fail && typeof fail === 'object' && typeof fail.operationId === 'string')
+                    ? fail.operationId.trim()
+                    : null;
+                if (!failOpId || !batchById.has(failOpId) || processedOpIds.has(failOpId)) {
+                    ignoredConfirmations.push({ raw: fail, reason: 'invalid_or_duplicate_failed' });
+                    continue;
                 }
+                processedOpIds.add(failOpId);
+                const op = batchById.get(failOpId);
+                op.attempts += 1;
+                op.lastError = fail.error || 'SERVER_REJECTED';
+                await this.#metaPut('outbox', op);
                 st.errorCount += 1;
+                rejectedCount += 1;
+            }
+
+            // 4. Opérations absentes de la réponse : restent dans outbox en attente
+            const omittedCount = batch.filter((op) => !processedOpIds.has(op.operationId)).length;
+
+            if (ignoredConfirmations.length > 0) {
+                st.ignoredCount = (st.ignoredCount || 0) + ignoredConfirmations.length;
+                NUtil.log?.warn?.(`NDataSynchronizer: ${ignoredConfirmations.length} confirmation(s) ignorée(s) sur "${col.id}".`, {
+                    ignoredConfirmations
+                });
             }
 
             await this.#refreshPendingCount(col.id);
-            this.event.emit('push', { collection: col.id, batchSize: batch.length, confirmed: confirmedItems.length });
+            this.event.emit('push', {
+                collection: col.id,
+                batchSize: batch.length,
+                confirmed: confirmedItems.length,
+                rejected: rejectedCount,
+                ignored: ignoredConfirmations.length,
+                pending: omittedCount
+            });
             this.event.emit('progress', { ...st, collection: col.id });
+
+            if (rejectedCount > 0) {
+                return { ok: false, confirmed: totalConfirmed, rejected: rejectedCount, ignored: ignoredConfirmations.length, pending: omittedCount };
+            }
         }
 
         return { ok: true, confirmed: totalConfirmed };
@@ -1130,6 +1220,13 @@ export class NDataSynchronizer extends NObject {
 
         if (pendingForRecord) {
             const serverVersion = change?.version ?? remoteRecord?.[col.versionField] ?? null;
+            if (
+                pendingForRecord.force === true &&
+                serverVersion !== null &&
+                pendingForRecord.baseVersion === serverVersion
+            ) {
+                return true;
+            }
             return await this.#handleConflict(col, st, {
                 operationId: pendingForRecord.operationId,
                 recordId,
@@ -1156,18 +1253,31 @@ export class NDataSynchronizer extends NObject {
     }
 
     /**
-     * Émet `'apply'` via `NEvent.emit` et attend les promesses enregistrées via `waitUntil(...)`.
-     * Retourne `false` si `reject()` est appelé ou si une promesse échoue / retourne `false` / `{ ok: false }`.
+     * Émet `'apply'` auprès des écouteurs enregistrés, capture les erreurs synchrones/asynchrones
+     * et attend les promesses retournées ou enregistrées via `waitUntil(...)`.
+     * Retourne `false` s'il n'y a aucun écouteur (sauf `allowUnappliedPull: true`), si `reject()` est appelé,
+     * si une exception est levée ou si un écouteur retourne `false` / `{ ok: false }`.
      * @private
      */
     async #emitApply(col, payload) {
-        if (!this.event || this.event.listenerCount('apply') === 0) {
-            return true;
+        const directListeners = Array.from(this.#applyListeners);
+        const busCount = this.event ? this.event.listenerCount('apply') : 0;
+
+        if (directListeners.length === 0 && busCount === 0) {
+            if (this.#allowUnappliedPull) {
+                return true;
+            }
+            NUtil.log?.warn?.(`NDataSynchronizer: Aucun écouteur 'apply' enregistré pour appliquer "${col.id}".`, {
+                code: 'NO_APPLY_LISTENER',
+                collection: col.id
+            });
+            return false;
         }
+
         const tasks = [];
         let rejected = false;
 
-        this.event.emit('apply', {
+        const eventPayload = {
             collection: col.id,
             ...payload,
             waitUntil: (promise) => {
@@ -1178,7 +1288,25 @@ export class NDataSynchronizer extends NObject {
             reject: () => {
                 rejected = true;
             }
-        });
+        };
+
+        for (const cb of directListeners) {
+            try {
+                const ret = cb.call(this, eventPayload);
+                if (rejected || ret === false || (ret && typeof ret === 'object' && ret.ok === false)) {
+                    return false;
+                }
+                if (ret && typeof ret.then === 'function') {
+                    tasks.push(ret);
+                }
+            } catch {
+                return false;
+            }
+        }
+
+        if (busCount > 0) {
+            this.event.emit('apply', eventPayload);
+        }
 
         if (rejected) {
             return false;
@@ -1188,7 +1316,7 @@ export class NDataSynchronizer extends NObject {
             try {
                 const results = await Promise.all(tasks);
                 for (const res of results) {
-                    if (res === false || (res && typeof res === 'object' && res.ok === false)) {
+                    if (rejected || res === false || (res && typeof res === 'object' && res.ok === false)) {
                         return false;
                     }
                 }
@@ -1241,15 +1369,19 @@ export class NDataSynchronizer extends NObject {
         }
 
         if (col.conflictStrategy === 'clientWins') {
-            await this.#enqueueClientWin(col, conflict);
+            const enqueued = await this.#enqueueClientWin(col, conflict);
+            if (!enqueued) {
+                return false;
+            }
             this.event.emit('conflict', { ...conflict, resolved: true, resolution: 'clientWins' });
             return true;
         }
 
+        let mergeError = null;
         if (col.conflictStrategy === 'merge' && typeof col.mergeResolver === 'function') {
             try {
                 const merged = await col.mergeResolver(conflict);
-                if (merged && typeof merged === 'object') {
+                if (merged !== null && typeof merged === 'object' && !Array.isArray(merged) && Object.keys(merged).length > 0) {
                     const finalRecord = {
                         ...merged,
                         [col.primaryKey]: conflict.recordId,
@@ -1264,30 +1396,49 @@ export class NDataSynchronizer extends NObject {
                     });
                     if (!appliedOk) return false;
 
-                    if (conflict.operationId) {
-                        await this.#metaDelete('outbox', conflict.operationId);
-                    }
-                    await this.trackChange(col.id, 'update', finalRecord, {
+                    const newOp = await this.trackChange(col.id, 'update', finalRecord, {
                         baseVersion: finalRecord[col.versionField],
                         force: true
                     });
+                    if (!newOp) return false;
+
+                    if (conflict.operationId && conflict.operationId !== newOp.operationId) {
+                        await this.#metaDelete('outbox', conflict.operationId);
+                    }
                     this.event.emit('conflict', { ...conflict, resolved: true, resolution: 'merge', mergedRecord: finalRecord });
                     return true;
                 }
+                mergeError = 'INVALID_MERGE_RESULT';
             } catch (err) {
+                mergeError = err?.message || 'MERGE_RESOLVER_ERROR';
                 NUtil.log?.warn?.(`NDataSynchronizer: Échec du mergeResolver sur "${col.id}", bascule en mode manuel.`, err);
             }
         }
 
-        // Mode 'manual' (ou repli si mergeResolver absent/invalide)
-        await this.#metaPut('conflicts', conflict);
-        this.event.emit('conflict', { ...conflict, resolved: false, resolution: 'manual' });
+        // Mode 'manual' (ou repli si mergeResolver absent/invalide) : évite les doublons de conflit identique
+        const existingConflicts = await this.#metaGetAll('conflicts');
+        const duplicate = existingConflicts.find(
+            (c) => c &&
+                c.collection === col.id &&
+                String(c.recordId) === String(conflict.recordId) &&
+                c.serverVersion === conflict.serverVersion &&
+                c.operationId === conflict.operationId
+        );
+        const persistedConflict = duplicate || conflict;
+        if (mergeError) {
+            persistedConflict.mergeError = mergeError;
+        }
+        if (!duplicate) {
+            await this.#metaPut('conflicts', persistedConflict);
+        }
+        this.event.emit('conflict', { ...persistedConflict, resolved: false, resolution: 'manual', ...(mergeError ? { error: mergeError } : {}) });
         return true;
     }
 
     /**
      * Prépare la ré-émission d'une opération locale en mode `'clientWins'`.
      * @private
+     * @returns {Promise<boolean>} `true` si l'opération est bien enregistrée dans l'outbox.
      */
     async #enqueueClientWin(col, conflict) {
         if (conflict.operationId) {
@@ -1295,16 +1446,17 @@ export class NDataSynchronizer extends NObject {
             if (op) {
                 op.baseVersion = conflict.serverVersion ?? op.baseVersion;
                 op.force = true;
-                await this.#metaPut('outbox', op);
-                return;
+                return await this.#metaPut('outbox', op);
             }
         }
         if (conflict.clientRecord) {
-            await this.trackChange(col.id, 'update', conflict.clientRecord, {
+            const created = await this.trackChange(col.id, 'update', conflict.clientRecord, {
                 baseVersion: conflict.serverVersion ?? conflict.clientVersion,
                 force: true
             });
+            return Boolean(created);
         }
+        return false;
     }
 
     // =========================================================================
@@ -1373,11 +1525,20 @@ export class NDataSynchronizer extends NObject {
     // Méthodes privées — Persistance des métadonnées (IDB + repli mémoire)
     // =========================================================================
 
+    #markMemoryFallback() {
+        this.#usingMemoryFallback = true;
+        if (!this.#memoryWarningLogged) {
+            this.#memoryWarningLogged = true;
+            NUtil.log?.warn?.('NDataSynchronizer: IndexedDB indisponible, utilisation du stockage mémoire non durable (aucune reprise après rechargement).');
+        }
+    }
+
     async #metaPut(storeName, value) {
         if (this.#metaDb && this.#metaDb.isAvailable !== false) {
             const res = await this.#metaDb.put(storeName, value);
             if (res?.ok) return true;
         }
+        this.#markMemoryFallback();
         const keyField = storeName === 'outbox' ? 'operationId' : (storeName === 'conflicts' ? 'conflictId' : 'collection');
         this.#memoryFallback[storeName].set(value[keyField], value);
         return true;
@@ -1388,6 +1549,7 @@ export class NDataSynchronizer extends NObject {
             const res = await this.#metaDb.get(storeName, key);
             if (res?.ok) return res.data;
         }
+        this.#markMemoryFallback();
         return this.#memoryFallback[storeName].get(key) || null;
     }
 
@@ -1396,6 +1558,7 @@ export class NDataSynchronizer extends NObject {
             const res = await this.#metaDb.delete(storeName, key);
             if (res?.ok) return true;
         }
+        this.#markMemoryFallback();
         return this.#memoryFallback[storeName].delete(key);
     }
 
@@ -1404,6 +1567,7 @@ export class NDataSynchronizer extends NObject {
             const res = await this.#metaDb.getAll(storeName);
             if (res?.ok && Array.isArray(res.data)) return res.data;
         }
+        this.#markMemoryFallback();
         return Array.from(this.#memoryFallback[storeName].values());
     }
 
@@ -1507,6 +1671,7 @@ export class NDataSynchronizer extends NObject {
             sentCount: 0,
             receivedCount: 0,
             confirmedCount: 0,
+            ignoredCount: 0,
             conflictCount: 0,
             errorCount: 0,
             lastSyncAt: null,

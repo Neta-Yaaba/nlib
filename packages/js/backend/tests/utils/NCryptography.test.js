@@ -35,7 +35,7 @@ describe('NCryptography (utils/NCryptography.js)', () => {
         assert.equal(hashBytes.length, 32);
     });
 
-    it('chiffre et déchiffre localement de manière déterministe via Web Crypto', async () => {
+    it('chiffre et déchiffre localement avec un IV aléatoire non déterministe via Web Crypto', async () => {
         if (!crypto.isWebCryptoAvailable()) {
             assert.equal(await crypto.encryptLocal('test'), '');
             return;
@@ -45,10 +45,12 @@ describe('NCryptography (utils/NCryptography.js)', () => {
         const encrypted1 = await crypto.encryptLocal(payload);
         const encrypted2 = await crypto.encryptLocal(payload);
 
-        if (encrypted1) {
-            assert.equal(encrypted1, encrypted2);
-            const decrypted = JSON.parse(await crypto.decryptLocal(encrypted1));
-            assert.deepEqual(decrypted, payload);
+        if (encrypted1 && encrypted2) {
+            assert.equal(encrypted1 !== encrypted2, true);
+            const decrypted1 = JSON.parse(await crypto.decryptLocal(encrypted1));
+            const decrypted2 = JSON.parse(await crypto.decryptLocal(encrypted2));
+            assert.deepEqual(decrypted1, payload);
+            assert.deepEqual(decrypted2, payload);
         }
     });
 

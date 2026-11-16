@@ -6,7 +6,6 @@ describe('NObject (core/NObject.js)', () => {
         const obj = new NObject({ state: { count: 1, active: true } });
         assert.equal(obj.className, 'NObject');
         assert.equal(obj.util, NUtil);
-        assert.equal(obj.isInitialized, true);
         assert.equal(obj.isDestroyed, false);
         assert.ok(obj.event instanceof NEvent);
         assert.deepEqual(obj.state, { count: 1, active: true });
@@ -45,19 +44,5 @@ describe('NObject (core/NObject.js)', () => {
         obj.destroy();
         assert.equal(obj.isDestroyed, true);
         assert.deepEqual(obj.state, {});
-    });
-
-    it('supporte la surcharge de validate() lors de initialize()', () => {
-        class ValidatedObject extends NObject {
-            validate() {
-                return this.hasState('requiredKey');
-            }
-        }
-
-        const invalid = new ValidatedObject();
-        assert.equal(invalid.isInitialized, false);
-
-        const valid = new ValidatedObject({ state: { requiredKey: 123 } });
-        assert.equal(valid.isInitialized, true);
     });
 });

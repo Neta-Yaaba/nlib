@@ -21,9 +21,15 @@ describe('NIndexedDB (database/NIndexedDB.js)', () => {
 
         if (idb.isAvailable) {
             await idb.put('kv', { id: 'k1', secret: 'val123' }, 'k1');
+            await idb.put('kv', { id: 'k1', secret: 'val456' }, 'k1');
             const restored = await idb.get('kv', 'k1');
             assert.equal(restored.ok, true);
-            assert.deepEqual(restored.data, { id: 'k1', secret: 'val123' });
+            assert.deepEqual(restored.data, { id: 'k1', secret: 'val456' });
+            const allKeys = await idb.getAllKeys('kv');
+            assert.equal(allKeys.data.length, 1);
+            await idb.delete('kv', 'k1');
+            const afterDel = await idb.get('kv', 'k1');
+            assert.equal(afterDel.data, null);
             await idb.clear('kv');
             idb.close();
         } else {

@@ -100,12 +100,11 @@ Contient le socle orienté objet et le gestionnaire d'événements utilisés par
 
 ### 1.1. Classe `NObject` (`core/NObject.js`)
 
-Classe mère universelle de l'écosystème NLib (toutes les classes du package, hormis `NEvent`, héritent de `NObject`). Fournit la gestion d'état interne (`#state`), un bus d'événements intégré (`this.event`), un cycle de vie (`initialize`, `destroy`), la sérialisation JSON et le clonage.
+Classe mère universelle de l'écosystème NLib (toutes les classes du package, hormis `NEvent`, héritent de `NObject`). Fournit la gestion d'état interne (`#state`), un bus d'événements intégré (`this.event`), le cycle de vie (`destroy`), la sérialisation JSON et le clonage.
 
 #### Constructeur
 - `new NObject(options = {})`
   - `options.state` (`Object`) : État initial clé-valeur.
-  - `options.autoInit` (`boolean`, défaut `true`) : Appelle automatiquement `initialize()` à la construction.
 
 #### Propriétés et Getters
 | Propriété | Type | Description |
@@ -114,19 +113,16 @@ Classe mère universelle de l'écosystème NLib (toutes les classes du package, 
 | `event` | `NEvent` | Gestionnaire d'événements associé à l'instance (alloué au premier accès). |
 | `className` | `string` | Nom de la classe de l'instance (`this.constructor.name`). |
 | `util` | `typeof NUtil` | Référence directe vers la classe `NUtil`. |
-| `isInitialized` | `boolean` | Indique si `initialize()` a été exécuté. |
 | `isDestroyed` | `boolean` | Indique si `destroy()` a été exécuté. |
 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `initialize` | `initialize()` | `this` | Valide via `validate()`, initialise l'objet et émet `'initialize'`. |
-| `validate` | `validate()` | `boolean` | Vérifie la validité de l'instance avant initialisation (surchargeable). |
 | `destroy` | `destroy()` | `void` | Émet `'beforeDestroy'`, vide l'état et détache tous les écouteurs d'événements. |
 | `hasState` | `hasState(key)` | `boolean` | Vérifie si une clé existe dans l'état interne. |
 | `getState` | `getState(key, defaultValue = undefined)` | `any` | Récupère la valeur d'une clé d'état ou retourne `defaultValue`. |
 | `setState` | `setState(keyOrObject, value)` | `this` | Définit une clé ou fusionne un objet dans l'état et émet `'stateChange'`. |
-| `toJSON` | `toJSON()` | `Object` | Sérialise l'objet sous la forme `{ className, isInitialized, state }`. |
+| `toJSON` | `toJSON()` | `Object` | Sérialise l'objet sous la forme `{ className, state }`. |
 | `fromJSON` | `fromJSON(data)` | `this` | Restaure l'état de l'instance à partir d'un objet `{ state }`. |
 | `clone` | `clone()` | `NObject` | Crée une nouvelle instance de la même classe avec une copie de l'état. |
 | `NObject.create` | `static create(options = {})` | `NObject` | Fabrique statique retournant une nouvelle instance. |
@@ -150,7 +146,7 @@ obj.setState({ role: 'admin', niveau: 5 });
 
 console.log(obj.getState('role'));       // 'admin'
 console.log(obj.hasState('actif'));      // true
-console.log(obj.toJSON());               // { className: 'NObject', isInitialized: true, state: { ... } }
+console.log(obj.toJSON());               // { className: 'NObject', state: { ... } }
 
 // Cloner et détruire
 const copie = obj.clone();
@@ -161,7 +157,7 @@ obj.destroy();
 
 ### 1.2. Classe `NEvent` (`core/NEvent.js`)
 
-Gestionnaire d'événements synchrone et asynchrone permettant l'abonnement (`on`, `once`), la désinscription (`off`), l'émission (`emit`, `emitAsync`) et l'attente par promesse (`waitFor`).
+Gestionnaire d'événements synchrone permettant l'abonnement (`on`, `once`), la désinscription (`off`), l'émission (`emit`) et l'attente par promesse (`waitFor`).
 
 #### Constructeur
 - `new NEvent(target = null)`
@@ -254,8 +250,6 @@ Accessible via `NUtil.log` ou par instanciation directe `new NLog(options)`.
 | `write` | `write(level, message, details = null)` | `NLogEntry` | Enregistre une entrée selon le niveau spécifié. |
 | `captureException` | `captureException(err, customMessage = null, extraDetails = {})` | `NLogEntry` | Extrait `name`, `message`, `code`, `stack` et `cause` d'une erreur et l'enregistre. |
 | `getLogs` | `getLogs(filter = null)` | `NLogEntry[]` | Retourne l'historique filtré par niveau (`string`), par prédicat (`Function`) ou par objet `{ level, search, limit, since }`. |
-| `getLastLog` | `getLastLog(level = null)` | `NLogEntry\|null` | Retourne la dernière entrée enregistrée (optionnellement filtrée par niveau). |
-| `count` | `count(level = null)` | `number` | Compte le nombre total d'entrées (ou pour un niveau donné). |
 | `export` | `export(pretty = true)` | `string` | Exporte l'historique des journaux au format JSON. |
 | `import` | `import(jsonOrArray, append = true)` | `number` | Importe un historique de journaux et retourne le nombre d'entrées ajoutées. |
 | `clear` | `clear()` | `this` | Vide l'historique des journaux en mémoire. |
@@ -275,7 +269,7 @@ NUtil.log.error('Échec de débit', { code: 'ERR_CARD_DECLINED', montant: 15000 
 
 // Filtrer et exporter les erreurs
 const erreurs = NUtil.log.getLogs({ level: 'error', limit: 10 });
-console.log('Dernière erreur :', NUtil.log.getLastLog('error'));
+console.log('Erreurs :', NUtil.log.getLogs('error'));
 const jsonLogs = NUtil.log.export(true);
 ```
 
@@ -322,7 +316,7 @@ Accessible via `NUtil.config` ou par instanciation directe `new NConfig(initialV
 | `require` | `require(keys)` | `{ valid: boolean, missing: string[] }` | Vérifie la présence d'une liste de clés obligatoires. |
 | `loadFromDotEnv` | `loadFromDotEnv(envContent, prefix = '')` | `this` | Parse le contenu texte d'un fichier `.env` et charge les variables. |
 | `loadFromProcess` | `loadFromProcess(prefix = '')` | `this` | Charge les variables depuis `process.env` (si disponible en Node.js). |
-| `toObject` | `toObject()` | `Object` | Retourne une copie profonde fusionnant défauts et valeurs actives. |
+| `all` | `all(sectionPath = '')` | `Object` | Retourne une copie profonde fusionnant défauts et valeurs actives (ou d'une section). |
 | `toJSON` | `toJSON(pretty = false)` | `string` | Sérialise la configuration complète en chaîne JSON. |
 
 #### Exemple d'utilisation
@@ -591,16 +585,14 @@ Service de manipulation, comparaison, transformation de casse, nettoyage et form
 | :--- | :--- | :--- | :--- |
 | `isString` | `isString(value)` | `boolean` | Vérifie si `value` est de type `string`. |
 | `isEmpty` | `isEmpty(text, trim = true)` | `boolean` | Vérifie si une chaîne est vide (ou ne contient que des espaces). |
-| `isNotEmpty` | `isNotEmpty(text, trim = true)` | `boolean` | Vérifie qu'une chaîne contient au moins un caractère significatif. |
-| `length` | `length(text, trim = false)` | `number` | Retourne la longueur de la chaîne. |
 | `equals` | `equals(textA, textB, options = {})` | `boolean` | Compare deux chaînes avec options (`caseSensitive`, `ignoreAccents`, `ignoreSpecialChars`, `ignoreSpaces`, `trim`). |
 | `contains` | `contains(text, search, options = {})` | `boolean` | Vérifie si `text` contient `search` selon les options de comparaison. |
 | `startsWith` | `startsWith(text, prefix, options = {})` | `boolean` | Vérifie si `text` commence par `prefix`. |
 | `endsWith` | `endsWith(text, suffix, options = {})` | `boolean` | Vérifie si `text` se termine par `suffix`. |
-| `toUpperCase` | `toUpperCase(text)` | `string` | Convertit en majuscules. |
-| `toLowerCase` | `toLowerCase(text)` | `string` | Convertit en minuscules. |
+| `toUpper` | `toUpper(text)` | `string` | Convertit en majuscules. |
+| `toLower` | `toLower(text)` | `string` | Convertit en minuscules. |
 | `capitalize` | `capitalize(text, lowerRest = true)` | `string` | Met la première lettre en majuscule. |
-| `capitalizeWords` | `capitalizeWords(text)` | `string` | Met la première lettre de chaque mot en majuscule. |
+| `toTitleCase` | `toTitleCase(text)` | `string` | Met la première lettre de chaque mot en majuscule. |
 | `toCamelCase` | `toCamelCase(text)` | `string` | Convertit en `camelCase`. |
 | `toPascalCase` | `toPascalCase(text)` | `string` | Convertit en `PascalCase`. |
 | `toSnakeCase` | `toSnakeCase(text)` | `string` | Convertit en `snake_case`. |
@@ -704,7 +696,7 @@ Création, validation, extraction de composants, arithmétique calendaire, calcu
 | `isPast` | `isPast(value)` | `boolean` | Vérifie si la date est antérieure à maintenant. |
 | `isFuture` | `isFuture(value)` | `boolean` | Vérifie si la date est postérieure à maintenant. |
 | `isWeekend` | `isWeekend(value)` | `boolean` | Vérifie si la date tombe un samedi ou un dimanche. |
-| `isSameDay` | `isSameDay(dateA, dateB)` | `boolean` | Vérifie si deux dates tombent le même jour calendaire. |
+| `equals` | `equals(dateA, dateB, options = {})` | `boolean` | Compare deux dates (selon l'unité ou `ignoreTime`). |
 | `isBefore` | `isBefore(dateA, dateB)` | `boolean` | Vérifie si `dateA < dateB`. |
 | `isAfter` | `isAfter(dateA, dateB)` | `boolean` | Vérifie si `dateA > dateB`. |
 | `isBetween` | `isBetween(value, start, end, inclusive = true)` | `boolean` | Vérifie si une date est comprise entre `start` et `end`. |
@@ -758,8 +750,8 @@ Calculs monétaires exacts en centimes (sans erreurs de virgule flottante IEEE 7
 | :--- | :--- | :--- | :--- |
 | `isValid` | `isValid(value, allowNegative = false)` | `boolean` | Vérifie si la valeur est un montant monétaire valide. |
 | `parse` | `parse(value, fallback = 0)` | `number\|null` | Extrait la valeur numérique d'un montant formaté (`'12 500,50 FCFA'` -> `12500.5`). |
-| `toCents` | `toCents(amount, decimals = 2)` | `number` | Convertit un montant décimal en sous-unités entières (centimes). |
-| `fromCents` | `fromCents(cents, decimals = 2)` | `number` | Convertit un nombre entier de centimes en montant décimal. |
+| `toMinorUnits` | `toMinorUnits(amount, decimals = 2)` | `number` | Convertit un montant décimal en sous-unités entières (centimes). |
+| `fromMinorUnits` | `fromMinorUnits(minorUnits, decimals = 2)` | `number` | Convertit un nombre entier de sous-unités en montant décimal. |
 | `add` | `add(amountA, amountB, decimals = 2)` | `number` | Additionne exactement deux montants (`0.1 + 0.2 === 0.3`). |
 | `subtract` | `subtract(amountA, amountB, decimals = 2)` | `number` | Soustrait exactement deux montants. |
 | `multiply` | `multiply(amount, factor, decimals = 2)` | `number` | Multiplie un montant par un facteur ou une quantité. |
@@ -796,7 +788,7 @@ Validation, normalisation, détection des fournisseurs gratuits/jetables, extrac
 | `isValid` | `isValid(email)` | `boolean` | Vérifie la conformité syntaxique d'une adresse e-mail (RFC 5322). |
 | `isFreeProvider` | `isFreeProvider(email)` | `boolean` | Vérifie si le domaine appartient à un fournisseur grand public (`gmail.com`, `yahoo.fr`, `outlook.com`, etc.). |
 | `isDisposable` | `isDisposable(email)` | `boolean` | Vérifie si le domaine appartient à un service d'e-mail temporaire/jetable (`yopmail.com`, `mailinator.com`, etc.). |
-| `isCorporate` | `isCorporate(email)` | `boolean` | Vérifie si l'adresse est professionnelle (valide, ni gratuite, ni jetable). |
+| `isBusiness` | `isBusiness(email)` | `boolean` | Vérifie si l'adresse est professionnelle (valide, ni gratuite, ni jetable). |
 | `normalize` | `normalize(email, options = {})` | `string` | Normalise l'adresse en minuscules (`{ stripPlusTag: false, normalizeGmailDots: false }`). |
 | `equals` | `equals(emailA, emailB, options = {})` | `boolean` | Compare deux adresses e-mail après normalisation. |
 | `parse` | `parse(email)` | `{ email, local, baseLocal, tag, domain, tld }\|null` | Décompose une adresse e-mail en ses composants. |
@@ -812,7 +804,7 @@ Validation, normalisation, détection des fournisseurs gratuits/jetables, extrac
 import { NUtil } from '@nlib/js-backend';
 
 console.log(NUtil.email.isValid('contact@nlib.dev'));     // true
-console.log(NUtil.email.isCorporate('contact@nlib.dev')); // true
+console.log(NUtil.email.isBusiness('contact@nlib.dev')); // true
 console.log(NUtil.email.parse('client+vip@boutique.fr')); // { email: 'client+vip@boutique.fr', local: 'client+vip', baseLocal: 'client', tag: 'vip', domain: 'boutique.fr', tld: 'fr' }
 console.log(NUtil.email.mask('contact@nlib.dev'));        // 'co****t@nlib.dev'
 ```
@@ -827,10 +819,9 @@ Validation, nettoyage, parsing d'indicatifs internationaux, formatage (`E.164`, 
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
 | `clean` | `clean(phone, keepPlus = true)` | `string` | Supprime les espaces, tirets, points et parenthèses et convertit `00` initial en `+`. |
-| `digitsOnly` | `digitsOnly(phone)` | `string` | Extrait uniquement les chiffres (`0-9`). |
 | `isValid` | `isValid(phone, options = {})` | `boolean` | Vérifie la validité du numéro (`{ countryCode, minLength: 7, maxLength: 15 }`). |
+| `isE164` | `isE164(phone)` | `boolean` | Vérifie si le numéro est au format E.164 strict. |
 | `equals` | `equals(phoneA, phoneB, defaultCountryCode = '')` | `boolean` | Compare deux numéros après normalisation E.164. |
-| `parse` | `parse(phone, defaultCountryCode = '')` | `{ raw, e164, countryCode, nationalNumber, digits, isInternational }\|null` | Décompose un numéro en indicatif pays, numéro national et format E.164. |
 | `toE164` | `toE164(phone, defaultCountryCode = '')` | `string` | Formate au standard international E.164 (`'+22670123456'`). |
 | `format` | `format(phone, style = 'international', options = {})` | `string` | Formate selon le style `'e164'`, `'international'`, `'national'` ou `'rfc3966'` (`'tel:+...'`). |
 | `mask` | `mask(phone, options = {})` | `string` | Masque le numéro en gardant le début et la fin visibles. |
@@ -908,10 +899,9 @@ Validation, parsing et sérialisation JSON tolérante aux références circulair
 | :--- | :--- | :--- | :--- |
 | `isValid` | `isValid(jsonString)` | `boolean` | Vérifie si une chaîne est un JSON syntaxiquement valide. |
 | `isPlainObject` | `isPlainObject(value)` | `boolean` | Vérifie si la valeur est un objet littéral `{}`. |
-| `isValidObject` | `isValidObject(value)` | `boolean` | Vérifie si la valeur est un objet `{}` ou une chaîne JSON représentant un objet. |
-| `isValidArray` | `isValidArray(value)` | `boolean` | Vérifie si la valeur est un tableau `[]` ou une chaîne JSON représentant un tableau. |
 | `isEmpty` | `isEmpty(value)` | `boolean` | Vérifie si un objet ou un tableau (ou sa chaîne JSON) est vide. |
 | `size` | `size(data)` | `number` | Retourne le nombre d'éléments d'un tableau ou de clés d'un objet. |
+| `count` | `count(value, path)` | `number` | Compte le nombre d'éléments ou de propriétés à un chemin donné. |
 | `parse` | `parse(value, fallback = null, reviver = null)` | `any` | Parse une chaîne JSON en toute sécurité ou retourne `fallback`. |
 | `stringify` | `stringify(value, options = {})` | `string` | Sérialise en JSON en gérant les références circulaires, `BigInt`, `Set`, `Map` (`{ pretty, indent, sortKeys, fallback }`). |
 | `prettify` | `prettify(value, indent = 2)` | `string` | Formate une structure ou chaîne JSON avec indentation. |
@@ -955,9 +945,8 @@ Validation de règles de sécurité, calcul d'entropie et de score de robustesse
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
-| `validate` | `validate(password, rules = {})` | `{ valid, errors, checks }` | Valide un mot de passe selon `{ minLength: 8, maxLength: 128, requireUppercase: true, requireLowercase: true, requireNumber: true, requireSymbol: true, disallowSpaces: false }`. |
-| `isStrong` | `isStrong(password, rules = {})` | `boolean` | Retourne `true` si le mot de passe respecte toutes les règles. |
-| `strength` | `strength(password)` | `{ score, label, entropyBits, length }` | Calcule un score de `0` à `4`, un label (`'very_weak'` à `'very_strong'`) et l'entropie en bits. |
+| `isValid` | `isValid(password, options = {})` | `boolean` | Retourne `true` si le mot de passe respecte toutes les règles. |
+| `evaluate` | `evaluate(password, options = {})` | `{ score, label, entropyBits, length, valid, errors }` | Évalue la robustesse, l'entropie en bits et la validité du mot de passe. |
 | `generate` | `generate(length = 16, options = {})` | `string` | Génère un mot de passe aléatoire cryptographique (`{ uppercase, lowercase, numbers, symbols, excludeSimilar }`). |
 | `generatePin` | `generatePin(length = 6)` | `string` | Génère un code PIN numérique aléatoire. |
 | `hash` | `hash(password, iterations = 100000)` | `Promise<string>` | Hache un mot de passe avec PBKDF2-HMAC-SHA256 et sel aléatoire (`pbkdf2_sha256$<iterations>$<salt>$<hash>`). |
@@ -968,7 +957,7 @@ Validation de règles de sécurité, calcul d'entropie et de score de robustesse
 import { NUtil } from '@nlib/js-backend';
 
 const motDePasse = NUtil.password.generate(16);
-console.log(NUtil.password.strength(motDePasse)); // { score: 4, label: 'very_strong', ... }
+console.log(NUtil.password.evaluate(motDePasse)); // { score: 4, label: 'very_strong', ... }
 
 const empreinte = await NUtil.password.hash(motDePasse);
 const estValide = await NUtil.password.verify(motDePasse, empreinte);
@@ -986,13 +975,13 @@ Manipulation immuable de tableaux et de collections d'objets (accès, filtrage, 
 | :--- | :--- | :--- | :--- |
 | `isArray` | `isArray(value)` | `boolean` | Vérifie si `value` est un tableau. |
 | `isEmpty` | `isEmpty(list)` | `boolean` | Vérifie si le tableau est vide (ou non-tableau). |
-| `isNotEmpty` | `isNotEmpty(list)` | `boolean` | Vérifie que le tableau contient au moins un élément. |
+| `size` / `count` | `size(list, predicate)` | `number` | Compte les éléments du tableau (avec prédicat optionnel). |
 | `toArray` | `toArray(value)` | `Array` | Convertit n'importe quelle valeur (`Set`, `Iterable`, valeur simple) en tableau. |
-| `clone` | `clone(list)` | `Array` | Retourne une copie superficielle du tableau. |
 | `equals` | `equals(listA, listB)` | `boolean` | Compare les éléments de deux tableaux dans l'ordre. |
+| `contains` | `contains(list, target, key)` | `boolean` | Vérifie la présence d'un élément dans le tableau. |
+| `get` | `get(list, index, defaultValue = undefined)` | `any` | Accède à un élément par index positif ou négatif (`-1`). |
 | `first` | `first(list, count = 1, defaultValue = undefined)` | `any\|Array` | Retourne le premier élément (ou les `count` premiers). |
 | `last` | `last(list, count = 1, defaultValue = undefined)` | `any\|Array` | Retourne le dernier élément (ou les `count` derniers). |
-| `at` | `at(list, index, defaultValue = undefined)` | `any` | Accède à un élément par index positif ou négatif (`-1`). |
 | `insertAt` | `insertAt(list, index, ...items)` | `Array` | Retourne un nouveau tableau avec les éléments insérés à `index`. |
 | `removeAt` | `removeAt(list, index)` | `Array` | Retourne un nouveau tableau sans l'élément situé à `index`. |
 | `removeValue` | `removeValue(list, valueToRemove)` | `Array` | Retourne un nouveau tableau sans toutes les occurrences de `valueToRemove`. |

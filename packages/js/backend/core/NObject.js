@@ -3,7 +3,7 @@
  * @package @nlib/js-backend
  * @description Classe de base universelle (sans interface / headless) de l'écosystème NLib.
  * Toutes les classes d'entités ou de composants logiques héritant de `NObject` bénéficient :
- * - du cycle de vie standardisé (`initialize`, `destroy`),
+ * - du cycle de vie standardisé (`destroy`),
  * - de la gestion d'état réactif avec allocation mémoire à la demande (`hasState`, `getState`, `setState`),
  * - du gestionnaire d'événements `NEvent` avec initialisation paresseuse via `this.event` (`#event`),
  * - et de la sérialisation / clonage (`toJSON`, `fromJSON`, `clone`).
@@ -35,9 +35,8 @@ import { NEvent } from './NEvent.js';
  * service.event.on('connexion', ({ nom }) => console.log(`Bienvenue ${nom}`));
  * service.connecter('Neta');
  *
- * @example <caption>Exemple 3 : Initialisation différée, sérialisation JSON et clonage</caption>
- * const obj = new NObject({ state: { mode: 'hors-ligne' }, autoInit: false });
- * obj.initialize();
+ * @example <caption>Exemple 3 : Sérialisation JSON, clonage et destruction</caption>
+ * const obj = new NObject({ state: { mode: 'hors-ligne' } });
  * const sauvegarde = JSON.stringify(obj);
  * const copie = obj.clone();
  * obj.destroy();
@@ -77,13 +76,6 @@ export class NObject {
     #event = null;
 
     /**
-     * Indique si la méthode `initialize()` a déjà été exécutée avec succès sur cette instance.
-     * @type {boolean}
-     * @private
-     */
-    #initialized = false;
-
-    /**
      * Indique si la méthode `destroy()` a été appelée et que l'instance est détruite.
      * @type {boolean}
      * @private
@@ -101,20 +93,14 @@ export class NObject {
      *
      * @param {Object} [options={}] - Options de configuration de l'instance.
      * @param {Object<string, any>} [options.state] - Valeurs initiales optionnelles de l'état interne (`#state`).
-     * @param {boolean} [options.autoInit=true] - Si `true` (par défaut), appelle automatiquement `initialize()` à la construction.
      *
-     * @example <caption>Exemple 1 : Création légère (zéro Map ni NEvent alloués en mémoire)</caption>
+     * @example <caption>Exemple 1 : Création légère</caption>
      * const obj = new NObject();
-     * console.log(obj.isInitialized); // true
+     * console.log(obj.isDestroyed); // false
      *
      * @example <caption>Exemple 2 : Création avec un état initial</caption>
      * const obj = new NObject({ state: { langue: 'fr', actif: true } });
      * console.log(obj.getState('langue')); // 'fr'
-     *
-     * @example <caption>Exemple 3 : Création sans initialisation automatique (autoInit: false)</caption>
-     * const obj = new NObject({ autoInit: false });
-     * console.log(obj.isInitialized); // false
-     * obj.initialize();
      */
     constructor(options = {}) {
         const opts = (options && typeof options === 'object') ? options : {};
@@ -133,10 +119,6 @@ export class NObject {
                     target: this
                 });
             }
-        }
-
-        if (opts.autoInit !== false) {
-            this.initialize();
         }
     }
 
@@ -230,25 +212,6 @@ export class NObject {
     }
 
     /**
-     * Indique si l'instance est initialisée.
-     *
-     * @returns {boolean} `true` si `initialize()` a été exécuté, sinon `false`.
-     *
-     * @example <caption>Exemple 1 : Vérification après création standard</caption>
-     * const obj = new NObject();
-     * console.log(obj.isInitialized); // true
-     *
-     * @example <caption>Exemple 2 : Vérification avant et après initialize()</caption>
-     * const obj = new NObject({ autoInit: false });
-     * console.log(obj.isInitialized); // false
-     * obj.initialize();
-     * console.log(obj.isInitialized); // true
-     */
-    get isInitialized() {
-        return this.#initialized;
-    }
-
-    /**
      * Indique si l'instance a été détruite.
      *
      * @returns {boolean} `true` si `destroy()` a été appelé, sinon `false`.
@@ -269,73 +232,6 @@ export class NObject {
     // =========================================================================
     // Méthodes publiques — Cycle de vie (Lifecycle)
     // =========================================================================
-
-    /**
-     * Initialise l'instance après vérification par `validate()`.
-     * Si `#event` a été initialisé, émet l'événement `'initialize'` avec `{ target: this }`.
-     * Si l'instance est déjà initialisée ou détruite, la méthode ne fait rien.
-     * En cas d'échec de validation, consigne l'erreur dans `NLog` et retourne l'instance.
-     *
-     * @returns {this} L'instance courante pour permettre le chaînage fluide.
-     *
-     * @example <caption>Exemple 1 : Initialisation manuelle avec écoute de l'événement 'initialize'</caption>
-     * const obj = new NObject({ autoInit: false });
-     * obj.event.on('initialize', () => console.log('Objet initialisé !'));
-     * obj.initialize();
-     *
-     * @example <caption>Exemple 2 : Chaînage fluide après initialize()</caption>
-     * const obj = new NObject({ autoInit: false })
-     *     .initialize()
-     *     .setState('pret', true);
-     */
-    initialize() {
-        if (this.#initialized || this.#destroyed) {
-            return this;
-        }
-        try {
-            if (!this.validate()) {
-                this.util.log.error(`NObject: Échec de validation lors de l'initialisation de ${this.className}.`, {
-                    code: 'ERR_INIT_VALIDATION',
-                    className: this.className,
-                    target: this
-                });
-                return this;
-            }
-            this.#initialized = true;
-            if (this.#event) {
-                this.#event.emit('initialize', { target: this });
-            }
-        } catch (error) {
-            this.util.log.error(`NObject: Erreur inattendue lors de l'initialisation de ${this.className}.`, {
-                code: 'ERR_INITIALIZE_FAILED',
-                error,
-                stack: error?.stack,
-                target: this
-            });
-        }
-        return this;
-    }
-
-    /**
-     * Vérifie la validité de l'instance avant son initialisation.
-     * Peut être surchargée par les sous-classes pour valider leur configuration.
-     *
-     * @returns {boolean} `true` si l'instance est valide, sinon `false`.
-     *
-     * @example <caption>Exemple 1 : Validation par défaut</caption>
-     * const obj = new NObject();
-     * console.log(obj.validate()); // true
-     *
-     * @example <caption>Exemple 2 : Surcharge dans une sous-classe</caption>
-     * class ServiceConfig extends NObject {
-     *     validate() { return this.hasState('url'); }
-     * }
-     * const srv = new ServiceConfig({ state: { url: 'https://api.nlib.dev' } });
-     * console.log(srv.validate()); // true
-     */
-    validate() {
-        return true;
-    }
 
     /**
      * Détruit proprement l'instance et libère toutes ses références en mémoire (`#state = null` et `#event = null`).
