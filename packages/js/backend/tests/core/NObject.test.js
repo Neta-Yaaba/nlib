@@ -45,4 +45,29 @@ describe('NObject (core/NObject.js)', () => {
         assert.equal(obj.isDestroyed, true);
         assert.deepEqual(obj.state, {});
     });
+
+    it('délègue directement les méthodes de NEvent (on, once, off, emit, waitFor, etc.)', async () => {
+        const obj = new NObject();
+        const received = [];
+        const onPing = (d) => received.push(d);
+
+        obj.on('ping', onPing);
+        obj.once('one', (d) => received.push(`once:${d}`));
+        assert.equal(obj.hasListener('ping', onPing), true);
+        assert.equal(obj.listenerCount('ping'), 1);
+        assert.deepEqual(obj.eventNames(), ['ping', 'one']);
+
+        obj.emit('ping', 1).emit('one', 'a').emit('one', 'b');
+        assert.deepEqual(received, [1, 'once:a']);
+
+        obj.off('ping', onPing);
+        assert.equal(obj.hasListener('ping', onPing), false);
+
+        setTimeout(() => obj.emit('done', 42), 10);
+        assert.equal(await obj.waitFor('done', 500), 42);
+
+        obj.on('tmp', () => {}).clearEvents();
+        assert.equal(obj.listenerCount(), 0);
+        obj.destroy();
+    });
 });

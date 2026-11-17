@@ -1,0 +1,21 @@
+{
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "welcome": "Hello {name}",
+    "user_info": "{name} has {count} messages",
+    "user": {
+        "create": "Create user",
+        "update": "Update user",
+        "delete": "Delete user"
+    },
+    "auth": {
+        "login": "Login",
+        "logout": "Logout"
+    },
+    "messages": {
+        "zero": "No messages",
+        "one": "{count} message",
+        "other": "{count} messages"
+    }
+}

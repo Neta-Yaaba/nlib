@@ -279,14 +279,14 @@ export class NEvent {
      */
     on(event, callback) {
         if (typeof event !== 'string' || event.trim().length === 0) {
-            NEvent.#log('warn', 'NEvent.on: Nom d\'événement invalide fourni.', {
+            this.util?.log?.warn?.('NEvent.on: Nom d\'événement invalide fourni.', {
                 code: 'WARN_EVENT_INVALID',
                 event
             });
             return this;
         }
         if (typeof callback !== 'function') {
-            NEvent.#log('warn', `NEvent.on: Écouteur de type fonction attendu pour "${event}".`, {
+            this.util?.log?.warn?.(`NEvent.on: Écouteur de type fonction attendu pour "${event}".`, {
                 code: 'WARN_LISTENER_NOT_FUNCTION',
                 event,
                 callback
@@ -325,14 +325,14 @@ export class NEvent {
      */
     once(event, callback) {
         if (typeof event !== 'string' || event.trim().length === 0) {
-            NEvent.#log('warn', 'NEvent.once: Nom d\'événement invalide fourni.', {
+            this.util?.log?.warn?.('NEvent.once: Nom d\'événement invalide fourni.', {
                 code: 'WARN_EVENT_INVALID',
                 event
             });
             return this;
         }
         if (typeof callback !== 'function') {
-            NEvent.#log('warn', `NEvent.once: Écouteur de type fonction attendu pour "${event}".`, {
+            this.util?.log?.warn?.(`NEvent.once: Écouteur de type fonction attendu pour "${event}".`, {
                 code: 'WARN_LISTENER_NOT_FUNCTION',
                 event,
                 callback
@@ -344,7 +344,7 @@ export class NEvent {
             try {
                 callback.call(this.#target ?? this, payload);
             } catch (error) {
-                NEvent.#log('error', `NEvent: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
+                this.util?.log?.error?.(`NEvent: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
                     code: 'ERR_EVENT_ONCE_LISTENER',
                     event,
                     error,
@@ -426,7 +426,7 @@ export class NEvent {
             try {
                 callback.call(ctx, data);
             } catch (error) {
-                NEvent.#log('error', `NEvent: Erreur lors de l'exécution d'un écouteur pour l'événement "${event}".`, {
+                this.util?.log?.error?.(`NEvent: Erreur lors de l'exécution d'un écouteur pour l'événement "${event}".`, {
                     code: 'ERR_EVENT_LISTENER',
                     event,
                     error,
@@ -460,7 +460,7 @@ export class NEvent {
      */
     waitFor(event, timeoutMs = 0) {
         if (typeof event !== 'string' || event.trim().length === 0) {
-            NEvent.#log('warn', 'NEvent.waitFor: Nom d\'événement invalide.', {
+            this.util?.log?.warn?.('NEvent.waitFor: Nom d\'événement invalide.', {
                 code: 'WARN_EVENT_INVALID',
                 event
             });
@@ -479,7 +479,7 @@ export class NEvent {
             if (typeof timeoutMs === 'number' && timeoutMs > 0) {
                 timer = setTimeout(() => {
                     this.off(event, handler);
-                    NEvent.#log('warn', `NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
+                    this.util?.log?.warn?.(`NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
                         code: 'WARN_EVENT_TIMEOUT',
                         event,
                         timeoutMs
@@ -557,23 +557,6 @@ export class NEvent {
             NEvent.#util = util;
         }
         return NEvent;
-    }
-
-    /**
-     * Journalise un message via `NUtil.log` lorsqu'il est enregistré, ou via `console` en repli.
-     *
-     * @param {'warn'|'error'|'info'|'debug'} level - Niveau de journalisation.
-     * @param {string} message - Message à enregistrer.
-     * @param {Object} [meta] - Métadonnées associées.
-     * @private
-     */
-    static #log(level, message, meta) {
-        const logger = NEvent.#util?.log;
-        if (logger && typeof logger[level] === 'function') {
-            logger[level](message, meta);
-        } else if (typeof console?.[level] === 'function') {
-            console[level](message, meta);
-        }
     }
 }
 

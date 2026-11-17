@@ -1,0 +1,21 @@
+<!-- packages/js/frontend/tests.html -->
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>NLib Frontend Tests</title>
+</head>
+
+<body>
+    <script type="module">
+        import { runAllTests } from './tests/index.js';
+        const results = await runAllTests();
+        document.body.innerHTML = `
+        <h2>${results.ok ? '✅ Tous les tests passent' : '❌ Échecs détectés'}</h2>
+        <p>${results.passed} réussis / ${results.failed} échoués / ${results.total} total</p>
+    `;
+    </script>
+</body>
+
+</html>

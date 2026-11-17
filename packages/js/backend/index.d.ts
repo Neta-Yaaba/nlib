@@ -58,6 +58,16 @@ export class NObject {
     readonly util: typeof NUtil;
     readonly isDestroyed: boolean;
 
+    on(event: string, callback: NEventCallback): this;
+    once(event: string, callback: NEventCallback): this;
+    off(event?: string, callback?: NEventCallback): this;
+    emit(event: string, data?: any): this;
+    waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
+    hasListener(event: string, callback: NEventCallback): boolean;
+    listenerCount(event?: string): number;
+    eventNames(): string[];
+    clearEvents(): this;
+
     destroy(): void;
     hasState(key: string): boolean;
     getState<T = any>(key: string, defaultValue?: T): T;
@@ -353,6 +363,8 @@ export class NUtil extends NObject {
     static readonly directory: NDirectory;
     static readonly cache: NCache;
     static readonly log: NLog;
+    static readonly lang: NLanguage;
+    static readonly language: NLanguage;
 
     static uuid(): string;
     static uid(prefix?: string): string;
@@ -1711,5 +1723,75 @@ export class NServiceWorker extends NObject {
     handleRequest(requestOrUrl: Request | string, init?: RequestInit): Promise<Response>;
     resolveFileUrl(urlOrPath: string, options?: { preferBlobUrl?: boolean; mimeType?: string }): Promise<string | null>;
     installServiceWorkerListeners(): boolean;
+    destroy(): void;
+}
+
+/* ========================================================================== *
+ * 12. DOSSIER language/ (NLanguage)                                          *
+ * ========================================================================== */
+
+export interface NLanguageOptions extends NObjectOptions {
+    language?: string;
+    fallback?: string | null;
+    missingBehavior?: 'key' | 'empty';
+    preserveUnknownParams?: boolean;
+    logMissing?: boolean;
+    logMissingParameters?: boolean;
+    protectedLanguages?: string[];
+    loader?: ((code: string) => Promise<Record<string, any> | string> | Record<string, any> | string) | null;
+    languages?: Record<string, Record<string, any>>;
+}
+
+export interface NLanguageMissingEntry {
+    key: string;
+    language: string;
+    type: string;
+    fallbackUsed: string | null;
+    timestamp: number;
+}
+
+export interface NLanguageCheckReport {
+    ok: boolean;
+    languages: string[];
+    totalKeys: number;
+    missingByLanguage: Record<string, string[]>;
+    missingEverywhere: string[];
+    typeMismatches: Array<{ key: string; types: Record<string, string> }>;
+    unusedKeys: string[];
+}
+
+/**
+ * Moteur central d'internationalisation (i18n) multi-environnements (`language/NLanguage.js`).
+ */
+export class NLanguage extends NObject {
+    constructor(options?: NLanguageOptions);
+
+    init(options?: NLanguageOptions): Promise<this>;
+    getConfig(): Readonly<Required<Omit<NLanguageOptions, 'languages' | 'state'>>>;
+
+    getLanguage(): string;
+    getFallbackLanguage(): string | null;
+    getLanguages(): string[];
+    hasLanguage(code: string): boolean;
+    addLanguage(code: string, dictionary?: Record<string, any>, options?: { merge?: boolean }): this;
+    removeLanguage(code: string): boolean;
+    loadLanguage(code: string, options?: { force?: boolean }): Promise<boolean>;
+    unloadLanguage(code: string): boolean;
+    setLanguage(code: string): Promise<this>;
+
+    get(
+        key: string,
+        params?: Record<string, any>,
+        options?: { language?: string; fallback?: string | null; missingBehavior?: 'key' | 'empty' }
+    ): string;
+    plural(
+        key: string,
+        params?: Record<string, any>,
+        options?: { countParam?: string; language?: string; fallback?: string | null; missingBehavior?: 'key' | 'empty' }
+    ): string;
+
+    getMissing(): NLanguageMissingEntry[];
+    clearMissing(): this;
+    checkTranslations(referenceKeys?: string[] | null): NLanguageCheckReport;
     destroy(): void;
 }

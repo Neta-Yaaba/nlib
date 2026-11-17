@@ -33,6 +33,7 @@ import { NDatabase } from '../database/NDatabase.js';
 import { NDirectory } from '../filesystem/NDirectory.js';
 import { NFile } from '../filesystem/NFile.js';
 import { NLog } from '../log/NLog.js';
+import { NLanguage } from '../language/NLanguage.js';
 
 /**
  * @class NUtil
@@ -126,6 +127,9 @@ export class NUtil extends NObject {
 
     /** @type {NLog|null} */
     static #log = null;
+
+    /** @type {NLanguage|null} */
+    static #lang = null;
 
     /** @type {Map<number, Object>} */
     static #activeTimers = new Map();
@@ -609,6 +613,40 @@ export class NUtil extends NObject {
             this.#log = new NLog();
         }
         return this.#log;
+    }
+
+    /**
+     * Retourne l'instance partagée de `NLanguage` (moteur d'internationalisation i18n instancié au premier accès).
+     *
+     * @returns {NLanguage} Instance partagée de `NLanguage`.
+     *
+     * @example <caption>Exemple 1 : Ajouter et lire une traduction via NUtil.lang</caption>
+     * NUtil.lang.addLanguage('fr', { save: 'Enregistrer' });
+     * console.log(NUtil.lang.get('save')); // 'Enregistrer'
+     *
+     * @example <caption>Exemple 2 : Utiliser l'alias NUtil.language</caption>
+     * console.log(NUtil.language === NUtil.lang); // true
+     */
+    static get lang() {
+        if (!this.#lang) {
+            this.#lang = new NLanguage();
+        }
+        return this.#lang;
+    }
+
+    /**
+     * Alias de `NUtil.lang` retournant l'instance partagée de `NLanguage`.
+     *
+     * @returns {NLanguage} Instance partagée de `NLanguage`.
+     *
+     * @example <caption>Exemple 1 : Lire la langue active</caption>
+     * console.log(NUtil.language.getLanguage());
+     *
+     * @example <caption>Exemple 2 : Traduire une clé</caption>
+     * console.log(NUtil.language.get('save'));
+     */
+    static get language() {
+        return this.lang;
     }
 
     // =========================================================================

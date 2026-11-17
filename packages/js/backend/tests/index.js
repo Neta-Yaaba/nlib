@@ -61,6 +61,9 @@ import './worker/NWorker.test.js';
 import './worker/NWorkerManager.test.js';
 import './worker/NServiceWorker.test.js';
 
+// 12. language/
+import './language/NLanguage.test.js';
+
 export { runAllTests };
 
 // Exécution automatique hors navigateur (tests.html appelle runAllTests() directement)

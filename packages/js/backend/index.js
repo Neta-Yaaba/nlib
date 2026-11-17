@@ -56,6 +56,9 @@ export { NDirectory } from './filesystem/NDirectory.js';
 // Cache multi-niveaux
 export { NCache } from './cache/NCache.js';
 
+// Internationalisation
+export { NLanguage } from './language/NLanguage.js';
+
 
 
 

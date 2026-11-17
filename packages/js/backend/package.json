@@ -15,21 +15,22 @@
     },
     "./*": "./*"
   },
-  "files": [
-    "index.js",
-    "index.d.ts",
-    "cache",
-    "config",
-    "core",
-    "database",
-    "environment",
-    "filesystem",
-    "log",
-    "requests",
-    "system",
-    "utils",
-    "worker"
-  ],
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "cache",
+        "config",
+        "core",
+        "database",
+        "environment",
+        "filesystem",
+        "language",
+        "log",
+        "requests",
+        "system",
+        "utils",
+        "worker"
+    ],
   "sideEffects": [
     "./utils/NUtil.js"
   ],

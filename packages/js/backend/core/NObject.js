@@ -230,6 +230,177 @@ export class NObject {
     }
 
     // =========================================================================
+    // Méthodes publiques — Événements (Délégation vers NEvent)
+    // =========================================================================
+
+    /**
+     * Enregistre un écouteur pour un événement donné sur l'instance (`this.event.on`).
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {Function} callback - Fonction appelée lors de l'émission.
+     * @returns {this} L'instance courante pour chaînage fluide.
+     *
+     * @example <caption>Exemple 1 : Écouter un événement directement sur l'objet</caption>
+     * const obj = new NObject();
+     * obj.on('ready', (data) => console.log('Prêt :', data));
+     * obj.emit('ready', { ok: true });
+     *
+     * @example <caption>Exemple 2 : Chaînage fluide avec setState</caption>
+     * obj.on('state:mode', ({ value }) => console.log(value)).setState('mode', 'prod');
+     */
+    on(event, callback) {
+        this.event.on(event, callback);
+        return this;
+    }
+
+    /**
+     * Enregistre un écouteur qui ne sera exécuté qu'une seule fois (`this.event.once`).
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {Function} callback - Fonction exécutée à la première émission.
+     * @returns {this} L'instance courante pour chaînage fluide.
+     *
+     * @example <caption>Exemple 1 : Écoute unique</caption>
+     * const obj = new NObject();
+     * obj.once('connected', () => console.log('Première connexion'));
+     *
+     * @example <caption>Exemple 2 : Chaînage</caption>
+     * obj.once('init', () => {}).emit('init');
+     */
+    once(event, callback) {
+        this.event.once(event, callback);
+        return this;
+    }
+
+    /**
+     * Supprime un écouteur ou tous les écouteurs d'un événement (`this.event.off`).
+     *
+     * @param {string} [event] - Nom de l'événement (tous si omis).
+     * @param {Function} [callback] - Fonction spécifique à retirer.
+     * @returns {this} L'instance courante pour chaînage fluide.
+     *
+     * @example <caption>Exemple 1 : Retirer un écouteur spécifique</caption>
+     * obj.off('ready', handler);
+     *
+     * @example <caption>Exemple 2 : Retirer tous les écouteurs d'un événement</caption>
+     * obj.off('ready');
+     */
+    off(event, callback) {
+        if (this.#event) {
+            this.#event.off(event, callback);
+        }
+        return this;
+    }
+
+    /**
+     * Émet un événement avec une donnée associée (`this.event.emit`).
+     *
+     * @param {string} event - Nom de l'événement à déclencher.
+     * @param {any} [data=null] - Charge utile transmise aux écouteurs.
+     * @returns {this} L'instance courante pour chaînage fluide.
+     *
+     * @example <caption>Exemple 1 : Émettre un événement personnalisé</caption>
+     * obj.emit('saved', { id: 42 });
+     *
+     * @example <caption>Exemple 2 : Émettre plusieurs événements en chaîne</caption>
+     * obj.emit('start').emit('end');
+     */
+    emit(event, data = null) {
+        if (this.#event) {
+            this.#event.emit(event, data);
+        }
+        return this;
+    }
+
+    /**
+     * Attend de manière asynchrone la prochaine émission d'un événement (`this.event.waitFor`).
+     *
+     * @param {string} event - Nom de l'événement attendu.
+     * @param {number} [timeoutMs=0] - Délai maximal d'attente en millisecondes (0 = illimité).
+     * @returns {Promise<any>} Promesse résolue avec la donnée de l'événement ou `null` en cas de timeout.
+     *
+     * @example <caption>Exemple 1 : Attendre un événement avec await</caption>
+     * setTimeout(() => obj.emit('loaded', { count: 3 }), 10);
+     * const res = await obj.waitFor('loaded');
+     *
+     * @example <caption>Exemple 2 : Attendre avec un timeout</caption>
+     * const res = await obj.waitFor('never', 50); // null
+     */
+    waitFor(event, timeoutMs = 0) {
+        return this.event.waitFor(event, timeoutMs);
+    }
+
+    /**
+     * Vérifie si un écouteur est enregistré pour un événement (`this.event.hasListener`).
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {Function} callback - Fonction de rappel recherchée.
+     * @returns {boolean} `true` si l'écouteur est présent, sinon `false`.
+     *
+     * @example <caption>Exemple 1 : Vérifier un écouteur présent</caption>
+     * obj.on('ping', fn);
+     * console.log(obj.hasListener('ping', fn)); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier après suppression</caption>
+     * obj.off('ping', fn);
+     * console.log(obj.hasListener('ping', fn)); // false
+     */
+    hasListener(event, callback) {
+        return this.#event ? this.#event.hasListener(event, callback) : false;
+    }
+
+    /**
+     * Retourne le nombre d'écouteurs enregistrés pour un événement ou au total (`this.event.listenerCount`).
+     *
+     * @param {string} [event] - Nom de l'événement (total si omis).
+     * @returns {number} Nombre d'écouteurs.
+     *
+     * @example <caption>Exemple 1 : Compter les écouteurs d'un événement</caption>
+     * obj.on('save', () => {});
+     * console.log(obj.listenerCount('save')); // 1
+     *
+     * @example <caption>Exemple 2 : Compter tous les écouteurs</caption>
+     * console.log(obj.listenerCount());
+     */
+    listenerCount(event) {
+        return this.#event ? this.#event.listenerCount(event) : 0;
+    }
+
+    /**
+     * Retourne la liste des noms d'événements ayant au moins un écouteur (`this.event.eventNames`).
+     *
+     * @returns {string[]} Tableau des noms d'événements.
+     *
+     * @example <caption>Exemple 1 : Lister les événements écoutés</caption>
+     * obj.on('open', () => {}).on('close', () => {});
+     * console.log(obj.eventNames()); // ['open', 'close']
+     *
+     * @example <caption>Exemple 2 : Objet sans écouteur</caption>
+     * console.log(new NObject().eventNames()); // []
+     */
+    eventNames() {
+        return this.#event ? this.#event.eventNames() : [];
+    }
+
+    /**
+     * Supprime tous les écouteurs d'événements enregistrés sur l'instance (`this.event.clear`).
+     *
+     * @returns {this} L'instance courante pour chaînage fluide.
+     *
+     * @example <caption>Exemple 1 : Vider tous les écouteurs</caption>
+     * obj.clearEvents();
+     *
+     * @example <caption>Exemple 2 : Chaînage après nettoyage</caption>
+     * obj.clearEvents().on('ready', () => {});
+     */
+    clearEvents() {
+        if (this.#event) {
+            this.#event.clear();
+        }
+        return this;
+    }
+
+    // =========================================================================
     // Méthodes publiques — Cycle de vie (Lifecycle)
     // =========================================================================
 
@@ -258,7 +429,7 @@ export class NObject {
         try {
             if (this.#event) {
                 this.#event.emit('beforeDestroy', { target: this });
-                this.#event.clear();
+                this.clearEvents();
                 this.#event = null;
             }
             if (this.#state) {

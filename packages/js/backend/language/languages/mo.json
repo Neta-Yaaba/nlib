@@ -1,0 +1,20 @@
+{
+    "save": "Bĩngi",
+    "cancel": "Basgẽ",
+    "delete": "Yẽesẽ",
+    "welcome": "Ne y windga {name}",
+    "user_info": "{name} tara koeese {count}",
+    "user": {
+        "create": "Naan tʋm-tʋmda",
+        "update": "Tek tʋm-tʋmda",
+        "delete": "Yẽes tʋm-tʋmda"
+    },
+    "auth": {
+        "login": "Kẽe",
+        "logout": "Yi"
+    },
+    "messages": {
+        "one": "Koeega {count}",
+        "other": "Koeese {count}"
+    }
+}

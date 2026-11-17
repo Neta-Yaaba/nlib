@@ -51,6 +51,8 @@ Documentation complète de l'API du paquet `@nlib/js-backend`, organisée dossie
     - [`NWorker`](#111-classe-nworker-workernworkerjs)
     - [`NWorkerManager`](#112-classe-nworkermanager-workernworkermanagerjs)
     - [`NServiceWorker`](#113-classe-nserviceworker-workernserviceworkerjs)
+13. [Dossier `language/`](#12-dossier-language)
+    - [`NLanguage`](#121-classe-nlanguage-languagenlanguagejs)
 
 ---
 
@@ -1939,4 +1941,44 @@ const sw = new NServiceWorker({
 
 // Attache automatiquement les événements 'install', 'activate' et 'fetch' du Service Worker
 sw.installServiceWorkerListeners();
+```
+
+---
+
+## 12. Dossier `language/`
+
+### 12.1. Classe `NLanguage` (`language/NLanguage.js`)
+
+Moteur central d'internationalisation (i18n) multi-environnements : dictionnaires hiérarchiques, notation pointée, langue de secours (`fallback`), interpolation sécurisée de paramètres, pluralisation CLDR (`Intl.PluralRules`), chargement différé injectable et audit des dictionnaires.
+
+#### Méthodes principales
+- `init(options = {})` : Initialise le moteur et charge la langue active et le fallback.
+- `addLanguage(code, dictionary, { merge })` / `removeLanguage(code)` / `hasLanguage(code)` / `getLanguages()`
+- `loadLanguage(code)` / `unloadLanguage(code)` / `setLanguage(code)` / `getLanguage()` / `getFallbackLanguage()`
+- `get(key, params = {}, options = {})` : Récupère et interpole une traduction de façon synchrone.
+- `plural(key, params = {}, options = {})` : Sélectionne la variante plurielle via `Intl.PluralRules`.
+- `getMissing()` / `clearMissing()` / `checkTranslations(referenceKeys = null)`
+
+#### Exemple
+```javascript
+import { NLanguage } from '@nlib/js-backend';
+
+const lang = new NLanguage();
+await lang.init({
+    language: 'fr',
+    fallback: 'en',
+    languages: {
+        fr: {
+            welcome: 'Bonjour {name}',
+            messages: { one: '{count} message', other: '{count} messages' }
+        },
+        en: {
+            welcome: 'Hello {name}',
+            messages: { one: '{count} message', other: '{count} messages' }
+        }
+    }
+});
+
+console.log(lang.get('welcome', { name: 'Madi' })); // 'Bonjour Madi'
+console.log(lang.plural('messages', { count: 4 })); // '4 messages'
 ```

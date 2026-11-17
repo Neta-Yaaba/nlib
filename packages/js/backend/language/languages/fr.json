@@ -1,0 +1,21 @@
+{
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "welcome": "Bonjour {name}",
+    "user_info": "{name} possède {count} messages",
+    "user": {
+        "create": "Créer un utilisateur",
+        "update": "Modifier un utilisateur",
+        "delete": "Supprimer un utilisateur"
+    },
+    "auth": {
+        "login": "Connexion",
+        "logout": "Déconnexion"
+    },
+    "messages": {
+        "zero": "Aucun message",
+        "one": "{count} message",
+        "other": "{count} messages"
+    }
+}
