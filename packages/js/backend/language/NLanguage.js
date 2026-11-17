@@ -91,6 +91,20 @@ export class NLanguage extends NObject {
     #loadingPromises = null;
 
     /**
+     * Compteur de génération par langue pour invalider les chargements obsolètes (alloué paresseusement).
+     * @type {Map<string, number>|null}
+     * @private
+     */
+    #loadGenerations = null;
+
+    /**
+     * Compteur global de génération incrémenté lors de la destruction de l'instance.
+     * @type {number}
+     * @private
+     */
+    #instanceGeneration = 0;
+
+    /**
      * Cache des instances `Intl.PluralRules` par code de langue (alloué paresseusement).
      * @type {Map<string, Intl.PluralRules|null>|null}
      * @private
@@ -421,6 +435,10 @@ export class NLanguage extends NObject {
      * await language.loadLanguage('en', { force: true });
      */
     async loadLanguage(code, options = {}) {
+        if (this.isDestroyed) {
+            return false;
+        }
+
         const norm = this.#normalizeLanguageCode(code);
         if (!norm) {
             throw new Error(`NLanguage.loadLanguage: Code de langue invalide "${code}".`);
@@ -442,9 +460,19 @@ export class NLanguage extends NObject {
             throw new Error(`NLanguage.loadLanguage: Aucun chargeur configuré pour charger "${norm}".`);
         }
 
+        const instanceGen = this.#instanceGeneration;
+        const langGen = this.#loadGenerations?.get(norm) ?? 0;
         const loadingPromises = this.#ensureLoadingPromises();
         const task = (async () => {
             const raw = await this.#loader(norm);
+            if (
+                this.isDestroyed ||
+                instanceGen !== this.#instanceGeneration ||
+                (this.#loadGenerations?.get(norm) ?? 0) !== langGen
+            ) {
+                return false;
+            }
+
             let parsed = raw;
             if (typeof raw === 'string') {
                 try {
@@ -455,6 +483,14 @@ export class NLanguage extends NObject {
             }
             if (!this.#isPlainObject(parsed)) {
                 throw new Error(`NLanguage.loadLanguage: Dictionnaire invalide reçu pour "${norm}".`);
+            }
+
+            if (
+                this.isDestroyed ||
+                instanceGen !== this.#instanceGeneration ||
+                (this.#loadGenerations?.get(norm) ?? 0) !== langGen
+            ) {
+                return false;
             }
 
             this.addLanguage(norm, parsed, { merge: false });
@@ -469,8 +505,10 @@ export class NLanguage extends NObject {
         try {
             return await task;
         } finally {
-            loadingPromises.delete(norm);
-            if (loadingPromises.size === 0) {
+            if (loadingPromises.get(norm) === task) {
+                loadingPromises.delete(norm);
+            }
+            if (this.#loadingPromises && this.#loadingPromises.size === 0) {
                 this.#loadingPromises = null;
             }
         }
@@ -490,7 +528,19 @@ export class NLanguage extends NObject {
      */
     unloadLanguage(code) {
         const norm = this.#normalizeLanguageCode(code);
-        if (!norm || !this.#flatDictionaries?.has(norm)) {
+        if (!norm) {
+            return false;
+        }
+        if (!this.#loadGenerations) {
+            this.#loadGenerations = new Map();
+        }
+        this.#loadGenerations.set(norm, (this.#loadGenerations.get(norm) ?? 0) + 1);
+        this.#loadingPromises?.delete(norm);
+        if (this.#loadingPromises && this.#loadingPromises.size === 0) {
+            this.#loadingPromises = null;
+        }
+
+        if (!this.#flatDictionaries?.has(norm)) {
             return false;
         }
         this.#dictionaries?.delete(norm);
@@ -838,6 +888,9 @@ export class NLanguage extends NObject {
      * if (!lang.isDestroyed) lang.destroy();
      */
     destroy() {
+        this.#instanceGeneration += 1;
+        this.#loadGenerations?.clear();
+        this.#loadGenerations = null;
         this.#knownLanguages?.clear();
         this.#knownLanguages = null;
         this.#dictionaries?.clear();
@@ -991,20 +1044,38 @@ export class NLanguage extends NObject {
     }
 
     /**
-     * Vérifie si une valeur est un objet simple (non null, non tableau).
+     * Vérifie si une valeur est un objet simple (prototype `Object.prototype` ou `null`).
      * @private
      */
     #isPlainObject(value) {
-        return value !== null && typeof value === 'object' && !Array.isArray(value);
+        if (value === null || typeof value !== 'object') {
+            return false;
+        }
+        const proto = Object.getPrototypeOf(value);
+        return proto === Object.prototype || proto === null;
     }
 
     /**
-     * Fusionne profondément deux dictionnaires sans modifier les objets sources.
+     * Fusionne profondément deux dictionnaires sans modifier les objets sources
+     * et en ignorant les clés dangereuses (`__proto__`, `constructor`, `prototype`).
      * @private
      */
     #deepMerge(target, source) {
-        const out = { ...target };
-        for (const [k, v] of Object.entries(source)) {
+        const out = {};
+        if (this.#isPlainObject(target)) {
+            for (const k of Object.keys(target)) {
+                if (k === '__proto__' || k === 'constructor' || k === 'prototype') {
+                    continue;
+                }
+                const v = target[k];
+                out[k] = this.#isPlainObject(v) ? this.#deepMerge({}, v) : v;
+            }
+        }
+        for (const k of Object.keys(source)) {
+            if (k === '__proto__' || k === 'constructor' || k === 'prototype') {
+                continue;
+            }
+            const v = source[k];
             if (this.#isPlainObject(v) && this.#isPlainObject(out[k])) {
                 out[k] = this.#deepMerge(out[k], v);
             } else if (this.#isPlainObject(v)) {
@@ -1017,15 +1088,23 @@ export class NLanguage extends NObject {
     }
 
     /**
-     * Aplatit récursivement un dictionnaire hiérarchique en clés pointées.
+     * Aplatit récursivement un dictionnaire hiérarchique en clés pointées
+     * tout en détectant les collisions de clés.
      * @private
      */
     #flattenDictionary(obj, prefix, targetMap) {
-        for (const [k, v] of Object.entries(obj)) {
+        for (const k of Object.keys(obj)) {
+            if (k === '__proto__' || k === 'constructor' || k === 'prototype') {
+                continue;
+            }
+            const v = obj[k];
             const fullKey = prefix ? `${prefix}.${k}` : k;
             if (this.#isPlainObject(v)) {
                 this.#flattenDictionary(v, fullKey, targetMap);
             } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                if (targetMap.has(fullKey)) {
+                    throw new Error(`NLanguage: Collision de clé détectée pour "${fullKey}".`);
+                }
                 targetMap.set(fullKey, String(v));
             } else {
                 throw new Error(`NLanguage: Valeur de traduction invalide pour "${fullKey}" (chaîne ou objet imbriqué attendu).`);

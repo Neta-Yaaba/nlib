@@ -140,4 +140,84 @@ describe('NLanguage (language/NLanguage.js)', () => {
         assert.equal(report.missingEverywhere.includes('missing.everywhere'), true);
         assert.equal(report.missingByLanguage.fr.includes('user.create'), true);
     });
+
+    it('rejette les objets non simples, bloque la pollution de prototype et détecte les collisions de clés', async () => {
+        const lang = new NLanguage();
+        await lang.init({ language: 'fr', fallback: 'en' });
+
+        // Rejet d'objets non simples (Date, Map, instance de classe)
+        class CustomDict { constructor() { this.hello = 'Bonjour'; } }
+        for (const invalid of [new Date(), new Map(), new CustomDict()]) {
+            let threw = false;
+            try {
+                lang.addLanguage('fr', invalid);
+            } catch {
+                threw = true;
+            }
+            assert.equal(threw, true);
+        }
+
+        // Support des objets sans prototype (Object.create(null))
+        const nullProtoDict = Object.assign(Object.create(null), { hello: 'Bonjour' });
+        lang.addLanguage('fr', nullProtoDict);
+        assert.equal(lang.get('hello'), 'Bonjour');
+
+        // Protection contre la pollution de prototype via JSON externe
+        const malicious = JSON.parse('{"__proto__":{"polluted":"yes"},"constructor":{"prototype":{"polluted":"yes"}},"safe":"OK"}');
+        lang.addLanguage('fr', malicious, { merge: true });
+        assert.equal(({}).polluted, undefined);
+        assert.equal(lang.get('safe'), 'OK');
+
+        // Détection des collisions de clés pointées
+        let collisionErr = null;
+        try {
+            lang.addLanguage('en', {
+                user: { name: 'Madi' },
+                'user.name': 'Autre'
+            });
+        } catch (err) {
+            collisionErr = err;
+        }
+        assert.equal(Boolean(collisionErr && /user\.name/.test(collisionErr.message)), true);
+    });
+
+    it('ignore un chargement asynchrone terminé après unloadLanguage() ou destroy()', async () => {
+        let resolveMos;
+        let resolveEs;
+        const lang = new NLanguage();
+        let loadedEvents = 0;
+        lang.on('languageLoaded', () => {
+            loadedEvents += 1;
+        });
+
+        await lang.init({
+            language: 'fr',
+            fallback: 'en',
+            languages: { fr: { save: 'Enregistrer' }, en: { save: 'Save' } },
+            loader: (code) => new Promise((resolve) => {
+                if (code === 'mos') resolveMos = resolve;
+                else if (code === 'es') resolveEs = resolve;
+                else resolve({});
+            })
+        });
+
+        // 1) unloadLanguage() pendant un chargement en vol
+        const mosPromise = lang.loadLanguage('mos');
+        lang.unloadLanguage('mos');
+        resolveMos({ save: 'Bĩngi' });
+        const mosResult = await mosPromise;
+        assert.equal(mosResult, false);
+        assert.equal(lang.hasLanguage('mos'), false);
+        assert.equal(lang.get('save', {}, { language: 'mos', fallback: false }), 'save');
+        assert.equal(loadedEvents, 0);
+
+        // 2) destroy() pendant un chargement en vol
+        const esPromise = lang.loadLanguage('es');
+        lang.destroy();
+        resolveEs({ save: 'Guardar' });
+        const esResult = await esPromise;
+        assert.equal(esResult, false);
+        assert.equal(loadedEvents, 0);
+        assert.equal(await lang.loadLanguage('es'), false);
+    });
 });

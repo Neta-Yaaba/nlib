@@ -6,7 +6,7 @@
  * relié au DOM natif, et du cycle de vie (`destroy()`).
  */
 
-import { NObject } from '../../backend/core/NObject.js';
+import { NObject } from '../../../backend/core/NObject.js';
 
 /**
  * @class NTag
@@ -61,11 +61,53 @@ export class NTag extends NObject {
     #domBridge = null;
 
     /**
-     * Observateur de redimensionnement créé paresseusement lors d'un abonnement à `'resize'`.
+     * Observateur de redimensionnement partagé entre toutes les instances `NTag` abonnées à `'resize'`.
      * @type {ResizeObserver|null}
      * @private
      */
-    #resizeObserver = null;
+    static #resizeObserver = null;
+
+    /**
+     * Ensemble des éléments DOM actuellement observés par `NTag.#resizeObserver`.
+     * @type {Set<Element>}
+     * @private
+     */
+    static #resizeTargets = new Set();
+
+    /**
+     * Indique si cette instance est actuellement observée par `NTag.#resizeObserver`.
+     * @type {boolean}
+     * @private
+     */
+    #resizeObserved = false;
+
+    /**
+     * Observateur de visibilité dans le viewport partagé entre toutes les instances `NTag` abonnées à `'visibility'`.
+     * @type {IntersectionObserver|null}
+     * @private
+     */
+    static #visibilityObserver = null;
+
+    /**
+     * Ensemble des éléments DOM actuellement observés par `NTag.#visibilityObserver`.
+     * @type {Set<Element>}
+     * @private
+     */
+    static #visibilityTargets = new Set();
+
+    /**
+     * Indique si cette instance est actuellement observée par `NTag.#visibilityObserver`.
+     * @type {boolean}
+     * @private
+     */
+    #visibilityObserved = false;
+
+    /**
+     * Dernier état connu de visibilité dans le viewport pour l'événement `'visibility'`.
+     * @type {boolean}
+     * @private
+     */
+    #lastVisibleInScreen = false;
 
     /**
      * État et écouteurs internes du geste `'longclick'` créés paresseusement.
@@ -82,18 +124,32 @@ export class NTag extends NObject {
     #longClickDelay = 500;
 
     /**
-     * Observateur de mutations DOM créé paresseusement pour `'mount'` / `'unmount'`.
-     * @type {MutationObserver|null}
-     * @private
-     */
-    #mountObserver = null;
-
-    /**
      * Dernier état connu de rattachement au document (`element.isConnected`).
      * @type {boolean}
      * @private
      */
     #lastConnected = false;
+
+    /**
+     * Valeur `display` inline mémorisée avant un appel à `hide()`.
+     * @type {string}
+     * @private
+     */
+    #previousDisplay = '';
+
+    /**
+     * Indicateur de réentrance pendant l'exécution de `destroy()`.
+     * @type {boolean}
+     * @private
+     */
+    #destroying = false;
+
+    /**
+     * Fonction optionnelle d'application de langue passée via `options.applyLanguage`.
+     * @type {Function|null}
+     * @private
+     */
+    #applyLanguageFn = null;
 
     // =========================================================================
     // Constructeur
@@ -194,6 +250,12 @@ export class NTag extends NObject {
                     this.on(eventName, handler);
                 }
             }
+        }
+        if (typeof opts.language === 'string' && opts.language.trim()) {
+            this.setState('language', opts.language.trim());
+        }
+        if (typeof opts.applyLanguage === 'function') {
+            this.#applyLanguageFn = opts.applyLanguage;
         }
     }
 
@@ -406,6 +468,8 @@ export class NTag extends NObject {
             this.#element.removeAttribute(attrName);
         } else if (value === true) {
             this.#element.setAttribute(attrName, '');
+        } else if (typeof value === 'object') {
+            this.#element.setAttribute(attrName, JSON.stringify(value));
         } else {
             this.#element.setAttribute(attrName, String(value));
         }
@@ -494,10 +558,59 @@ export class NTag extends NObject {
     }
 
     /**
+     * Définit une propriété JavaScript directement sur l'élément DOM sous-jacent
+     * (ex. `value`, `checked`, `disabled`, `selectedIndex`).
+     *
+     * @param {string} name - Nom de la propriété DOM.
+     * @param {any} value - Valeur à affecter.
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Cocher une case à cocher</caption>
+     * checkbox.setProperty('checked', true);
+     *
+     * @example <caption>Exemple 2 : Définir la valeur d'un champ de saisie</caption>
+     * input.setProperty('value', 'Bonjour');
+     */
+    setProperty(name, value) {
+        if (!this.#element || typeof name !== 'string') {
+            return this;
+        }
+        const prop = name.trim();
+        if (!prop || prop === '__proto__' || prop === 'constructor' || prop === 'prototype' || prop === '_ntag') {
+            return this;
+        }
+        this.#element[prop] = value;
+        return this;
+    }
+
+    /**
+     * Lit la valeur d'une propriété JavaScript sur l'élément DOM sous-jacent.
+     *
+     * @param {string} name - Nom de la propriété DOM.
+     * @returns {any} Valeur de la propriété, ou `undefined` si absente.
+     *
+     * @example <caption>Exemple 1 : Lire l'état coché d'une case</caption>
+     * console.log(checkbox.getProperty('checked'));
+     *
+     * @example <caption>Exemple 2 : Lire la valeur courante d'un champ</caption>
+     * console.log(input.getProperty('value'));
+     */
+    getProperty(name) {
+        if (!this.#element || typeof name !== 'string') {
+            return undefined;
+        }
+        const prop = name.trim();
+        if (!prop || prop === '__proto__' || prop === 'constructor' || prop === 'prototype') {
+            return undefined;
+        }
+        return this.#element[prop];
+    }
+
+    /**
      * Définit un attribut `data-*` via `dataset`.
      *
      * @param {string} key - Clé camelCase du dataset (ex: `'userId'` -> `data-user-id`).
-     * @param {string|number|boolean|null} value - Valeur associée (`null`/`undefined` supprime l'entrée).
+     * @param {string|number|boolean|object|null} value - Valeur associée (`null`/`undefined` supprime l'entrée).
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Stocker un identifiant métier</caption>
@@ -513,6 +626,8 @@ export class NTag extends NObject {
         const k = key.trim();
         if (value === null || value === undefined) {
             delete this.#element.dataset[k];
+        } else if (typeof value === 'object') {
+            this.#element.dataset[k] = JSON.stringify(value);
         } else {
             this.#element.dataset[k] = String(value);
         }
@@ -610,10 +725,12 @@ export class NTag extends NObject {
         if (!this.#element || !this.#element.classList || typeof name !== 'string' || !name.trim()) {
             return this;
         }
-        if (force === undefined) {
-            this.#element.classList.toggle(name.trim());
-        } else {
-            this.#element.classList.toggle(name.trim(), Boolean(force));
+        for (const token of name.split(/\s+/).filter(Boolean)) {
+            if (force === undefined) {
+                this.#element.classList.toggle(token);
+            } else {
+                this.#element.classList.toggle(token, Boolean(force));
+            }
         }
         return this;
     }
@@ -664,9 +781,32 @@ export class NTag extends NObject {
         }
         if (typeof propOrObj === 'string' && propOrObj.trim()) {
             const prop = propOrObj.trim();
-            const valStr = (value === null || value === undefined) ? '' : String(value);
-            if (prop.includes('-')) {
-                this.#element.style.setProperty(prop, valStr);
+            if (value === null || value === undefined || value === '') {
+                return this.removeStyle(prop);
+            }
+
+            let valStr;
+            if (typeof value === 'number') {
+                if (!Number.isFinite(value)) {
+                    return this;
+                }
+                valStr = String(value);
+            } else {
+                valStr = String(value).trim();
+            }
+
+            let priority = '';
+            if (/!important$/i.test(valStr)) {
+                priority = 'important';
+                valStr = valStr.replace(/\s*!important$/i, '').trim();
+            }
+
+            const cssProp = prop.startsWith('--')
+                ? prop
+                : (prop.includes('-') ? prop : prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`));
+
+            if (priority || cssProp.includes('-')) {
+                this.#element.style.setProperty(cssProp, valStr, priority);
             } else {
                 this.#element.style[prop] = valStr;
             }
@@ -694,8 +834,35 @@ export class NTag extends NObject {
         }
         const p = prop.trim();
         return p.includes('-')
-            ? this.#element.style.getPropertyValue(p)
+            ? this.#element.style.getPropertyValue(p).trim()
             : (this.#element.style[p] || '');
+    }
+
+    /**
+     * Supprime une ou plusieurs propriétés de style en ligne sur la balise.
+     *
+     * @param {...string} props - Noms de propriétés CSS (camelCase, kebab-case ou `--var`).
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Retirer une propriété de style</caption>
+     * box.removeStyle('color');
+     *
+     * @example <caption>Exemple 2 : Retirer plusieurs propriétés</caption>
+     * box.removeStyle('backgroundColor', '--accent');
+     */
+    removeStyle(...props) {
+        if (!this.#element || !this.#element.style) {
+            return this;
+        }
+        for (const item of props) {
+            if (typeof item !== 'string' || !item.trim()) continue;
+            const p = item.trim();
+            const cssProp = p.startsWith('--')
+                ? p
+                : (p.includes('-') ? p : p.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`));
+            this.#element.style.removeProperty(cssProp);
+        }
+        return this;
     }
 
     // =========================================================================
@@ -716,7 +883,11 @@ export class NTag extends NObject {
      */
     setText(text) {
         if (this.#element) {
+            const prevChildren = this.children;
             this.#element.textContent = (text === null || text === undefined) ? '' : String(text);
+            for (const child of prevChildren) {
+                child.#syncSubtreeMountState();
+            }
         }
         return this;
     }
@@ -735,15 +906,77 @@ export class NTag extends NObject {
      */
     setHtml(html) {
         if (this.#element) {
+            const prevChildren = this.children;
             this.#element.innerHTML = (html === null || html === undefined) ? '' : String(html);
+            for (const child of prevChildren) {
+                child.#syncSubtreeMountState();
+            }
         }
         return this;
     }
 
     /**
-     * Affiche la balise en restaurant sa propriété `display`.
+     * Enregistre la langue de la balise dans `#state` (`'language'`) puis déclenche `applyLanguage()`.
      *
-     * @param {string} [display=''] - Valeur CSS `display` optionnelle (`'block'`, `'flex'`, etc.).
+     * @param {string|null} language - Code de langue (ex: `'fr'`, `'en'`) ou `null`.
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Définir la langue d'une balise</caption>
+     * title.setLanguage('en');
+     * console.log(title.getState('language')); // 'en'
+     *
+     * @example <caption>Exemple 2 : Chaîner avec mount()</caption>
+     * new MyButton().setLanguage('fr').mount('#app');
+     */
+    setLanguage(language) {
+        if (this.isDestroyed) {
+            return this;
+        }
+        let nextLang;
+        if (language === null) {
+            nextLang = null;
+        } else if (typeof language === 'string' && language.trim()) {
+            nextLang = language.trim();
+        } else {
+            return this;
+        }
+        if (this.hasState('language') && this.getState('language') === nextLang) {
+            return this;
+        }
+        this.setState('language', nextLang);
+        return this.applyLanguage();
+    }
+
+    /**
+     * Applique la langue courante sur la balise (méthode destinée à être redéfinie dans les sous-classes
+     * ou fournie via `options.applyLanguage` pour mettre à jour les textes traduisibles).
+     *
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Redéfinir applyLanguage dans une sous-classe</caption>
+     * class SaveButton extends NTag {
+     *     applyLanguage() {
+     *         return this.setText(this.util.lang.get('actions.save'));
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Fournir applyLanguage via les options</caption>
+     * const title = new NTag({
+     *     tagName: 'h1',
+     *     applyLanguage: (tag) => tag.setText(tag.util.lang.get('home.title'))
+     * });
+     */
+    applyLanguage() {
+        if (!this.isDestroyed && typeof this.#applyLanguageFn === 'function') {
+            this.#applyLanguageFn.call(this, this);
+        }
+        return this;
+    }
+
+    /**
+     * Affiche la balise en restaurant sa propriété `display` précédente ou en appliquant la valeur fournie.
+     *
+     * @param {string} [display] - Valeur CSS `display` optionnelle (`'block'`, `'flex'`, etc.).
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Réafficher une balise masquée</caption>
@@ -752,12 +985,30 @@ export class NTag extends NObject {
      * @example <caption>Exemple 2 : Afficher en mode flex</caption>
      * panel.show('flex');
      */
-    show(display = '') {
-        return this.setStyle('display', display);
+    show(display) {
+        if (!this.#element) {
+            return this;
+        }
+        if (typeof display === 'string') {
+            this.#previousDisplay = '';
+            return this.setStyle('display', display);
+        }
+        const restored = this.#previousDisplay;
+        this.#previousDisplay = '';
+        this.setStyle('display', restored || '');
+        if (
+            this.#element.isConnected &&
+            typeof globalThis !== 'undefined' &&
+            typeof globalThis.getComputedStyle === 'function' &&
+            globalThis.getComputedStyle(this.#element).display === 'none'
+        ) {
+            this.setStyle('display', 'block');
+        }
+        return this;
     }
 
     /**
-     * Masque la balise via `display: none`.
+     * Masque la balise via `display: none` en mémorisant un éventuel `display` inline préalable.
      *
      * @returns {this} L'instance courante pour chaînage.
      *
@@ -768,11 +1019,18 @@ export class NTag extends NObject {
      * if (!visible) panel.hide();
      */
     hide() {
+        if (!this.#element) {
+            return this;
+        }
+        const currentInline = this.#element.style?.display || '';
+        if (currentInline && currentInline !== 'none') {
+            this.#previousDisplay = currentInline;
+        }
         return this.setStyle('display', 'none');
     }
 
     /**
-     * Indique si la balise est visible (propriété CSS `display` différente de `'none'`).
+     * Indique si la balise est affichée (attribut `hidden` absent et propriété CSS `display` différente de `'none'`).
      *
      * @returns {boolean} `true` si affichée, sinon `false`.
      *
@@ -789,6 +1047,9 @@ export class NTag extends NObject {
         if (!this.#element) {
             return false;
         }
+        if (this.#element.hasAttribute?.('hidden')) {
+            return false;
+        }
         if (this.#element.style?.display === 'none') {
             return false;
         }
@@ -798,6 +1059,74 @@ export class NTag extends NObject {
             typeof globalThis.getComputedStyle === 'function'
         ) {
             return globalThis.getComputedStyle(this.#element).display !== 'none';
+        }
+        return true;
+    }
+
+    /**
+     * Indique si la balise est visible (`display` différent de `'none'`, `visibility` différent de `'hidden'` / `'collapse'`
+     * et attribut `hidden` absent).
+     *
+     * @returns {boolean} `true` si visible, sinon `false`.
+     *
+     * @example <caption>Exemple 1 : Vérifier après hide() et show()</caption>
+     * const tag = new NTag('div');
+     * tag.hide();
+     * console.log(tag.isVisible()); // false
+     * tag.show();
+     * console.log(tag.isVisible()); // true
+     *
+     * @example <caption>Exemple 2 : Vérifier avec visibility: hidden</caption>
+     * tag.setStyle('visibility', 'hidden');
+     * console.log(tag.isVisible()); // false
+     */
+    isVisible() {
+        if (!this.isShow()) {
+            return false;
+        }
+        if (
+            this.#element.style?.visibility === 'hidden' ||
+            this.#element.style?.visibility === 'collapse'
+        ) {
+            return false;
+        }
+        if (
+            this.#element.isConnected &&
+            typeof globalThis !== 'undefined' &&
+            typeof globalThis.getComputedStyle === 'function'
+        ) {
+            const visibility = globalThis.getComputedStyle(this.#element).visibility;
+            return visibility !== 'hidden' && visibility !== 'collapse';
+        }
+        return true;
+    }
+
+    /**
+     * Indique si la balise est visible et présente dans la zone visible du viewport.
+     *
+     * @returns {boolean} `true` si l'élément est visible et intersecte le viewport, sinon `false`.
+     *
+     * @example <caption>Exemple 1 : Élément monté dans le viewport</caption>
+     * const box = new NTag({ style: { width: '100px', height: '40px' } }).mount(document.body);
+     * console.log(box.isVisibleInScreen()); // true
+     *
+     * @example <caption>Exemple 2 : Élément masqué ou hors écran</caption>
+     * box.hide();
+     * console.log(box.isVisibleInScreen()); // false
+     */
+    isVisibleInScreen() {
+        if (!this.#element || !this.#element.isConnected || !this.isVisible()) {
+            return false;
+        }
+        const rect = this.getRect();
+        const winHeight = (typeof window !== 'undefined' && window.innerHeight)
+            || (typeof document !== 'undefined' && document.documentElement?.clientHeight)
+            || 0;
+        const winWidth = (typeof window !== 'undefined' && window.innerWidth)
+            || (typeof document !== 'undefined' && document.documentElement?.clientWidth)
+            || 0;
+        if (rect.bottom < 0 || rect.top > winHeight || rect.right < 0 || rect.left > winWidth) {
+            return false;
         }
         return true;
     }
@@ -1053,7 +1382,7 @@ export class NTag extends NObject {
      * ul.addTag(new NTag('li').setText('Avant B'), target);
      */
     addTag(tags, position = null) {
-        if (!this.#element || tags === null || tags === undefined) {
+        if (this.isDestroyed || !this.#element || tags === null || tags === undefined) {
             return this;
         }
 
@@ -1074,24 +1403,30 @@ export class NTag extends NObject {
         }
 
         for (const item of list) {
-            if (item === null || item === undefined) continue;
+            if (item === null || item === undefined || item === this) continue;
             let domNode = null;
+            let itemTag = null;
             if (item instanceof NTag) {
+                if (item.isDestroyed || !item.#element) continue;
                 domNode = item.#element;
+                itemTag = item;
             } else if (typeof Node !== 'undefined' && item instanceof Node) {
                 domNode = item;
+                if (item._ntag instanceof NTag && !item._ntag.isDestroyed) {
+                    itemTag = item._ntag;
+                }
             } else if (typeof document !== 'undefined' && typeof document.createTextNode === 'function') {
                 domNode = document.createTextNode(String(item));
             }
-            if (!domNode) continue;
+            if (!domNode || domNode === this.#element) continue;
 
             if (refNode) {
                 this.#element.insertBefore(domNode, refNode);
             } else {
                 this.#element.appendChild(domNode);
             }
-            if (item instanceof NTag) {
-                item.#syncSubtreeMountState();
+            if (itemTag) {
+                itemTag.#syncSubtreeMountState();
             }
         }
         return this;
@@ -1110,16 +1445,20 @@ export class NTag extends NObject {
      * const p = new NTag('p').append('Total : ', new NTag({ tagName: 'strong', text: '100' }));
      */
     append(...nodes) {
-        if (!this.#element) return this;
+        if (this.isDestroyed || !this.#element) return this;
         for (const node of nodes) {
-            if (node === null || node === undefined) continue;
+            if (node === null || node === undefined || node === this) continue;
             if (node instanceof NTag) {
-                if (node.#element) {
+                if (!node.isDestroyed && node.#element) {
                     this.#element.appendChild(node.#element);
                     node.#syncSubtreeMountState();
                 }
             } else if (typeof Node !== 'undefined' && node instanceof Node) {
+                if (node === this.#element) continue;
                 this.#element.appendChild(node);
+                if (node._ntag instanceof NTag) {
+                    node._ntag.#syncSubtreeMountState();
+                }
             } else {
                 this.#element.append(String(node));
             }
@@ -1140,17 +1479,21 @@ export class NTag extends NObject {
      * p.prepend('Note : ');
      */
     prepend(...nodes) {
-        if (!this.#element) return this;
+        if (this.isDestroyed || !this.#element) return this;
         for (let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i];
-            if (node === null || node === undefined) continue;
+            if (node === null || node === undefined || node === this) continue;
             if (node instanceof NTag) {
-                if (node.#element) {
+                if (!node.isDestroyed && node.#element) {
                     this.#element.prepend(node.#element);
                     node.#syncSubtreeMountState();
                 }
             } else if (typeof Node !== 'undefined' && node instanceof Node) {
+                if (node === this.#element) continue;
                 this.#element.prepend(node);
+                if (node._ntag instanceof NTag) {
+                    node._ntag.#syncSubtreeMountState();
+                }
             } else {
                 this.#element.prepend(String(node));
             }
@@ -1176,8 +1519,9 @@ export class NTag extends NObject {
         const targetNode = child instanceof NTag ? child.#element : child;
         if (targetNode && targetNode.parentNode === this.#element) {
             this.#element.removeChild(targetNode);
-            if (child instanceof NTag) {
-                child.#syncSubtreeMountState();
+            const childTag = child instanceof NTag ? child : targetNode._ntag;
+            if (childTag instanceof NTag) {
+                childTag.#syncSubtreeMountState();
             }
         }
         return this;
@@ -1218,6 +1562,7 @@ export class NTag extends NObject {
      * child.mount(containerTag);
      */
     mount(target) {
+        if (this.isDestroyed) return this;
         if (target instanceof NTag) {
             target.append(this);
             return this;
@@ -1365,6 +1710,9 @@ export class NTag extends NObject {
      * btn.on('validated', (data) => console.log(data));
      */
     on(event, callback) {
+        if (this.isDestroyed || typeof callback !== 'function') {
+            return this;
+        }
         super.on(event, callback);
         this.#attachDomBridge(event);
         return this;
@@ -1384,7 +1732,19 @@ export class NTag extends NObject {
      * dialog.once('close', () => console.log('Fermé'));
      */
     once(event, callback) {
-        super.once(event, callback);
+        if (this.isDestroyed || typeof callback !== 'function') {
+            return this;
+        }
+        const wrapped = (...args) => {
+            try {
+                return callback.apply(this, args);
+            } finally {
+                if (!this.isDestroyed && this.listenerCount(event) === 0) {
+                    this.#detachDomBridge(event);
+                }
+            }
+        };
+        super.once(event, wrapped);
         this.#attachDomBridge(event);
         return this;
     }
@@ -1426,8 +1786,28 @@ export class NTag extends NObject {
      * const ev = await btn.waitFor('click', 1000);
      */
     waitFor(event, timeoutMs = 0) {
-        this.#attachDomBridge(event);
-        return super.waitFor(event, timeoutMs);
+        if (this.isDestroyed || typeof event !== 'string' || !event.trim()) {
+            return Promise.resolve(null);
+        }
+        return new Promise((resolve) => {
+            let timer = null;
+            const handler = (data) => {
+                if (timer) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+                this.off(event, handler);
+                resolve(data);
+            };
+            this.on(event, handler);
+            if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+                timer = setTimeout(() => {
+                    timer = null;
+                    this.off(event, handler);
+                    resolve(null);
+                }, timeoutMs);
+            }
+        });
     }
 
     /**
@@ -1452,8 +1832,8 @@ export class NTag extends NObject {
     // =========================================================================
 
     /**
-     * Détruit la balise, détache tous les écouteurs DOM, détruit les enfants `NTag`,
-     * retire l'élément du DOM et libère les ressources `NObject`.
+     * Détruit la balise, émet `'beforeDestroy'` via `NObject.destroy()`, détache tous les écouteurs DOM,
+     * détruit les enfants `NTag`, retire l'élément du DOM et libère les références.
      *
      * @returns {void}
      *
@@ -1465,22 +1845,36 @@ export class NTag extends NObject {
      * if (!modal.isDestroyed) modal.destroy();
      */
     destroy() {
-        if (this.isDestroyed) {
+        if (this.isDestroyed || this.#destroying) {
             return;
         }
+        this.#destroying = true;
+        try {
+            const children = this.children;
+            super.destroy();
+            this.#detachAllDomBridges();
 
-        this.clearEvents();
+            for (const child of children) {
+                if (!child.isDestroyed) {
+                    child.destroy();
+                }
+            }
 
-        for (const child of this.children) {
-            child.destroy();
+            if (this.#element) {
+                if (this.#element.parentNode) {
+                    this.#element.parentNode.removeChild(this.#element);
+                }
+                if ('_ntag' in this.#element) {
+                    delete this.#element._ntag;
+                }
+                this.#element = null;
+            }
+            this.#lastConnected = false;
+            this.#previousDisplay = '';
+            this.#applyLanguageFn = null;
+        } finally {
+            this.#destroying = false;
         }
-
-        this.unmount();
-        if (this.#element && '_ntag' in this.#element) {
-            delete this.#element._ntag;
-        }
-        this.#element = null;
-        super.destroy();
     }
 
     // =========================================================================
@@ -1493,66 +1887,118 @@ export class NTag extends NObject {
      * @private
      */
     #attachDomBridge(eventName) {
-        if (!this.#element || typeof eventName !== 'string') return;
+        if (this.isDestroyed || !this.#element || typeof eventName !== 'string') return;
         const name = eventName.trim();
-        if (!name) return;
+        if (!name || name === 'beforeDestroy' || name === 'destroy' || name === 'stateChange' || name.startsWith('state:') || name === 'mount' || name === 'unmount') return;
 
-        if (name === 'mount' || name === 'unmount') {
-            if (
-                !this.#mountObserver &&
-                typeof MutationObserver === 'function' &&
-                typeof document !== 'undefined' &&
-                document.documentElement
-            ) {
-                this.#mountObserver = new MutationObserver(() => {
-                    this.#syncMountState();
-                });
-                this.#mountObserver.observe(document.documentElement, { childList: true, subtree: true });
+        if (name === 'resize') {
+            if (!this.#resizeObserved && this.#element) {
+                const observer = NTag.#ensureResizeObserver();
+                if (observer) {
+                    observer.observe(this.#element);
+                    NTag.#resizeTargets.add(this.#element);
+                    this.#resizeObserved = true;
+                }
             }
             return;
         }
 
-        if (name === 'resize') {
-            if (!this.#resizeObserver && typeof ResizeObserver === 'function') {
-                this.#resizeObserver = new ResizeObserver((entries) => {
-                    const entry = entries[0] || null;
-                    this.event.emit('resize', {
-                        entry,
-                        rect: this.getRect(),
-                        target: this
-                    });
-                });
-                this.#resizeObserver.observe(this.#element);
+        if (name === 'visibility') {
+            if (!this.#visibilityObserved && this.#element) {
+                const observer = NTag.#ensureVisibilityObserver();
+                if (observer) {
+                    this.#lastVisibleInScreen = this.isVisibleInScreen();
+                    observer.observe(this.#element);
+                    NTag.#visibilityTargets.add(this.#element);
+                    this.#visibilityObserved = true;
+                }
             }
             return;
         }
 
         if (name === 'longclick') {
             if (!this.#longClickState) {
+                const usePointer = typeof PointerEvent === 'function';
+                const getCoords = (ev) => {
+                    const src = ev.touches?.[0] || ev.changedTouches?.[0] || ev;
+                    return {
+                        x: typeof src.clientX === 'number' ? src.clientX : 0,
+                        y: typeof src.clientY === 'number' ? src.clientY : 0
+                    };
+                };
                 const state = {
                     timer: null,
+                    startX: 0,
+                    startY: 0,
+                    fired: false,
+                    usePointer,
                     onDown: (ev) => {
+                        if (this.isDestroyed) return;
+                        if (typeof ev.button === 'number' && ev.button !== 0 && (!ev.pointerType || ev.pointerType === 'mouse')) {
+                            return;
+                        }
                         if (state.timer) clearTimeout(state.timer);
+                        state.fired = false;
+                        const coords = getCoords(ev);
+                        state.startX = coords.x;
+                        state.startY = coords.y;
                         state.timer = setTimeout(() => {
                             state.timer = null;
+                            if (this.isDestroyed || state.fired) return;
+                            state.fired = true;
                             this.event.emit('longclick', {
                                 originalEvent: ev,
                                 target: this
                             });
                         }, this.#longClickDelay);
                     },
+                    onMove: (ev) => {
+                        if (!state.timer) return;
+                        const coords = getCoords(ev);
+                        if (Math.hypot(coords.x - state.startX, coords.y - state.startY) > 10) {
+                            clearTimeout(state.timer);
+                            state.timer = null;
+                        }
+                    },
                     onCancel: () => {
                         if (state.timer) {
                             clearTimeout(state.timer);
                             state.timer = null;
                         }
+                    },
+                    onClickCapture: (ev) => {
+                        if (state.fired) {
+                            state.fired = false;
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                        }
+                    },
+                    onPreventDefault: (ev) => {
+                        if (state.timer || state.fired) {
+                            ev.preventDefault();
+                        }
                     }
                 };
                 this.#longClickState = state;
-                this.#element.addEventListener('pointerdown', state.onDown);
-                this.#element.addEventListener('pointerup', state.onCancel);
-                this.#element.addEventListener('pointerleave', state.onCancel);
-                this.#element.addEventListener('pointercancel', state.onCancel);
+                if (usePointer) {
+                    this.#element.addEventListener('pointerdown', state.onDown);
+                    this.#element.addEventListener('pointermove', state.onMove);
+                    this.#element.addEventListener('pointerup', state.onCancel);
+                    this.#element.addEventListener('pointerleave', state.onCancel);
+                    this.#element.addEventListener('pointercancel', state.onCancel);
+                } else {
+                    this.#element.addEventListener('mousedown', state.onDown);
+                    this.#element.addEventListener('mousemove', state.onMove);
+                    this.#element.addEventListener('mouseup', state.onCancel);
+                    this.#element.addEventListener('mouseleave', state.onCancel);
+                    this.#element.addEventListener('touchstart', state.onDown, { passive: true });
+                    this.#element.addEventListener('touchmove', state.onMove, { passive: true });
+                    this.#element.addEventListener('touchend', state.onCancel);
+                    this.#element.addEventListener('touchcancel', state.onCancel);
+                }
+                this.#element.addEventListener('click', state.onClickCapture, true);
+                this.#element.addEventListener('selectstart', state.onPreventDefault);
+                this.#element.addEventListener('contextmenu', state.onPreventDefault);
             }
             return;
         }
@@ -1563,7 +2009,9 @@ export class NTag extends NObject {
         if (this.#domBridge.has(name)) return;
 
         const bridge = (domEvent) => {
-            this.event.emit(name, domEvent);
+            if (!this.isDestroyed) {
+                this.event.emit(name, domEvent);
+            }
         };
         this.#domBridge.set(name, bridge);
         this.#element.addEventListener(name, bridge);
@@ -1578,31 +2026,69 @@ export class NTag extends NObject {
         const name = eventName.trim();
 
         if (name === 'mount' || name === 'unmount') {
-            if (this.#mountObserver && this.listenerCount('mount') === 0 && this.listenerCount('unmount') === 0) {
-                this.#mountObserver.disconnect();
-                this.#mountObserver = null;
-            }
             return;
         }
 
         if (name === 'resize') {
-            if (this.#resizeObserver) {
-                this.#resizeObserver.disconnect();
-                this.#resizeObserver = null;
+            if (this.#resizeObserved) {
+                if (NTag.#resizeObserver && this.#element) {
+                    NTag.#resizeObserver.unobserve(this.#element);
+                }
+                if (this.#element) {
+                    NTag.#resizeTargets.delete(this.#element);
+                }
+                this.#resizeObserved = false;
+                if (NTag.#resizeTargets.size === 0 && NTag.#resizeObserver) {
+                    NTag.#resizeObserver.disconnect();
+                    NTag.#resizeObserver = null;
+                }
+            }
+            return;
+        }
+
+        if (name === 'visibility') {
+            if (this.#visibilityObserved) {
+                if (NTag.#visibilityObserver && this.#element) {
+                    NTag.#visibilityObserver.unobserve(this.#element);
+                }
+                if (this.#element) {
+                    NTag.#visibilityTargets.delete(this.#element);
+                }
+                this.#visibilityObserved = false;
+                if (NTag.#visibilityTargets.size === 0 && NTag.#visibilityObserver) {
+                    NTag.#visibilityObserver.disconnect();
+                    NTag.#visibilityObserver = null;
+                }
             }
             return;
         }
 
         if (name === 'longclick') {
             if (this.#longClickState) {
-                if (this.#longClickState.timer) {
-                    clearTimeout(this.#longClickState.timer);
+                const state = this.#longClickState;
+                if (state.timer) {
+                    clearTimeout(state.timer);
                 }
                 if (this.#element) {
-                    this.#element.removeEventListener('pointerdown', this.#longClickState.onDown);
-                    this.#element.removeEventListener('pointerup', this.#longClickState.onCancel);
-                    this.#element.removeEventListener('pointerleave', this.#longClickState.onCancel);
-                    this.#element.removeEventListener('pointercancel', this.#longClickState.onCancel);
+                    if (state.usePointer) {
+                        this.#element.removeEventListener('pointerdown', state.onDown);
+                        this.#element.removeEventListener('pointermove', state.onMove);
+                        this.#element.removeEventListener('pointerup', state.onCancel);
+                        this.#element.removeEventListener('pointerleave', state.onCancel);
+                        this.#element.removeEventListener('pointercancel', state.onCancel);
+                    } else {
+                        this.#element.removeEventListener('mousedown', state.onDown);
+                        this.#element.removeEventListener('mousemove', state.onMove);
+                        this.#element.removeEventListener('mouseup', state.onCancel);
+                        this.#element.removeEventListener('mouseleave', state.onCancel);
+                        this.#element.removeEventListener('touchstart', state.onDown);
+                        this.#element.removeEventListener('touchmove', state.onMove);
+                        this.#element.removeEventListener('touchend', state.onCancel);
+                        this.#element.removeEventListener('touchcancel', state.onCancel);
+                    }
+                    this.#element.removeEventListener('click', state.onClickCapture, true);
+                    this.#element.removeEventListener('selectstart', state.onPreventDefault);
+                    this.#element.removeEventListener('contextmenu', state.onPreventDefault);
                 }
                 this.#longClickState = null;
             }
@@ -1625,13 +2111,11 @@ export class NTag extends NObject {
      * @private
      */
     #detachAllDomBridges() {
-        if (this.#mountObserver) {
-            this.#mountObserver.disconnect();
-            this.#mountObserver = null;
+        if (this.#resizeObserved) {
+            this.#detachDomBridge('resize');
         }
-        if (this.#resizeObserver) {
-            this.#resizeObserver.disconnect();
-            this.#resizeObserver = null;
+        if (this.#visibilityObserved) {
+            this.#detachDomBridge('visibility');
         }
         if (this.#longClickState) {
             this.#detachDomBridge('longclick');
@@ -1668,6 +2152,58 @@ export class NTag extends NObject {
         for (const child of this.children) {
             child.#syncSubtreeMountState();
         }
+    }
+
+    /**
+     * Crée paresseusement l'unique `ResizeObserver` statique partagé par tous les `NTag`.
+     * @returns {ResizeObserver|null}
+     * @private
+     */
+    static #ensureResizeObserver() {
+        if (!NTag.#resizeObserver && typeof ResizeObserver === 'function') {
+            NTag.#resizeObserver = new ResizeObserver((entries) => {
+                for (const entry of entries) {
+                    const tag = entry?.target?._ntag;
+                    if (tag && !tag.isDestroyed && tag.listenerCount('resize') > 0) {
+                        tag.event.emit('resize', {
+                            entry,
+                            rect: tag.getRect(),
+                            target: tag
+                        });
+                    }
+                }
+            });
+        }
+        return NTag.#resizeObserver;
+    }
+
+    /**
+     * Crée paresseusement l'unique `IntersectionObserver` statique partagé pour `'visibility'`.
+     * @returns {IntersectionObserver|null}
+     * @private
+     */
+    static #ensureVisibilityObserver() {
+        if (!NTag.#visibilityObserver && typeof IntersectionObserver === 'function') {
+            NTag.#visibilityObserver = new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    const tag = entry?.target?._ntag;
+                    if (!tag || tag.isDestroyed || tag.listenerCount('visibility') === 0) {
+                        continue;
+                    }
+                    const visible = Boolean(entry.isIntersecting && tag.isVisible());
+                    if (visible !== tag.#lastVisibleInScreen) {
+                        tag.#lastVisibleInScreen = visible;
+                        tag.event.emit('visibility', {
+                            visible,
+                            isIntersecting: entry.isIntersecting,
+                            entry,
+                            target: tag
+                        });
+                    }
+                }
+            });
+        }
+        return NTag.#visibilityObserver;
     }
 }
 
