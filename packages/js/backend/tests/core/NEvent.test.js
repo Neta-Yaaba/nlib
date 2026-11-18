@@ -24,27 +24,8 @@ describe('NEvent (core/NEvent.js)', () => {
         assert.equal(bus.has('ping'), false);
     });
 
-    it('exécute once une seule fois', () => {
+    it('supporte clear()', () => {
         const bus = new NEvent();
-        let count = 0;
-        bus.once('init', () => { count += 1; });
-
-        bus.emit('init');
-        bus.emit('init');
-        assert.equal(count, 1);
-    });
-
-    it('supporte waitFor (résolution et timeout) et clear', async () => {
-        const bus = new NEvent();
-
-        setTimeout(() => bus.emit('ready', { ok: true }), 20);
-        const payload = await bus.waitFor('ready', 500);
-        assert.deepEqual(payload, { ok: true });
-
-        const expired = await bus.waitFor('never', 30);
-        assert.equal(expired, null);
-        assert.equal(bus.listenerCount('never'), 0);
-
         bus.on('tmp', () => {});
         bus.clear();
         assert.equal(bus.isEmpty, true);
@@ -84,8 +65,5 @@ describe('NEvent (core/NEvent.js)', () => {
         bus.on('boom', () => { secondCalled = true; });
         bus.emit('boom');
         assert.equal(secondCalled, true);
-
-        const invalidWait = await bus.waitFor('');
-        assert.equal(invalidWait, null);
     });
 });

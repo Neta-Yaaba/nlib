@@ -160,7 +160,7 @@ obj.destroy();
 
 ### 1.2. Classe `NEvent` (`core/NEvent.js`)
 
-Gestionnaire d'événements synchrone permettant l'abonnement (`on`, `once`), la désinscription (`off`), l'émission (`emit`) et l'attente par promesse (`waitFor`).
+Gestionnaire d'événements synchrone permettant l'abonnement (`on`), la désinscription (`off`) et l'émission (`emit`).
 
 #### Constructeur
 - `new NEvent(target = null)`
@@ -180,11 +180,9 @@ Gestionnaire d'événements synchrone permettant l'abonnement (`on`, `once`), la
 | `hasListener` | `hasListener(event, callback)` | `boolean` | Vérifie si une fonction `callback` précise écoute `event`. |
 | `listenerCount` | `listenerCount(event)` | `number` | Retourne le nombre d'écouteurs actifs pour `event` (ou le total si omis). |
 | `eventNames` | `eventNames()` | `string[]` | Retourne la liste des noms d'événements écoutés. |
-| `on` | `on(event, callback)` | `this` | Enregistre un écouteur sur un événement (ou plusieurs séparés par des espaces). |
-| `once` | `once(event, callback)` | `this` | Enregistre un écouteur exécuté une seule fois puis retiré automatiquement. |
+| `on` | `on(event, callback)` | `this` | Enregistre un écouteur sur un événement. |
 | `off` | `off(event, callback)` | `this` | Retire un écouteur précis ou tous les écouteurs d'un événement. |
 | `emit` | `emit(event, data = null)` | `this` | Déclenche de manière synchrone tous les écouteurs de `event`. |
-| `waitFor` | `waitFor(event, timeoutMs = 0)` | `Promise<any>` | Retourne une promesse résolue à la prochaine émission de `event` (ou `null` en cas d'expiration). |
 | `clear` | `clear()` | `this` | Supprime tous les écouteurs de tous les événements. |
 | `NEvent.create` | `static create(target = null)` | `NEvent` | Fabrique statique retournant une nouvelle instance `NEvent`. |
 | `NEvent.registerUtil` | `static registerUtil(util)` | `typeof NEvent` | Enregistre la façade `NUtil` auprès de `NEvent` (appelé automatiquement au chargement de `NUtil`). |
@@ -195,17 +193,16 @@ import { NEvent } from '@nlib/js-backend';
 
 const bus = new NEvent();
 
-// Abonnement multiple et unique
+const onInit = () => {
+    console.log('Exécuté puis retiré');
+    bus.off('initialisation', onInit);
+};
+
 bus.on('connexion', (user) => console.log('Connecté :', user.nom));
-bus.once('initialisation', () => console.log('Exécuté une seule fois'));
+bus.on('initialisation', onInit);
 
 bus.emit('initialisation');
 bus.emit('connexion', { nom: 'Alice' });
-
-// Attente asynchrone d'un événement
-setTimeout(() => bus.emit('pret', { statut: 'OK' }), 100);
-const resultat = await bus.waitFor('pret', 2000);
-console.log(resultat); // { statut: 'OK' }
 ```
 
 ---
@@ -1664,7 +1661,7 @@ Gestionnaire de communication temps réel et périodique permettant de synchroni
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
 | `configure` | `configure(options = {})` | `this` | Met à jour dynamiquement les paramètres du service (`id`, `url`, `driver`, `lastId`, `persistLastId`, `pollingInterval`, `reconnectDelay`). |
-| `on` / `once` / `off` | `on(eventName, callback)` | `this` | Gère les abonnements aux événements du service (`'id'`, `'change'`, `'connected'`, `'disconnected'`, `'error'`). |
+| `on` / `off` | `on(eventName, callback)` | `this` | Gère les abonnements aux événements du service (`'id'`, `'change'`, `'connected'`, `'disconnected'`, `'error'`). |
 | `loadLastId` | `loadLastId()` | `Promise<number>` | Lit l'identifiant entier `lastId` stocké dans `NIndexedDB` pour ce service et met à jour `this.lastId`. |
 | `saveLastId` | `saveLastId(id = this.lastId)` | `Promise<boolean>` | Met à jour l'identifiant entier `lastId` en mémoire et l'enregistre dans `NIndexedDB`. |
 | `resetLastId` | `resetLastId(newId = 0)` | `Promise<number>` | Réinitialise `lastId` à la valeur entière spécifiée et met à jour `NIndexedDB`. |

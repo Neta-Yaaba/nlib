@@ -35,10 +35,8 @@ export class NEvent {
     listenerCount(event?: string): number;
     eventNames(): string[];
     on(event: string, callback: NEventCallback): this;
-    once(event: string, callback: NEventCallback): this;
     off(event: string, callback?: NEventCallback): this;
     emit(event: string, data?: any): this;
-    waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
     clear(): this;
 
     static create(target?: any): NEvent;
@@ -59,10 +57,8 @@ export class NObject {
     readonly isDestroyed: boolean;
 
     on(event: string, callback: NEventCallback): this;
-    once(event: string, callback: NEventCallback): this;
     off(event: string, callback?: NEventCallback): this;
     emit(event: string, data?: any): this;
-    waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
     hasListener(event: string, callback?: NEventCallback): boolean;
     listenerCount(event?: string): number;
     eventNames(): string[];
@@ -1568,7 +1564,6 @@ export class NService extends NObject {
 
     configure(options?: NServiceOptions): this;
     on(eventName: 'id' | 'change' | 'connected' | 'disconnected' | 'error' | string, callback: (payload: any) => void): this;
-    once(eventName: string, callback: (payload: any) => void): this;
     off(eventName?: string, callback?: (payload: any) => void): this;
 
     loadLastId(): Promise<number>;

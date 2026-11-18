@@ -254,25 +254,6 @@ export class NObject {
     }
 
     /**
-     * Enregistre un écouteur qui ne sera exécuté qu'une seule fois (`this.event.once`).
-     *
-     * @param {string} event - Nom de l'événement.
-     * @param {Function} callback - Fonction exécutée à la première émission.
-     * @returns {this} L'instance courante pour chaînage fluide.
-     *
-     * @example <caption>Exemple 1 : Écoute unique</caption>
-     * const obj = new NObject();
-     * obj.once('connected', () => console.log('Première connexion'));
-     *
-     * @example <caption>Exemple 2 : Chaînage</caption>
-     * obj.once('init', () => {}).emit('init');
-     */
-    once(event, callback) {
-        this.event.once(event, callback);
-        return this;
-    }
-
-    /**
      * Supprime un écouteur ou tous les écouteurs d'un événement (`this.event.off`).
      *
      * @param {string} [event] - Nom de l'événement (tous si omis).
@@ -310,24 +291,6 @@ export class NObject {
             this.#event.emit(event, data);
         }
         return this;
-    }
-
-    /**
-     * Attend de manière asynchrone la prochaine émission d'un événement (`this.event.waitFor`).
-     *
-     * @param {string} event - Nom de l'événement attendu.
-     * @param {number} [timeoutMs=0] - Délai maximal d'attente en millisecondes (0 = illimité).
-     * @returns {Promise<any>} Promesse résolue avec la donnée de l'événement ou `null` en cas de timeout.
-     *
-     * @example <caption>Exemple 1 : Attendre un événement avec await</caption>
-     * setTimeout(() => obj.emit('loaded', { count: 3 }), 10);
-     * const res = await obj.waitFor('loaded');
-     *
-     * @example <caption>Exemple 2 : Attendre avec un timeout</caption>
-     * const res = await obj.waitFor('never', 50); // null
-     */
-    waitFor(event, timeoutMs = 0) {
-        return this.event.waitFor(event, timeoutMs);
     }
 
     /**

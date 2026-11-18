@@ -88,8 +88,7 @@ export class NButton extends NTag {
      * @constructor
      * @param {Object|string} [options={}] - Options de configuration ou texte du bouton.
      * @param {string} [options.text] - Texte du bouton.
-     * @param {string|Object} [options.icon] - URL d'image (ou options `NImage`), ou texte emoji si `options.isEmoji` vaut `true`.
-     * @param {boolean} [options.isEmoji=false] - Si `true`, crée un `NTag` `span` contenant l'emoji au lieu d'une `NImage`.
+     * @param {string|{ type?: 'image'|'emoji', value: string, alt?: string, attrs?: Object }|null} [options.icon] - URL d'image (`string` équivalent à `{ type: 'image', value: url }`) ou objet `{ type: 'image'|'emoji', value }`.
      * @param {'left'|'right'|'top'|'bottom'} [options.iconPosition='left'] - Position de l'icône.
      * @param {boolean} [options.disabled=false] - Désactive le bouton.
      * @param {boolean} [options.loading=false] - Active l'indicateur de chargement.
@@ -99,10 +98,10 @@ export class NButton extends NTag {
      * @example <caption>Exemple 1 : Instanciation rapide par texte</caption>
      * const btn = new NButton('Valider');
      *
-     * @example <caption>Exemple 2 : Bouton icône seule accessible</caption>
+     * @example <caption>Exemple 2 : Bouton avec icône emoji ou image</caption>
      * const closeBtn = new NButton({
-     *     icon: '/icons/close.svg',
-     *     attrs: { 'aria-label': 'Fermer' }
+     *     icon: { type: 'emoji', value: '🚀' },
+     *     text: 'Lancer'
      * });
      */
     constructor(options = {}) {
@@ -113,7 +112,6 @@ export class NButton extends NTag {
         const {
             text,
             icon,
-            isEmoji = false,
             iconPosition = 'left',
             disabled = false,
             loading = false,
@@ -128,7 +126,7 @@ export class NButton extends NTag {
         this.setType(type);
 
         if (icon !== undefined && icon !== null) {
-            this.setIcon(icon, isEmoji);
+            this.setIcon(icon);
         }
         if (text !== undefined && text !== null) {
             this.setText(text);
@@ -194,21 +192,21 @@ export class NButton extends NTag {
     }
 
     /**
-     * Définit, remplace ou supprime l'icône du bouton (`string` URL ou options `NImage` par défaut,
-     * texte emoji dans un `NTag` `span` si `isEmoji` vaut `true`, ou `null`/`''` pour supprimer).
+     * Définit, remplace ou supprime l'icône du bouton.
+     * Accepte une chaîne URL (traitée comme `{ type: 'image', value: url }`),
+     * un objet `{ type: 'image' | 'emoji', value: string }`, ou `null`/`''` pour supprimer.
      *
-     * @param {string|Object|null} icon - URL d'image, options `NImage`, ou chaîne emoji si `isEmoji = true`.
-     * @param {boolean} [isEmoji=false] - Si `true`, utilise un `NTag` `span` au lieu d'une `NImage`.
+     * @param {string|{ type?: 'image'|'emoji', value: string, alt?: string, attrs?: Object }|null} icon - Configuration ou URL de l'icône.
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Ajouter une icône image ou emoji</caption>
      * btn.setIcon('/icons/save.svg');
-     * btn.setIcon('🚀', true);
+     * btn.setIcon({ type: 'emoji', value: '🚀' });
      *
      * @example <caption>Exemple 2 : Supprimer l'icône</caption>
      * btn.setIcon(null);
      */
-    setIcon(icon, isEmoji = false) {
+    setIcon(icon) {
         if (this.isDestroyed || icon instanceof NTag) {
             return this;
         }
@@ -220,13 +218,27 @@ export class NButton extends NTag {
             return this;
         }
 
-        const emojiMode = Boolean(isEmoji);
+        const raw = typeof icon === 'string'
+            ? { type: 'image', value: icon }
+            : (typeof icon === 'object' ? icon : null);
 
-        if (emojiMode) {
-            if (typeof icon === 'object') {
-                return this;
+        if (!raw) {
+            return this;
+        }
+
+        const iconType = String(raw.type || 'image').trim().toLowerCase();
+        const iconValue = raw.value ?? raw.src ?? '';
+
+        if (iconValue === null || iconValue === undefined || iconValue === '') {
+            if (this.#iconTag) {
+                this.#clearIcon();
+                this.#syncStructure();
             }
-            const emojiText = String(icon);
+            return this;
+        }
+
+        if (iconType === 'emoji') {
+            const emojiText = String(iconValue);
             if (this.#iconTag && !(this.#iconTag instanceof NImage) && !this.#iconTag.isDestroyed) {
                 this.#iconTag.setText(emojiText);
                 this.#syncStructure();
@@ -244,37 +256,34 @@ export class NButton extends NTag {
             return this;
         }
 
-        if (typeof icon === 'string' && this.#iconTag instanceof NImage && !this.#iconTag.isDestroyed) {
-            this.#iconTag.setSrc(icon);
+        if (iconType !== 'image') {
+            return this;
+        }
+
+        const { type: _t, value: _v, ...imageOpts } = raw;
+        const hasExtraImageOpts = Object.keys(imageOpts).length > 0;
+
+        if (!hasExtraImageOpts && this.#iconTag instanceof NImage && !this.#iconTag.isDestroyed) {
+            this.#iconTag.setSrc(String(iconValue));
             this.#syncStructure();
             return this;
         }
 
         this.#clearIcon();
 
-        let iconTag = null;
-        if (typeof icon === 'string') {
-            iconTag = new NImage({
-                src: icon,
-                alt: '',
-                attrs: { 'aria-hidden': 'true' }
-            });
-        } else if (typeof icon === 'object') {
-            iconTag = new NImage({
-                alt: '',
-                ...icon,
-                attrs: { 'aria-hidden': 'true', ...(icon.attrs || {}) }
-            });
-        }
+        const iconTag = new NImage({
+            alt: '',
+            ...imageOpts,
+            src: String(iconValue),
+            attrs: { 'aria-hidden': 'true', ...(imageOpts.attrs || {}) }
+        });
 
-        if (iconTag) {
-            iconTag.addClass('n-button__icon');
-            if (!iconTag.hasAttr('aria-hidden') && !iconTag.alt) {
-                iconTag.setAttr('aria-hidden', 'true');
-            }
-            this.#iconTag = iconTag;
-            this.#syncStructure();
+        iconTag.addClass('n-button__icon');
+        if (!iconTag.hasAttr('aria-hidden') && !iconTag.alt) {
+            iconTag.setAttr('aria-hidden', 'true');
         }
+        this.#iconTag = iconTag;
+        this.#syncStructure();
         return this;
     }
 

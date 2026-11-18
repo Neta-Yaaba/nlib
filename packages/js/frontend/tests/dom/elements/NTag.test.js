@@ -161,7 +161,7 @@ describe('NTag (dom/elements/NTag.js)', () => {
         box.destroy();
     });
 
-    it('préserve beforeDestroy dans destroy(), détache les ponts après once()/waitFor() et gère le déplacement', async () => {
+    it('préserve beforeDestroy dans destroy(), détache les ponts après off() et gère le déplacement', () => {
         // 1) beforeDestroy dans destroy()
         let beforeDestroyFired = false;
         let elementIntactInBeforeDestroy = false;
@@ -176,17 +176,15 @@ describe('NTag (dom/elements/NTag.js)', () => {
         assert.equal(target.isDestroyed, true);
         assert.equal(target.element, null);
 
-        // 2) once() et waitFor() détachent les écouteurs DOM après déclenchement/timeout
+        // 2) on() / off() détachent les écouteurs DOM après suppression
         const btn = new NTag('button');
-        let onceCount = 0;
-        btn.once('click', () => { onceCount += 1; });
+        let clickCount = 0;
+        const onClick = () => { clickCount += 1; };
+        btn.on('click', onClick);
         btn.element.dispatchEvent(new Event('click'));
+        btn.off('click', onClick);
         btn.element.dispatchEvent(new Event('click'));
-        assert.equal(onceCount, 1);
-        assert.equal(btn.listenerCount('click'), 0);
-
-        const timedOut = await btn.waitFor('click', 10);
-        assert.equal(timedOut, null);
+        assert.equal(clickCount, 1);
         assert.equal(btn.listenerCount('click'), 0);
         btn.destroy();
 

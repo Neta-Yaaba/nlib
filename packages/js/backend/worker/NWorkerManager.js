@@ -367,12 +367,14 @@ export class NWorkerManager extends NObject {
             this.terminate(name);
         }
 
-        worker.event.once('beforeDestroy', () => {
+        const onBeforeDestroy = () => {
+            worker.event.off('beforeDestroy', onBeforeDestroy);
             if (this.#workers?.get(name) === worker) {
                 this.#workers.delete(name);
                 if (this.#workers.size === 0) this.#workers = null;
             }
-        });
+        };
+        worker.event.on('beforeDestroy', onBeforeDestroy);
 
         if (!this.#workers) {
             this.#workers = new Map();
@@ -406,7 +408,8 @@ export class NWorkerManager extends NObject {
 
         for (let i = 0; i < count; i++) {
             const worker = this.#createManagedWorker({ ...options, name: `${name}#${i}` });
-            worker.event.once('destroy', () => {
+            const onDestroy = () => {
+                worker.event.off('destroy', onDestroy);
                 const pool = this.#pools?.get(name);
                 if (!pool) return;
                 const idx = pool.indexOf(worker);
@@ -415,7 +418,8 @@ export class NWorkerManager extends NObject {
                     this.#pools.delete(name);
                     if (this.#pools.size === 0) this.#pools = null;
                 }
-            });
+            };
+            worker.event.on('destroy', onDestroy);
             list.push(worker);
         }
 

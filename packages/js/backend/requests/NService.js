@@ -487,25 +487,6 @@ export class NService extends NObject {
     }
 
     /**
-     * Enregistre une fonction d'écoute exécutée une seule fois lors de la prochaine apparition de l'événement.
-     *
-     * @param {string} eventName - Nom de l'événement à écouter.
-     * @param {Function} callback - Fonction exécutée une unique fois.
-     * @returns {this} L'instance courante pour chaînage.
-     *
-     * @example <caption>Exemple 1 : Attendre le premier identifiant reçu</caption>
-     * const s = new NService({ url: 'https://api.monapp.com/events' });
-     * s.once('id', (firstId) => console.log('Premier ID reçu :', firstId));
-     *
-     * @example <caption>Exemple 2 : Détecter la première connexion</caption>
-     * s.once('connected', (info) => console.log('Initialisé sur :', info.driver));
-     */
-    once(eventName, callback) {
-        this.event.once(eventName, callback);
-        return this;
-    }
-
-    /**
      * Supprime un écouteur spécifique ou l'ensemble des écouteurs associés à un événement du service.
      *
      * @param {string} [eventName] - Nom de l'événement ciblé.

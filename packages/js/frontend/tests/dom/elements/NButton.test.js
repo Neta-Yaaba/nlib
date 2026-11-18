@@ -52,24 +52,26 @@ describe('NButton (dom/elements/NButton.js)', () => {
         assert.equal(btn.getText(), 'Suivant');
         externalTag.destroy();
 
-        btn.setIcon({ src: '/icons/custom.png' });
+        btn.setIcon({ type: 'image', value: '/icons/custom.png' });
+        assert.equal(oldIcon.isDestroyed, false);
+        assert.equal(btn.children[1].src, '/icons/custom.png');
+        btn.setIcon({ src: '/icons/custom2.png' });
         assert.equal(oldIcon.isDestroyed, true);
         btn.setIcon(null);
         assert.equal(btn.children.length, 1);
         btn.setIcon('/icons/custom.png');
 
-        // Icône emoji via isEmoji: true et setIcon('🔥', true)
+        // Icône emoji via { type: 'emoji', value } dans le constructeur et setIcon()
         const emojiBtn = new NButton({
             text: 'Lancer',
-            icon: '🚀',
-            isEmoji: true
+            icon: { type: 'emoji', value: '🚀' }
         });
         const emojiTag = emojiBtn.children[0];
         assert.equal(emojiTag instanceof NImage, false);
         assert.equal(emojiTag.tagName, 'span');
         assert.equal(emojiTag.text, '🚀');
         assert.equal(emojiTag.hasClass('n-button__icon'), true);
-        emojiBtn.setIcon('🔥', true);
+        emojiBtn.setIcon({ type: 'emoji', value: '🔥' });
         assert.equal(emojiBtn.children[0], emojiTag);
         assert.equal(emojiBtn.children[0].text, '🔥');
         emojiBtn.destroy();

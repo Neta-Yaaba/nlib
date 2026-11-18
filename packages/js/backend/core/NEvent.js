@@ -4,16 +4,15 @@
  * @description Gestionnaire d'événements autonome avec allocation mémoire à la demande (*Lazy Initialization*)
  * dans l'écosystème NLib.
  *
- * Gestion des erreurs et promesses :
+ * Gestion des erreurs :
  * - Les erreurs survenues dans les fonctions de rappel (listeners) sont capturées et journalisées via `NUtil.log.error`
- *   tout en poursuivant l'exécution des autres écouteurs,
- * - `waitFor()` résout avec la valeur de l'événement ou `null` en cas d'expiration ou d'erreur.
+ *   tout en poursuivant l'exécution des autres écouteurs.
  */
 
 /**
  * @class NEvent
  * @description Moteur d'événements léger à initialisation paresseuse (`#listeners` reste à `null`
- * tant qu'aucun écouteur n'est enregistré via `on` ou `once`, et repasse automatiquement à `null`
+ * tant qu'aucun écouteur n'est enregistré via `on`, et repasse automatiquement à `null`
  * dès que le dernier écouteur est retiré).
  *
  * @example <caption>Exemple 1 : Utiliser NEvent via un NObject (obj.event)</caption>
@@ -28,10 +27,12 @@
  * bus.on('message', (data) => console.log('Reçu :', data));
  * bus.emit('message', { texte: 'Bonjour NLib' });
  *
- * @example <caption>Exemple 3 : Écoute unique (once), attente asynchrone (waitFor) et nettoyage (clear)</caption>
+ * @example <caption>Exemple 3 : Désabonnement (off) et nettoyage (clear)</caption>
  * const evt = new NEvent();
- * evt.once('pret', () => console.log('Initialisé une seule fois'));
+ * const fn = () => console.log('Initialisé');
+ * evt.on('pret', fn);
  * evt.emit('pret');
+ * evt.off('pret', fn);
  * evt.clear();
  */
 export class NEvent {
@@ -303,59 +304,6 @@ export class NEvent {
     }
 
     /**
-     * Abonne une fonction de rappel (`callback`) qui est exécutée une seule fois
-     * lors de la prochaine émission de l'événement, puis automatiquement désabonnée.
-     *
-     * @param {string} event - Nom de l'événement à écouter une seule fois.
-     * @param {Function} callback - Fonction exécutée lors de la première émission.
-     * @returns {this} L'instance courante pour permettre le chaînage fluide.
-     *
-     * @example <caption>Exemple 1 : Réagir uniquement au premier événement</caption>
-     * const evt = new NEvent();
-     * evt.once('pret', () => console.log('Exécuté une seule fois'));
-     * evt.emit('pret'); // Affiche 'Exécuté une seule fois'
-     * evt.emit('pret'); // Ne fait plus rien
-     *
-     * @example <caption>Exemple 2 : Libération automatique après exécution</caption>
-     * const evt = new NEvent();
-     * evt.once('init', () => {});
-     * evt.emit('init');
-     * console.log(evt.isEmpty); // true
-     */
-    once(event, callback) {
-        if (typeof event !== 'string' || event.trim().length === 0) {
-            this.util?.log?.warn?.('NEvent.once: Nom d\'événement invalide fourni.', {
-                code: 'WARN_EVENT_INVALID',
-                event
-            });
-            return this;
-        }
-        if (typeof callback !== 'function') {
-            this.util?.log?.warn?.(`NEvent.once: Écouteur de type fonction attendu pour "${event}".`, {
-                code: 'WARN_LISTENER_NOT_FUNCTION',
-                event,
-                callback
-            });
-            return this;
-        }
-        const wrapper = (payload) => {
-            this.off(event, wrapper);
-            try {
-                callback.call(this.#target ?? this, payload);
-            } catch (error) {
-                this.util?.log?.error?.(`NEvent: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
-                    code: 'ERR_EVENT_ONCE_LISTENER',
-                    event,
-                    error,
-                    stack: error?.stack,
-                    target: this.#target ?? this
-                });
-            }
-        };
-        return this.on(event, wrapper);
-    }
-
-    /**
      * Désabonne une fonction de rappel spécifique (ou tous les écouteurs si `callback` est omis)
      * pour un événement donné.
      * Si plus aucun écouteur n'existe, libère automatiquement `this.#listeners = null`.
@@ -434,60 +382,6 @@ export class NEvent {
             }
         }
         return this;
-    }
-
-    /**
-     * Attend de manière asynchrone (`Promise`) la prochaine émission d'un événement.
-     * Résout toujours avec la valeur de l'événement ou `null` en cas d'expiration.
-     * En cas de délai expiré ou de nom d'événement invalide, résout avec `null`.
-     *
-     * @param {string} event - Nom de l'événement attendu.
-     * @param {number} [timeoutMs=0] - Délai d'expiration optionnel en millisecondes (0 = sans limite).
-     * @returns {Promise<any>} Promesse résolue avec les données de l'événement ou `null` en cas d'expiration/erreur.
-     *
-     * @example <caption>Exemple 1 : Attendre un événement avec await</caption>
-     * const evt = new NEvent();
-     * setTimeout(() => evt.emit('done', { ok: true }), 20);
-     * const res = await evt.waitFor('done');
-     * console.log(res.ok); // true
-     *
-     * @example <caption>Exemple 2 : Attente avec délai maximal d'expiration (timeout)</caption>
-     * const evt = new NEvent();
-     * const resultat = await evt.waitFor('introuvable', 50);
-     * console.log(resultat); // null (délai dépassé)
-     */
-    waitFor(event, timeoutMs = 0) {
-        if (typeof event !== 'string' || event.trim().length === 0) {
-            this.util?.log?.warn?.('NEvent.waitFor: Nom d\'événement invalide.', {
-                code: 'WARN_EVENT_INVALID',
-                event
-            });
-            return Promise.resolve(null);
-        }
-        return new Promise((resolve) => {
-            let timer = null;
-            const handler = (data) => {
-                if (timer) {
-                    clearTimeout(timer);
-                    timer = null;
-                }
-                this.off(event, handler);
-                resolve(data);
-            };
-            this.on(event, handler);
-            if (typeof timeoutMs === 'number' && timeoutMs > 0) {
-                timer = setTimeout(() => {
-                    timer = null;
-                    this.off(event, handler);
-                    this.util?.log?.warn?.(`NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
-                        code: 'WARN_EVENT_TIMEOUT',
-                        event,
-                        timeoutMs
-                    });
-                    resolve(null);
-                }, timeoutMs);
-            }
-        });
     }
 
     /**

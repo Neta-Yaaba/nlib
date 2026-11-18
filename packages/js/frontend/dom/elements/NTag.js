@@ -2,7 +2,7 @@
  * @file NTag.js
  * @package @nlib/js-frontend
  * @description Classe de base universelle pour toutes les balises HTML/DOM créées en JavaScript dans NLib.
- * Hérite de `NObject` pour bénéficier de la gestion d'état (`#state`), du bus d'événements unifié (`on`, `once`, `off`, `emit`, `waitFor`)
+ * Hérite de `NObject` pour bénéficier de la gestion d'état (`#state`), du bus d'événements unifié (`on`, `off`, `emit`)
  * relié au DOM natif, et du cycle de vie (`destroy()`).
  */
 
@@ -1728,55 +1728,6 @@ export class NTag extends NObject {
     }
 
     /**
-     * Enregistre un écouteur exécuté une seule fois, relié au DOM natif.
-     *
-     * @param {string} event - Nom de l'événement.
-     * @param {Function} callback - Fonction exécutée une seule fois.
-     * @returns {this} L'instance courante pour chaînage.
-     *
-     * @example <caption>Exemple 1 : Écoute unique sur un clic</caption>
-     * btn.once('click', () => console.log('Premier clic'));
-     *
-     * @example <caption>Exemple 2 : Écoute unique sur un événement applicatif</caption>
-     * dialog.once('close', () => console.log('Fermé'));
-     */
-    once(event, callback) {
-        if (this.isDestroyed) {
-            return this;
-        }
-        if (typeof event !== 'string' || event.trim().length === 0) {
-            this.util?.log?.warn?.('NTag.once: Nom d\'événement invalide fourni.', {
-                code: 'WARN_EVENT_INVALID',
-                event
-            });
-            return this;
-        }
-        if (typeof callback !== 'function') {
-            this.util?.log?.warn?.(`NTag.once: Écouteur de type fonction attendu pour "${event}".`, {
-                code: 'WARN_LISTENER_NOT_FUNCTION',
-                event,
-                callback
-            });
-            return this;
-        }
-        const wrapper = (payload) => {
-            this.off(event, wrapper);
-            try {
-                callback.call(this, payload);
-            } catch (error) {
-                this.util?.log?.error?.(`NTag: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
-                    code: 'ERR_EVENT_ONCE_LISTENER',
-                    event,
-                    error,
-                    stack: error?.stack,
-                    target: this
-                });
-            }
-        };
-        return this.on(event, wrapper);
-    }
-
-    /**
      * Supprime un ou plusieurs écouteurs et détache le pont DOM lorsque plus aucun écouteur n'est actif.
      *
      * @param {string} [event] - Nom de l'événement (tous si omis).
@@ -1797,31 +1748,6 @@ export class NTag extends NObject {
             this.#detachDomBridge(event);
         }
         return this;
-    }
-
-    /**
-     * Attend de manière asynchrone le prochain déclenchement d'un événement (DOM ou applicatif).
-     *
-     * @param {string} event - Nom de l'événement attendu.
-     * @param {number} [timeoutMs=0] - Délai maximal d'attente en millisecondes.
-     * @returns {Promise<any>}
-     *
-     * @example <caption>Exemple 1 : Attendre un clic utilisateur</caption>
-     * const ev = await btn.waitFor('click');
-     *
-     * @example <caption>Exemple 2 : Attendre avec timeout</caption>
-     * const ev = await btn.waitFor('click', 1000);
-     */
-    waitFor(event, timeoutMs = 0) {
-        if (this.isDestroyed) {
-            return Promise.resolve(null);
-        }
-        this.#attachDomBridge(event);
-        return super.waitFor(event, timeoutMs).finally(() => {
-            if (!this.isDestroyed && this.listenerCount(event) === 0) {
-                this.#detachDomBridge(event);
-            }
-        });
     }
 
     /**

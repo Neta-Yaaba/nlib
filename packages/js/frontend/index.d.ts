@@ -93,9 +93,7 @@ export class NTag extends NObject {
     getHeight(): number;
 
     on(event: string, callback: (data: any) => any): this;
-    once(event: string, callback: (data: any) => any): this;
     off(event: string, callback?: (data: any) => any): this;
-    waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
     clearEvents(): this;
     destroy(): void;
 }
@@ -223,12 +221,14 @@ export class NAudio extends NMedia {
 export type NButtonType = 'button' | 'submit' | 'reset';
 export type NButtonPosition = 'left' | 'right' | 'top' | 'bottom';
 
-export type NButtonIconConfig = string | NImageOptions;
+export type NButtonIconConfig =
+    | string
+    | ({ type?: 'image' | 'emoji'; value: string } & Partial<NImageOptions>)
+    | NImageOptions;
 
 export interface NButtonOptions extends NTagOptions {
     text?: string;
     icon?: NButtonIconConfig | null;
-    isEmoji?: boolean;
     iconPosition?: NButtonPosition;
     disabled?: boolean;
     loading?: boolean;
@@ -243,7 +243,7 @@ export class NButton extends NTag {
 
     setText(text: string | number | null | undefined): this;
     getText(): string;
-    setIcon(icon: NButtonIconConfig | null | undefined, isEmoji?: boolean): this;
+    setIcon(icon: NButtonIconConfig | null | undefined): this;
     setIconPosition(position: NButtonPosition): this;
     setDisabled(disabled?: boolean): this;
     isDisabled(): boolean;
