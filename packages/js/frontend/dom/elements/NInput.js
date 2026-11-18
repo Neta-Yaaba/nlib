@@ -49,6 +49,7 @@ export class NInput extends NTag {
      * @param {string} [options.type='text'] - Type de l'input HTML.
      * @param {string} [options.name] - Attribut `name`.
      * @param {string|number} [options.value] - Valeur initiale.
+     * @param {string|number} [options.text] - Alias de `options.value` si `value` est omis.
      * @param {string} [options.placeholder] - Texte d'indication (`placeholder`).
      * @param {boolean} [options.checked] - État coché (`checkbox` / `radio`).
      * @param {boolean} [options.indeterminate] - État indéterminé (`checkbox`).
@@ -120,6 +121,8 @@ export class NInput extends NTag {
         }
         if (opts.value !== undefined) {
             this.setValue(opts.value);
+        } else if (opts.text !== undefined) {
+            this.setValue(opts.text);
         }
         if (opts.checked !== undefined) {
             this.setChecked(opts.checked);
@@ -211,7 +214,7 @@ export class NInput extends NTag {
      * @example <caption>Exemple 1 : Définir via setter</caption>
      * input.value = 'Madi';
      *
-     * @example 2 : Vider via setter</caption>
+     * @example <caption>Exemple 2 : Vider via setter</caption>
      * input.value = '';
      */
     set value(val) {
@@ -272,6 +275,52 @@ export class NInput extends NTag {
      */
     set placeholder(value) {
         this.setPlaceholder(value);
+    }
+
+    /**
+     * Retourne la valeur textuelle courante de l'input (`getValue()`).
+     * @returns {string}
+     *
+     * @example <caption>Exemple 1 : Lire le texte saisi</caption>
+     * const input = new NInput({ value: 'Madi' });
+     * console.log(input.text); // 'Madi'
+     *
+     * @example <caption>Exemple 2 : Champ vide</caption>
+     * console.log(new NInput().text); // ''
+     */
+    get text() {
+        return this.getValue();
+    }
+
+    /**
+     * Définit la valeur de l'input (`setValue()`).
+     * @param {string|number|null} val - Valeur à appliquer.
+     *
+     * @example <caption>Exemple 1 : Définir via setter</caption>
+     * input.text = 'NLib';
+     *
+     * @example <caption>Exemple 2 : Vider via setter</caption>
+     * input.text = '';
+     */
+    set text(val) {
+        this.setValue(val);
+    }
+
+    /**
+     * Redirige `setText()` vers `setValue()` pour les balises `<input>`.
+     *
+     * @param {string|number|null} text - Valeur à appliquer.
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Définir la valeur via setText()</caption>
+     * input.setText('Bonjour');
+     * console.log(input.value); // 'Bonjour'
+     *
+     * @example <caption>Exemple 2 : Définir le libellé d'un input submit</caption>
+     * submitInput.setText('Envoyer');
+     */
+    setText(text) {
+        return this.setValue(text);
     }
 
     /**

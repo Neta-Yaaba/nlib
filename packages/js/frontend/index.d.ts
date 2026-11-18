@@ -57,8 +57,8 @@ export class NTag extends NObject {
     getStyle(prop: string): string;
     removeStyle(...props: string[]): this;
 
-    setText(text: string | number | null | undefined): this;
-    setHtml(html: string | null | undefined): this;
+    setText(text: string | number | null | undefined, destroyChildren?: boolean | { destroy?: boolean }): this;
+    setHtml(html: string | null | undefined, destroyChildren?: boolean | { destroy?: boolean }): this;
     setLanguage(language: string | null): this;
     applyLanguage(): this;
     show(display?: string): this;
@@ -81,8 +81,8 @@ export class NTag extends NObject {
     addTag(tags: NTag | Node | string | Array<NTag | Node | string>, position?: number | NTag | Node | null): this;
     append(...nodes: Array<NTag | Node | string>): this;
     prepend(...nodes: Array<NTag | Node | string>): this;
-    removeChild(child: NTag | Node): this;
-    empty(): this;
+    removeChild(child: NTag | Node, destroy?: boolean | { destroy?: boolean }): this;
+    empty(destroyChildren?: boolean | { destroy?: boolean }): this;
     mount(target: NTag | Element | string): this;
     unmount(): this;
 
@@ -94,7 +94,7 @@ export class NTag extends NObject {
     getHeight(): number;
 
     on(event: string, callback: (data: any) => any): this;
-    once(event: string, callback: (data: any) => any): this;
+    once(event: string, callback: (data: any) => any, handlerRemove?: ((info: { event: string; callback: (data: any) => any; target: any }) => void) | null): this;
     off(event?: string, callback?: (data: any) => any): this;
     waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
     clearEvents(): this;
@@ -134,118 +134,89 @@ export class NImage extends NTag {
     destroy(): void;
 }
 
-export interface NVideoSource {
+export interface NMediaSource {
     src: string;
     type?: string;
 }
 
-export interface NVideoOptions extends NTagOptions {
+export interface NMediaOptions extends NTagOptions {
     src?: string;
-    poster?: string;
     controls?: boolean;
     autoplay?: boolean;
     loop?: boolean;
     muted?: boolean;
-    playsInline?: boolean;
     preload?: 'none' | 'metadata' | 'auto';
     volume?: number;
     playbackRate?: number;
     crossOrigin?: string | null;
+    sources?: Array<NMediaSource | string>;
+}
+
+/**
+ * Classe de base média (`HTMLMediaElement`) héritant de `NTag` (`dom/elements/NMedia.js`).
+ */
+export class NMedia extends NTag {
+    constructor(options?: NMediaOptions | string);
+
+    src: string;
+    currentTime: number;
+    readonly duration: number;
+    volume: number;
+    playbackRate: number;
+
+    setSrc(src: string | null | undefined): this;
+    addSource(src: string, type?: string): this;
+    setControls(enabled?: boolean): this;
+    setAutoplay(enabled?: boolean): this;
+    setLoop(enabled?: boolean): this;
+    setMuted(enabled?: boolean): this;
+    setPreload(mode: 'none' | 'metadata' | 'auto'): this;
+    setCrossOrigin(value: 'anonymous' | 'use-credentials' | string | null | undefined): this;
+    setVolume(value: number): this;
+    setPlaybackRate(rate: number): this;
+    seek(seconds: number): this;
+    play(): Promise<void>;
+    pause(): this;
+    stop(): this;
+    togglePlay(): Promise<void> | this;
+    load(): this;
+    isReady(minReadyState?: number): boolean;
+    isPaused(): boolean;
+    isEnded(): boolean;
+    isMuted(): boolean;
+    destroy(): void;
+}
+
+export type NVideoSource = NMediaSource;
+
+export interface NVideoOptions extends NMediaOptions {
+    poster?: string;
+    playsInline?: boolean;
     width?: number | string;
     height?: number | string;
-    sources?: Array<NVideoSource | string>;
 }
 
 /**
- * Composant vidéo (`<video>`) héritant de `NTag` (`dom/elements/NVideo.js`).
+ * Composant vidéo (`<video>`) héritant de `NMedia` (`dom/elements/NVideo.js`).
  */
-export class NVideo extends NTag {
+export class NVideo extends NMedia {
     constructor(options?: NVideoOptions | string);
 
-    src: string;
     poster: string;
-    currentTime: number;
-    readonly duration: number;
-    volume: number;
-    playbackRate: number;
 
-    setSrc(src: string | null | undefined): this;
     setPoster(poster: string | null | undefined): this;
-    addSource(src: string, type?: string): this;
-    setControls(enabled?: boolean): this;
-    setAutoplay(enabled?: boolean): this;
-    setLoop(enabled?: boolean): this;
-    setMuted(enabled?: boolean): this;
     setPlaysInline(enabled?: boolean): this;
-    setPreload(mode: 'none' | 'metadata' | 'auto'): this;
-    setCrossOrigin(value: 'anonymous' | 'use-credentials' | string | null | undefined): this;
-    setVolume(value: number): this;
-    setPlaybackRate(rate: number): this;
-    seek(seconds: number): this;
-    play(): Promise<void>;
-    pause(): this;
-    stop(): this;
-    togglePlay(): Promise<void> | this;
-    load(): this;
-    isReady(minReadyState?: number): boolean;
-    isPaused(): boolean;
-    isEnded(): boolean;
-    isMuted(): boolean;
     getVideoSize(): { width: number; height: number };
-    destroy(): void;
 }
 
-export interface NAudioSource {
-    src: string;
-    type?: string;
-}
-
-export interface NAudioOptions extends NTagOptions {
-    src?: string;
-    controls?: boolean;
-    autoplay?: boolean;
-    loop?: boolean;
-    muted?: boolean;
-    preload?: 'none' | 'metadata' | 'auto';
-    volume?: number;
-    playbackRate?: number;
-    crossOrigin?: string | null;
-    sources?: Array<NAudioSource | string>;
-}
+export type NAudioSource = NMediaSource;
+export type NAudioOptions = NMediaOptions;
 
 /**
- * Composant audio (`<audio>`) héritant de `NTag` (`dom/elements/NAudio.js`).
+ * Composant audio (`<audio>`) héritant de `NMedia` (`dom/elements/NAudio.js`).
  */
-export class NAudio extends NTag {
+export class NAudio extends NMedia {
     constructor(options?: NAudioOptions | string);
-
-    src: string;
-    currentTime: number;
-    readonly duration: number;
-    volume: number;
-    playbackRate: number;
-
-    setSrc(src: string | null | undefined): this;
-    addSource(src: string, type?: string): this;
-    setControls(enabled?: boolean): this;
-    setAutoplay(enabled?: boolean): this;
-    setLoop(enabled?: boolean): this;
-    setMuted(enabled?: boolean): this;
-    setPreload(mode: 'none' | 'metadata' | 'auto'): this;
-    setCrossOrigin(value: 'anonymous' | 'use-credentials' | string | null | undefined): this;
-    setVolume(value: number): this;
-    setPlaybackRate(rate: number): this;
-    seek(seconds: number): this;
-    play(): Promise<void>;
-    pause(): this;
-    stop(): this;
-    togglePlay(): Promise<void> | this;
-    load(): this;
-    isReady(minReadyState?: number): boolean;
-    isPaused(): boolean;
-    isEnded(): boolean;
-    isMuted(): boolean;
-    destroy(): void;
 }
 
 export type NButtonType = 'button' | 'submit' | 'reset';
@@ -314,6 +285,7 @@ export class NInput extends NTag {
     placeholder: string;
 
     setType(type: string): this;
+    setText(text: string | number | null | undefined): this;
     setName(name: string | null | undefined): this;
     setValue(value: string | number | null | undefined): this;
     getValue(): string;

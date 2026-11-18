@@ -67,6 +67,14 @@ export class NEvent {
      */
     #target = null;
 
+    /**
+     * Métadonnées des écouteurs `once` (`wrapper -> { event, callback, handlerRemove }`).
+     * Reste à `null` tant qu'aucun écouteur `once` n'est actif.
+     * @type {Map<Function, { event: string, callback: Function, handlerRemove: Function|null }>|null}
+     * @private
+     */
+    #onceEntries = null;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -306,9 +314,12 @@ export class NEvent {
     /**
      * Abonne une fonction de rappel (`callback`) qui ne sera exécutée qu'une seule fois
      * lors de la prochaine émission de l'événement, puis automatiquement désabonnée.
+     * Un rappel optionnel `handlerRemove` peut être fourni pour être notifié lorsque l'écouteur est retiré
+     * (après exécution, via `off()` ou via `clear()`).
      *
      * @param {string} event - Nom de l'événement à écouter une seule fois.
      * @param {Function} callback - Fonction exécutée lors de la première émission.
+     * @param {Function|null} [handlerRemove=null] - Fonction appelée lorsque l'écouteur est retiré.
      * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Réagir uniquement au premier événement</caption>
@@ -317,13 +328,15 @@ export class NEvent {
      * evt.emit('pret'); // Affiche 'Exécuté une seule fois'
      * evt.emit('pret'); // Ne fait plus rien
      *
-     * @example <caption>Exemple 2 : Libération automatique après exécution</caption>
+     * @example <caption>Exemple 2 : Nettoyer une ressource au retrait via handlerRemove</caption>
      * const evt = new NEvent();
-     * evt.once('init', () => {});
+     * evt.once('init', () => {}, ({ event }) => {
+     *     console.log(`Écouteur ${event} retiré`);
+     * });
      * evt.emit('init');
      * console.log(evt.isEmpty); // true
      */
-    once(event, callback) {
+    once(event, callback, handlerRemove = null) {
         if (typeof event !== 'string' || event.trim().length === 0) {
             this.util?.log?.warn?.('NEvent.once: Nom d\'événement invalide fourni.', {
                 code: 'WARN_EVENT_INVALID',
@@ -339,6 +352,7 @@ export class NEvent {
             });
             return this;
         }
+        const removeCb = typeof handlerRemove === 'function' ? handlerRemove : null;
         const wrapper = (payload) => {
             this.off(event, wrapper);
             try {
@@ -353,6 +367,14 @@ export class NEvent {
                 });
             }
         };
+        if (!this.#onceEntries) {
+            this.#onceEntries = new Map();
+        }
+        this.#onceEntries.set(wrapper, {
+            event,
+            callback,
+            handlerRemove: removeCb
+        });
         return this.on(event, wrapper);
     }
 
@@ -382,16 +404,37 @@ export class NEvent {
             return this;
         }
         if (!callback) {
+            const removed = Array.from(this.#listeners.get(event));
             this.#listeners.delete(event);
-        } else {
-            const set = this.#listeners.get(event);
-            set.delete(callback);
+            if (this.#listeners.size === 0) {
+                this.#listeners = null;
+            }
+            for (const fn of removed) {
+                this.#notifyOnceRemoved(fn);
+            }
+            return this;
+        }
+        const set = this.#listeners.get(event);
+        let targetFn = null;
+        if (set.has(callback)) {
+            targetFn = callback;
+        } else if (this.#onceEntries) {
+            for (const [wrapper, entry] of this.#onceEntries.entries()) {
+                if (entry.event === event && entry.callback === callback && set.has(wrapper)) {
+                    targetFn = wrapper;
+                    break;
+                }
+            }
+        }
+        if (targetFn) {
+            set.delete(targetFn);
             if (set.size === 0) {
                 this.#listeners.delete(event);
             }
-        }
-        if (this.#listeners.size === 0) {
-            this.#listeners = null;
+            if (this.#listeners.size === 0) {
+                this.#listeners = null;
+            }
+            this.#notifyOnceRemoved(targetFn);
         }
         return this;
     }
@@ -467,24 +510,35 @@ export class NEvent {
             return Promise.resolve(null);
         }
         return new Promise((resolve) => {
+            let settled = false;
             let timer = null;
-            const handler = (data) => {
+            const settle = (value) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
                 if (timer) {
                     clearTimeout(timer);
                     timer = null;
                 }
-                resolve(data);
+                resolve(value);
             };
-            this.once(event, handler);
+            const handler = (data) => {
+                settle(data);
+            };
+            this.once(event, handler, () => {
+                settle(null);
+            });
             if (typeof timeoutMs === 'number' && timeoutMs > 0) {
                 timer = setTimeout(() => {
+                    timer = null;
                     this.off(event, handler);
                     this.util?.log?.warn?.(`NEvent.waitFor: Délai d'attente expiré (${timeoutMs}ms) pour l'événement "${event}".`, {
                         code: 'WARN_EVENT_TIMEOUT',
                         event,
                         timeoutMs
                     });
-                    resolve(null);
+                    settle(null);
                 }, timeoutMs);
             }
         });
@@ -509,7 +563,58 @@ export class NEvent {
             this.#listeners.clear();
             this.#listeners = null;
         }
+        if (this.#onceEntries) {
+            const pending = Array.from(this.#onceEntries.values());
+            this.#onceEntries.clear();
+            this.#onceEntries = null;
+            for (const entry of pending) {
+                this.#invokeRemoveHandler(entry);
+            }
+        }
         return this;
+    }
+
+    /**
+     * Notifie et supprime l'entrée `once` associée à un wrapper retiré.
+     * @param {Function} wrapper - Fonction enveloppe enregistrée par `once()`.
+     * @private
+     */
+    #notifyOnceRemoved(wrapper) {
+        if (!this.#onceEntries || !this.#onceEntries.has(wrapper)) {
+            return;
+        }
+        const entry = this.#onceEntries.get(wrapper);
+        this.#onceEntries.delete(wrapper);
+        if (this.#onceEntries.size === 0) {
+            this.#onceEntries = null;
+        }
+        this.#invokeRemoveHandler(entry);
+    }
+
+    /**
+     * Exécute en toute sécurité le callback `handlerRemove` d'une entrée `once`.
+     * @param {{ event: string, callback: Function, handlerRemove: Function|null }} entry - Métadonnées `once`.
+     * @private
+     */
+    #invokeRemoveHandler(entry) {
+        if (!entry || typeof entry.handlerRemove !== 'function') {
+            return;
+        }
+        try {
+            entry.handlerRemove.call(this.#target ?? this, {
+                event: entry.event,
+                callback: entry.callback,
+                target: this.#target ?? this
+            });
+        } catch (error) {
+            this.util?.log?.error?.(`NEvent: Erreur dans handlerRemove pour "${entry.event}".`, {
+                code: 'ERR_EVENT_ONCE_REMOVE_HANDLER',
+                event: entry.event,
+                error,
+                stack: error?.stack,
+                target: this.#target ?? this
+            });
+        }
     }
 
     // =========================================================================

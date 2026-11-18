@@ -28,6 +28,13 @@ describe('NInput (dom/elements/NInput.js)', () => {
         assert.equal(email.isValid(), true);
         assert.equal(email.hasClass('n-input--invalid'), false);
 
+        // setText() / text redirigés vers setValue() / getValue()
+        email.setText('contact@nlib.dev');
+        assert.equal(email.value, 'contact@nlib.dev');
+        assert.equal(email.text, 'contact@nlib.dev');
+        email.text = 'madi@nlib.dev';
+        assert.equal(email.value, 'madi@nlib.dev');
+
         const num = new NInput({ type: 'number', min: 0, max: 100, step: 5, value: 45 });
         assert.equal(num.getValueAsNumber(), 45);
         assert.equal(num.getAttr('min'), '0');

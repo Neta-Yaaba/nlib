@@ -873,20 +873,25 @@ export class NTag extends NObject {
      * Définit le contenu textuel (`textContent`) de la balise.
      *
      * @param {string|number} text - Texte à afficher.
+     * @param {boolean|{ destroy?: boolean }} [destroyChildren=true] - Détruit les anciens enfants `NTag` (`true` par défaut) ou les conserve (`false` / `{ destroy: false }`).
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Définir un texte</caption>
      * const title = new NTag('h1').setText('Bienvenue');
      *
-     * @example <caption>Exemple 2 : Mettre à jour un compteur</caption>
-     * title.setText(42);
+     * @example <caption>Exemple 2 : Remplacer le contenu sans détruire les anciens enfants</caption>
+     * container.setText('Vide', false);
      */
-    setText(text) {
+    setText(text, destroyChildren = true) {
         if (this.#element) {
+            const shouldDestroy = typeof destroyChildren === 'boolean' ? destroyChildren : (destroyChildren?.destroy !== false);
             const prevChildren = this.children;
             this.#element.textContent = (text === null || text === undefined) ? '' : String(text);
             for (const child of prevChildren) {
                 child.#syncSubtreeMountState();
+                if (shouldDestroy && !child.isDestroyed) {
+                    child.destroy();
+                }
             }
         }
         return this;
@@ -896,20 +901,25 @@ export class NTag extends NObject {
      * Définit le contenu HTML (`innerHTML`) de la balise.
      *
      * @param {string} html - Chaîne HTML.
+     * @param {boolean|{ destroy?: boolean }} [destroyChildren=true] - Détruit les anciens enfants `NTag` (`true` par défaut) ou les conserve (`false` / `{ destroy: false }`).
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Définir du HTML</caption>
      * const box = new NTag().setHtml('<strong>Important</strong>');
      *
-     * @example <caption>Exemple 2 : Vider le contenu HTML</caption>
-     * box.setHtml('');
+     * @example <caption>Exemple 2 : Remplacer le HTML en conservant les anciennes instances</caption>
+     * box.setHtml('<p>Nouveau</p>', false);
      */
-    setHtml(html) {
+    setHtml(html, destroyChildren = true) {
         if (this.#element) {
+            const shouldDestroy = typeof destroyChildren === 'boolean' ? destroyChildren : (destroyChildren?.destroy !== false);
             const prevChildren = this.children;
             this.#element.innerHTML = (html === null || html === undefined) ? '' : String(html);
             for (const child of prevChildren) {
                 child.#syncSubtreeMountState();
+                if (shouldDestroy && !child.isDestroyed) {
+                    child.destroy();
+                }
             }
         }
         return this;
@@ -1505,23 +1515,27 @@ export class NTag extends NObject {
      * Retire un enfant (`NTag` ou `Node` DOM) de cette balise.
      *
      * @param {NTag|Node} child - Enfant à retirer.
+     * @param {boolean|{ destroy?: boolean }} [destroy=true] - Détruit l'enfant `NTag` retiré (`true` par défaut) ou le conserve (`false` / `{ destroy: false }`).
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Retirer une balise enfant</caption>
+     * @example <caption>Exemple 1 : Retirer et détruire une balise enfant</caption>
      * ul.removeChild(li);
      *
-     * @example <caption>Exemple 2 : Retirer puis vérifier la liste des enfants</caption>
-     * ul.removeChild(li);
-     * console.log(ul.children.length);
+     * @example <caption>Exemple 2 : Retirer sans détruire pour réutiliser ailleurs</caption>
+     * ul.removeChild(li, false);
      */
-    removeChild(child) {
+    removeChild(child, destroy = true) {
         if (!child || !this.#element) return this;
+        const shouldDestroy = typeof destroy === 'boolean' ? destroy : (destroy?.destroy !== false);
         const targetNode = child instanceof NTag ? child.#element : child;
         if (targetNode && targetNode.parentNode === this.#element) {
             this.#element.removeChild(targetNode);
             const childTag = child instanceof NTag ? child : targetNode._ntag;
             if (childTag instanceof NTag) {
                 childTag.#syncSubtreeMountState();
+                if (shouldDestroy && !childTag.isDestroyed) {
+                    childTag.destroy();
+                }
             }
         }
         return this;
@@ -1530,21 +1544,26 @@ export class NTag extends NObject {
     /**
      * Vide tous les enfants et le contenu de la balise.
      *
+     * @param {boolean|{ destroy?: boolean }} [destroyChildren=true] - Détruit les enfants `NTag` retirés (`true` par défaut) ou les conserve (`false` / `{ destroy: false }`).
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Vider une liste</caption>
+     * @example <caption>Exemple 1 : Vider une liste et détruire ses éléments</caption>
      * list.empty();
      *
-     * @example <caption>Exemple 2 : Vider avant de reremplir</caption>
-     * list.empty().append(new NTag('li').setText('Nouveau'));
+     * @example <caption>Exemple 2 : Vider sans détruire les instances enfants</caption>
+     * list.empty(false);
      */
-    empty() {
+    empty(destroyChildren = true) {
+        const shouldDestroy = typeof destroyChildren === 'boolean' ? destroyChildren : (destroyChildren?.destroy !== false);
         const prevChildren = this.children;
         if (this.#element) {
             this.#element.textContent = '';
         }
         for (const child of prevChildren) {
             child.#syncSubtreeMountState();
+            if (shouldDestroy && !child.isDestroyed) {
+                child.destroy();
+            }
         }
         return this;
     }
@@ -1723,28 +1742,27 @@ export class NTag extends NObject {
      *
      * @param {string} event - Nom de l'événement.
      * @param {Function} callback - Fonction exécutée une seule fois.
+     * @param {Function|null} [handlerRemove=null] - Fonction appelée lorsque l'écouteur est retiré.
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Écoute unique sur un clic</caption>
      * btn.once('click', () => console.log('Premier clic'));
      *
-     * @example <caption>Exemple 2 : Écoute unique sur un événement applicatif</caption>
-     * dialog.once('close', () => console.log('Fermé'));
+     * @example <caption>Exemple 2 : Écoute unique avec notification de retrait</caption>
+     * dialog.once('close', () => console.log('Fermé'), () => console.log('Nettoyé'));
      */
-    once(event, callback) {
+    once(event, callback, handlerRemove = null) {
         if (this.isDestroyed || typeof callback !== 'function') {
             return this;
         }
-        const wrapped = (...args) => {
-            try {
-                return callback.apply(this, args);
-            } finally {
-                if (!this.isDestroyed && this.listenerCount(event) === 0) {
-                    this.#detachDomBridge(event);
-                }
+        super.once(event, callback, (info) => {
+            if (!this.isDestroyed && this.listenerCount(event) === 0) {
+                this.#detachDomBridge(event);
             }
-        };
-        super.once(event, wrapped);
+            if (typeof handlerRemove === 'function') {
+                handlerRemove.call(this, info);
+            }
+        });
         this.#attachDomBridge(event);
         return this;
     }
@@ -1786,26 +1804,13 @@ export class NTag extends NObject {
      * const ev = await btn.waitFor('click', 1000);
      */
     waitFor(event, timeoutMs = 0) {
-        if (this.isDestroyed || typeof event !== 'string' || !event.trim()) {
+        if (this.isDestroyed) {
             return Promise.resolve(null);
         }
-        return new Promise((resolve) => {
-            let timer = null;
-            const handler = (data) => {
-                if (timer) {
-                    clearTimeout(timer);
-                    timer = null;
-                }
-                this.off(event, handler);
-                resolve(data);
-            };
-            this.on(event, handler);
-            if (typeof timeoutMs === 'number' && timeoutMs > 0) {
-                timer = setTimeout(() => {
-                    timer = null;
-                    this.off(event, handler);
-                    resolve(null);
-                }, timeoutMs);
+        this.#attachDomBridge(event);
+        return super.waitFor(event, timeoutMs).finally(() => {
+            if (!this.isDestroyed && this.listenerCount(event) === 0) {
+                this.#detachDomBridge(event);
             }
         });
     }

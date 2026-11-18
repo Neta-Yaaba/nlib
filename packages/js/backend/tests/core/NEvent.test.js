@@ -24,14 +24,33 @@ describe('NEvent (core/NEvent.js)', () => {
         assert.equal(bus.has('ping'), false);
     });
 
-    it('exécute once une seule fois', () => {
+    it('exécute once une seule fois et appelle handlerRemove au retrait (emit, off, clear)', () => {
         const bus = new NEvent();
         let count = 0;
-        bus.once('init', () => { count += 1; });
+        let removedReasons = 0;
+        bus.once('init', () => { count += 1; }, ({ event }) => {
+            if (event === 'init') removedReasons += 1;
+        });
 
         bus.emit('init');
         bus.emit('init');
         assert.equal(count, 1);
+        assert.equal(removedReasons, 1);
+
+        // Retrait manuel via off(event, callback original)
+        let manualRemoved = 0;
+        const fn = () => { count += 1; };
+        bus.once('step', fn, () => { manualRemoved += 1; });
+        bus.off('step', fn);
+        bus.emit('step');
+        assert.equal(count, 1);
+        assert.equal(manualRemoved, 1);
+
+        // Retrait via clear()
+        let clearedCount = 0;
+        bus.once('later', () => {}, () => { clearedCount += 1; });
+        bus.clear();
+        assert.equal(clearedCount, 1);
     });
 
     it('supporte waitFor (résolution et timeout) et clear', async () => {
@@ -43,9 +62,13 @@ describe('NEvent (core/NEvent.js)', () => {
 
         const expired = await bus.waitFor('never', 30);
         assert.equal(expired, null);
+        assert.equal(bus.listenerCount('never'), 0);
 
+        // Annulation d'un waitFor via clear()
+        const pending = bus.waitFor('cancelled', 5000);
         bus.on('tmp', () => {});
         bus.clear();
+        assert.equal(await pending, null);
         assert.equal(bus.isEmpty, true);
     });
 });

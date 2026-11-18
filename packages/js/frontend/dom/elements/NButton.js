@@ -34,7 +34,7 @@ export class NButton extends NTag {
     static #VALID_POSITIONS = new Set(['left', 'right', 'top', 'bottom']);
 
     /**
-     * Élément interne affichant le texte (`span.n-btn__text`).
+     * Élément interne affichant le texte (`span.n-button__text`).
      * @type {NTag|null}
      * @private
      */
@@ -48,7 +48,7 @@ export class NButton extends NTag {
     #iconTag = null;
 
     /**
-     * Élément interne affichant l'indicateur de chargement (`span.n-btn__spinner`).
+     * Élément interne affichant l'indicateur de chargement (`span.n-button__spinner`).
      * @type {NTag|null}
      * @private
      */
@@ -81,6 +81,13 @@ export class NButton extends NTag {
      * @private
      */
     #loading = false;
+
+    /**
+     * Valeur d'`aria-label` générée automatiquement depuis `icon.alt` en mode icône seule.
+     * @type {string}
+     * @private
+     */
+    #autoAriaLabel = '';
 
     /**
      * Crée une nouvelle instance `NButton`.
@@ -137,7 +144,7 @@ export class NButton extends NTag {
     }
 
     /**
-     * Définit ou met à jour le texte du bouton dans son élément interne `span.n-btn__text`.
+     * Définit ou met à jour le texte du bouton dans son élément interne `span.n-button__text`.
      *
      * @param {string|number|null} text - Texte à afficher (`null` ou `''` supprime l'élément texte).
      * @returns {this} L'instance courante pour chaînage.
@@ -192,16 +199,22 @@ export class NButton extends NTag {
     }
 
     /**
-     * Définit ou remplace l'icône du bouton (`string` URL pour `NImage`, objet d'options `NImage`, ou instance `NImage`/`NTag`).
+     * Définit ou remplace l'icône du bouton (`string` URL pour `NImage`, objet d'options `NImage`/`NTag`, ou instance `NImage`/`NTag`).
+     * Les icônes créées en interne depuis une URL ou un objet d'options sont détruites lors d'un remplacement ou de `removeIcon()` ;
+     * les instances `NTag`/`NImage` fournies directement sont uniquement détachées lors d'un remplacement ou de `removeIcon()`,
+     * et restent soumises à `destroy()` du bouton si elles y sont encore attachées lors de sa destruction.
      *
      * @param {string|Object|NImage|NTag|null} icon - Source, configuration ou instance de l'icône.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Ajouter une icône par URL</caption>
+     * @example <caption>Exemple 1 : Ajouter une icône par URL ou emoji NTag</caption>
      * btn.setIcon('/icons/save.svg');
+     * btn.setIcon(new NTag({ tagName: 'span', text: '🚀' }));
      *
-     * @example <caption>Exemple 2 : Ajouter une icône configurée par objet</caption>
-     * btn.setIcon({ src: '/icons/user.png', alt: 'Profil' });
+     * @example <caption>Exemple 2 : Réutiliser une instance externe après removeIcon()</caption>
+     * const star = new NImage('/icons/star.png');
+     * btn.setIcon(star).removeIcon();
+     * otherBtn.setIcon(star);
      */
     setIcon(icon) {
         if (this.isDestroyed) {
@@ -231,11 +244,18 @@ export class NButton extends NTag {
             });
             this.#ownsIcon = true;
         } else if (typeof icon === 'object') {
-            iconTag = new NImage({
-                alt: '',
-                ...icon,
-                attrs: { 'aria-hidden': 'true', ...(icon.attrs || {}) }
-            });
+            const isTagConfig = !('src' in icon) && ('tagName' in icon || 'text' in icon || 'html' in icon || 'classes' in icon);
+            iconTag = isTagConfig
+                ? new NTag({
+                    tagName: 'span',
+                    ...icon,
+                    attrs: { 'aria-hidden': 'true', ...(icon.attrs || {}) }
+                })
+                : new NImage({
+                    alt: '',
+                    ...icon,
+                    attrs: { 'aria-hidden': 'true', ...(icon.attrs || {}) }
+                });
             this.#ownsIcon = true;
         }
 
@@ -251,7 +271,8 @@ export class NButton extends NTag {
     }
 
     /**
-     * Supprime l'icône du bouton si elle existe.
+     * Retire l'icône du bouton ; la détruit si elle a été créée en interne par `NButton`,
+     * ou la détache simplement si une instance `NTag`/`NImage` externe avait été fournie.
      *
      * @returns {this} L'instance courante pour chaînage.
      *
@@ -444,6 +465,7 @@ export class NButton extends NTag {
         this.#iconTag = null;
         this.#spinnerTag = null;
         this.#ownsIcon = false;
+        this.#autoAriaLabel = '';
         super.destroy();
     }
 
@@ -456,12 +478,10 @@ export class NButton extends NTag {
             return;
         }
         const tag = this.#iconTag;
-        this.removeChild(tag);
-        if (this.#ownsIcon && !tag.isDestroyed) {
-            tag.destroy();
-        }
+        const owns = this.#ownsIcon;
         this.#iconTag = null;
         this.#ownsIcon = false;
+        this.removeChild(tag, owns);
     }
 
     /**
@@ -476,7 +496,7 @@ export class NButton extends NTag {
 
     /**
      * Réordonne dynamiquement les enfants internes (`spinner`, `icon`, `text`)
-     * et met à jour les classes utilitaires (`n-btn--icon-only`) et l'accessibilité.
+     * et met à jour les classes utilitaires (`n-button--icon-only`) et l'accessibilité.
      * @private
      */
     #syncStructure() {
@@ -507,8 +527,14 @@ export class NButton extends NTag {
         const hasVisual = Boolean(this.#iconTag || this.#spinnerTag);
         this.toggleClass('n-button--icon-only', !hasText && hasVisual);
 
-        if (!hasText && this.#iconTag instanceof NImage && this.#iconTag.alt && !this.hasAttr('aria-label')) {
-            this.setAttr('aria-label', this.#iconTag.alt);
+        if (hasText) {
+            if (this.#autoAriaLabel && this.getAttr('aria-label') === this.#autoAriaLabel) {
+                this.removeAttr('aria-label');
+            }
+            this.#autoAriaLabel = '';
+        } else if (this.#iconTag instanceof NImage && this.#iconTag.alt && !this.hasAttr('aria-label')) {
+            this.#autoAriaLabel = this.#iconTag.alt;
+            this.setAttr('aria-label', this.#autoAriaLabel);
         }
     }
 }

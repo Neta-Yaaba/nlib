@@ -35,7 +35,7 @@ export class NEvent {
     listenerCount(event?: string): number;
     eventNames(): string[];
     on(event: string, callback: NEventCallback): this;
-    once(event: string, callback: NEventCallback): this;
+    once(event: string, callback: NEventCallback, handlerRemove?: ((info: { event: string; callback: NEventCallback; target: any }) => void) | null): this;
     off(event?: string, callback?: NEventCallback): this;
     emit(event: string, ...args: any[]): this;
     waitFor<T = any>(event: string, timeout?: number): Promise<T | null>;
@@ -59,7 +59,7 @@ export class NObject {
     readonly isDestroyed: boolean;
 
     on(event: string, callback: NEventCallback): this;
-    once(event: string, callback: NEventCallback): this;
+    once(event: string, callback: NEventCallback, handlerRemove?: ((info: { event: string; callback: NEventCallback; target: any }) => void) | null): this;
     off(event?: string, callback?: NEventCallback): this;
     emit(event: string, data?: any): this;
     waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;

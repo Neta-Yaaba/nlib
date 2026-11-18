@@ -10,6 +10,7 @@ frontend/
 │   ├── elements/
 │   │   ├── NTag.js
 │   │   ├── NImage.js
+│   │   ├── NMedia.js
 │   │   ├── NVideo.js
 │   │   ├── NAudio.js
 │   │   ├── NButton.js

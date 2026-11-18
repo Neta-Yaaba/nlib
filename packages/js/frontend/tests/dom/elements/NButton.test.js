@@ -44,8 +44,22 @@ describe('NButton (dom/elements/NButton.js)', () => {
         assert.equal(btn.children[1], oldIcon);
         assert.equal(oldIcon.src, '/icons/next.png');
 
-        btn.setIcon(new NImage('/icons/custom.png'));
+        const customIcon = new NImage('/icons/custom.png');
+        btn.setIcon(customIcon);
         assert.equal(oldIcon.isDestroyed, true);
+        btn.removeIcon();
+        assert.equal(customIcon.isDestroyed, false);
+        customIcon.destroy();
+        btn.setIcon('/icons/custom.png');
+
+        // Icône NTag simple avec emoji
+        const emojiBtn = new NButton({
+            text: 'Lancer',
+            icon: new NTag({ tagName: 'span', text: '🚀' })
+        });
+        assert.equal(emojiBtn.children[0].text, '🚀');
+        assert.equal(emojiBtn.children[0].hasClass('n-button__icon'), true);
+        emojiBtn.destroy();
 
         btn.setIconPosition('top');
         assert.equal(btn.hasClass('n-button--icon-top'), true);
@@ -60,6 +74,13 @@ describe('NButton (dom/elements/NButton.js)', () => {
         btn.setText('');
         assert.equal(btn.hasClass('n-button--icon-only'), true);
         assert.equal(btn.children.length, 1);
+
+        // Si icône seule avec alt -> aria-label auto, puis supprimé quand du texte est ajouté
+        const iconOnly = new NButton({ icon: { src: '/icons/close.png', alt: 'Fermer' } });
+        assert.equal(iconOnly.getAttr('aria-label'), 'Fermer');
+        iconOnly.setText('Fermer la fenêtre');
+        assert.equal(iconOnly.hasAttr('aria-label'), false);
+        iconOnly.destroy();
 
         btn.removeIcon();
         assert.equal(btn.children.length, 0);

@@ -258,17 +258,18 @@ export class NObject {
      *
      * @param {string} event - Nom de l'événement.
      * @param {Function} callback - Fonction exécutée à la première émission.
+     * @param {Function|null} [handlerRemove=null] - Fonction appelée lorsque l'écouteur est retiré.
      * @returns {this} L'instance courante pour chaînage fluide.
      *
      * @example <caption>Exemple 1 : Écoute unique</caption>
      * const obj = new NObject();
      * obj.once('connected', () => console.log('Première connexion'));
      *
-     * @example <caption>Exemple 2 : Chaînage</caption>
-     * obj.once('init', () => {}).emit('init');
+     * @example <caption>Exemple 2 : Nettoyage au retrait via handlerRemove</caption>
+     * obj.once('init', () => {}, () => console.log('Écouteur retiré'));
      */
-    once(event, callback) {
-        this.event.once(event, callback);
+    once(event, callback, handlerRemove = null) {
+        this.event.once(event, callback, handlerRemove);
         return this;
     }
 
