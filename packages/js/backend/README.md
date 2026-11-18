@@ -84,7 +84,8 @@ import {
     NDataSynchronizer,
     NWorker,
     NWorkerManager,
-    NServiceWorker
+    NServiceWorker,
+    NLanguage
 } from '@nlib/js-backend';
 
 // Importation ciblée par sous-chemin
@@ -138,8 +139,8 @@ import { NObject } from '@nlib/js-backend';
 const obj = new NObject({ state: { compteur: 1, actif: true } });
 
 // Écouter les changements d'état
-obj.event.on('stateChange', ({ changes }) => {
-    console.log('Modifications :', changes);
+obj.event.on('stateChange', ({ key, value, oldValue }) => {
+    console.log('Modification :', key, oldValue, '->', value);
 });
 
 // Modifier et lire l'état
@@ -180,7 +181,7 @@ Gestionnaire d'événements synchrone permettant l'abonnement (`on`, `once`), la
 | `listenerCount` | `listenerCount(event)` | `number` | Retourne le nombre d'écouteurs actifs pour `event` (ou le total si omis). |
 | `eventNames` | `eventNames()` | `string[]` | Retourne la liste des noms d'événements écoutés. |
 | `on` | `on(event, callback)` | `this` | Enregistre un écouteur sur un événement (ou plusieurs séparés par des espaces). |
-| `once` | `once(event, callback, handlerRemove = null)` | `this` | Enregistre un écouteur exécuté une seule fois puis retiré automatiquement (avec rappel optionnel `handlerRemove` au retrait). |
+| `once` | `once(event, callback)` | `this` | Enregistre un écouteur exécuté une seule fois puis retiré automatiquement. |
 | `off` | `off(event, callback)` | `this` | Retire un écouteur précis ou tous les écouteurs d'un événement. |
 | `emit` | `emit(event, data = null)` | `this` | Déclenche de manière synchrone tous les écouteurs de `event`. |
 | `waitFor` | `waitFor(event, timeoutMs = 0)` | `Promise<any>` | Retourne une promesse résolue à la prochaine émission de `event` (ou `null` en cas d'expiration). |

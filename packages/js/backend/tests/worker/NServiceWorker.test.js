@@ -26,5 +26,12 @@ describe('NServiceWorker (worker/NServiceWorker.js)', () => {
 
         await sw.disable();
         assert.equal(sw.isMonkeyPatched, false);
+        assert.equal(sw.isEnabled, false);
+        assert.equal(typeof sw.isNativeSupported, 'boolean');
+        assert.equal(typeof sw.isServiceWorkerScope, 'boolean');
+
+        sw.configure({ defaultStrategy: 'cache-first' }).clearRoutes();
+        sw.destroy();
+        assert.equal(sw.isDestroyed, true);
     });
 });

@@ -20,6 +20,16 @@ describe('NDatabase (database/NDatabase.js)', () => {
         assert.equal(db.store instanceof NStorage, true);
 
         db.cancelAutoSave();
-        await db.close();
+        db.autoSave = false;
+        db.autoSaveDelay = 500;
+        assert.equal(db.autoSave, false);
+        assert.equal(db.autoSaveDelay, 500);
+        assert.equal(db.indexed, db.idb);
+        assert.equal(db.storage, db.store);
+        assert.equal(typeof db.context, 'string');
+
+        db.close();
+        db.destroy();
+        assert.equal(db.isDestroyed, true);
     });
 });

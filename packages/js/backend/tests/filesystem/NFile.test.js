@@ -20,5 +20,20 @@ describe('NFile (filesystem/NFile.js)', () => {
         const b64 = await file.toBase64('NLib');
         const decoded = await file.toText(file.fromBase64(b64));
         assert.equal(decoded, 'NLib');
+
+        const parts = file.splitPath('docs/2026/rapport.pdf');
+        assert.equal(parts.path, 'docs/2026/rapport.pdf');
+        assert.equal(parts.directory, 'docs/2026');
+        assert.equal(parts.name, 'rapport.pdf');
+        assert.equal(parts.baseName, 'rapport');
+        assert.equal(parts.extension, 'pdf');
+        assert.equal(file.getDirName('docs/2026/rapport.pdf'), 'docs/2026');
+        assert.equal(file.getExtension('rapport.pdf', true), '.pdf');
+        assert.equal(['native', 'fs', 'idb'].includes(file.driver), true);
+        assert.equal(typeof file.isNativeAvailable, 'boolean');
+        assert.equal(typeof file.isFsApiAvailable, 'boolean');
+
+        const dataUrl = await file.toDataUrl('Hello', 'text/plain');
+        assert.ok(dataUrl.startsWith('data:text/plain;base64,'));
     });
 });

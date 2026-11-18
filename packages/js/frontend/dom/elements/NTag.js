@@ -1732,29 +1732,48 @@ export class NTag extends NObject {
      *
      * @param {string} event - Nom de l'événement.
      * @param {Function} callback - Fonction exécutée une seule fois.
-     * @param {Function|null} [handlerRemove=null] - Fonction appelée lorsque l'écouteur est retiré.
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Écoute unique sur un clic</caption>
      * btn.once('click', () => console.log('Premier clic'));
      *
-     * @example <caption>Exemple 2 : Écoute unique avec notification de retrait</caption>
-     * dialog.once('close', () => console.log('Fermé'), () => console.log('Nettoyé'));
+     * @example <caption>Exemple 2 : Écoute unique sur un événement applicatif</caption>
+     * dialog.once('close', () => console.log('Fermé'));
      */
-    once(event, callback, handlerRemove = null) {
-        if (this.isDestroyed || typeof callback !== 'function') {
+    once(event, callback) {
+        if (this.isDestroyed) {
             return this;
         }
-        super.once(event, callback, (info) => {
-            if (!this.isDestroyed && this.listenerCount(event) === 0) {
-                this.#detachDomBridge(event);
+        if (typeof event !== 'string' || event.trim().length === 0) {
+            this.util?.log?.warn?.('NTag.once: Nom d\'événement invalide fourni.', {
+                code: 'WARN_EVENT_INVALID',
+                event
+            });
+            return this;
+        }
+        if (typeof callback !== 'function') {
+            this.util?.log?.warn?.(`NTag.once: Écouteur de type fonction attendu pour "${event}".`, {
+                code: 'WARN_LISTENER_NOT_FUNCTION',
+                event,
+                callback
+            });
+            return this;
+        }
+        const wrapper = (payload) => {
+            this.off(event, wrapper);
+            try {
+                callback.call(this, payload);
+            } catch (error) {
+                this.util?.log?.error?.(`NTag: Erreur lors de l'exécution d'un écouteur 'once' pour "${event}".`, {
+                    code: 'ERR_EVENT_ONCE_LISTENER',
+                    event,
+                    error,
+                    stack: error?.stack,
+                    target: this
+                });
             }
-            if (typeof handlerRemove === 'function') {
-                handlerRemove.call(this, info);
-            }
-        });
-        this.#attachDomBridge(event);
-        return this;
+        };
+        return this.on(event, wrapper);
     }
 
     /**

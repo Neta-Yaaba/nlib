@@ -11,6 +11,10 @@ describe('NPhoneNumber (utils/NPhoneNumber.js)', () => {
         assert.equal(phone.toE164('70 12 34 56', '226'), '+22670123456');
         assert.equal(phone.toNational('+22670123456', '226'), '70123456');
         assert.equal(phone.equals('70123456', '+226 70 12 34 56', '226'), true);
-        assert.equal(phone.format('+22670123456', 'international'), '+22 67 01 23 45 6');
+        assert.equal(phone.format('+22670123456', { countryCode: '226', separator: ' ' }), '+226 70 12 34 56');
+        assert.equal(phone.format('70123456'), '70 12 34 56');
+        assert.equal(phone.mask('+22670123456'), '+226******56');
+        assert.equal(phone.toTelUri('+22670123456'), 'tel:+22670123456');
+        assert.ok(phone.toWhatsAppUrl('+22670123456', 'Salut').startsWith('https://wa.me/22670123456'));
     });
 });

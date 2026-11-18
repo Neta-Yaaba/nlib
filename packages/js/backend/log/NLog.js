@@ -195,7 +195,7 @@ export class NLog extends NObject {
 
     /**
      * Retourne le gestionnaire d'événements `NEvent` associé à ce logger.
-     * La variable privée `#event` est initialisée uniquement lors du premier appel (économie de mémoire).
+     * La variable privée `#event` est initialisée lors du premier appel.
      *
      * Événements émis :
      * - `'log'` : émis à chaque écriture de log avec `{ entry, target }`.
@@ -468,7 +468,6 @@ export class NLog extends NObject {
 
     /**
      * Enregistre une anomalie majeure ou une erreur de niveau `ERROR`.
-     * Remplace le lancer d'exception en archivant l'erreur sans interrompre l'application.
      *
      * @param {string} message - Description explicite de l'erreur survenue.
      * @param {Error|Object|any} [errorOrDetails=null] - Instance native d'Error ou données complémentaires.
@@ -492,7 +491,7 @@ export class NLog extends NObject {
      * Capture une exception ou une erreur survenue dans un bloc try/catch,
      * l'enregistre au niveau `ERROR` avec sa stack trace et son code,
      * émet l'événement `'exception'` sur `this.event` si initialisé,
-     * et retourne un résultat standardisé `{ success: false, ... }` au lieu de lever une exception.
+     * et retourne un résultat standardisé `{ success: false, ... }`.
      *
      * @param {Error|any} error - L'objet exception ou l'erreur interceptée.
      * @param {Object} [additionalContext={}] - Métadonnées contextuelles sur l'opération en cours.
@@ -562,7 +561,7 @@ export class NLog extends NObject {
 
     /**
      * Méthode générique d'écriture d'une entrée de log.
-     * Ne lève JAMAIS d'erreur. Si la console est active, affiche immédiatement le message.
+     * Si la console est active, affiche immédiatement le message.
      * Enregistre systématiquement chaque entrée dans le tampon mémoire et émet les événements correspondants.
      *
      * @param {number|string} level - Niveau de sévérité (ex: `NLog.LEVEL.INFO` ou `'info'`).
@@ -710,19 +709,20 @@ export class NLog extends NObject {
      */
     getLogs(filter = {}) {
         try {
+            const f = (filter && typeof filter === 'object') ? filter : {};
             let result = [...this.#buffer];
 
-            if (filter.level !== undefined) {
-                const targetLevel = typeof filter.level === 'number'
-                    ? filter.level
-                    : (NLog.#LEVEL_NAMES[String(filter.level).toLowerCase()] ?? null);
+            if (f.level !== undefined) {
+                const targetLevel = typeof f.level === 'number'
+                    ? f.level
+                    : (NLog.#LEVEL_NAMES[String(f.level).toLowerCase()] ?? null);
                 if (targetLevel !== null) {
                     result = result.filter(item => item.levelNum === targetLevel);
                 }
             }
 
-            if (typeof filter.context === 'string' && filter.context.trim() !== '') {
-                const needle = filter.context.trim().toLowerCase();
+            if (typeof f.context === 'string' && f.context.trim() !== '') {
+                const needle = f.context.trim().toLowerCase();
                 result = result.filter(item => {
                     if (typeof item.context === 'string') {
                         return item.context.toLowerCase().includes(needle);
@@ -734,13 +734,13 @@ export class NLog extends NObject {
                 });
             }
 
-            if (typeof filter.search === 'string' && filter.search.trim() !== '') {
-                const needle = filter.search.trim().toLowerCase();
+            if (typeof f.search === 'string' && f.search.trim() !== '') {
+                const needle = f.search.trim().toLowerCase();
                 result = result.filter(item => item.message.toLowerCase().includes(needle));
             }
 
-            if (typeof filter.limit === 'number' && filter.limit > 0) {
-                result = result.slice(-filter.limit);
+            if (typeof f.limit === 'number' && f.limit > 0) {
+                result = result.slice(-f.limit);
             }
 
             return result;

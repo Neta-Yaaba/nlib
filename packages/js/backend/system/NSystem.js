@@ -342,8 +342,8 @@ export class NSystem extends NObject {
 
     /**
      * Exécute une fonction (synchrone ou asynchrone) et mesure précisément son temps d'exécution.
-     * En cas d'erreur levée dans `fn`, capture l'exception, la consigne
-     * dans `NLog` et retourne un rapport d'échec sans interrompre l'application.
+     * En cas d'erreur dans `fn`, capture l'exception, la consigne
+     * dans `NLog` et retourne un rapport d'échec.
      *
      * @param {string} label - Nom de l'opération mesurée.
      * @param {Function} fn - Fonction à exécuter et chronométrer.
@@ -353,7 +353,7 @@ export class NSystem extends NObject {
      * const report = await NUtil.sys.measure('RequeteSQL', async () => 42);
      * console.log(report.label, report.result, report.durationMs >= 0); // 'RequeteSQL' 42 true
      *
-     * @example <caption>Exemple 2 : Mesurer une opération échouant sans lever d'exception</caption>
+     * @example <caption>Exemple 2 : Mesurer une opération en échec</caption>
      * const errReport = await NUtil.sys.measure('TacheErronee', () => { throw new Error('Oups'); });
      * console.log(errReport.success); // false
      */

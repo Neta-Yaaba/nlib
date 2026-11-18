@@ -1,10 +1,10 @@
 /**
  * @file NObject.js
  * @package @nlib/js-backend
- * @description Classe de base universelle (sans interface / headless) de l'écosystème NLib.
+ * @description Classe de base universelle de l'écosystème NLib.
  * Toutes les classes d'entités ou de composants logiques héritant de `NObject` bénéficient :
  * - du cycle de vie standardisé (`destroy`),
- * - de la gestion d'état réactif avec allocation mémoire à la demande (`hasState`, `getState`, `setState`),
+ * - de la gestion d'état réactif avec initialisation à la demande (`hasState`, `getState`, `setState`),
  * - du gestionnaire d'événements `NEvent` avec initialisation paresseuse via `this.event` (`#event`),
  * - et de la sérialisation / clonage (`toJSON`, `fromJSON`, `clone`).
  */
@@ -14,8 +14,8 @@ import { NEvent } from './NEvent.js';
 /**
  * @class NObject
  * @description Classe mère des objets logiques de NLib.
- * Conçue avec une empreinte mémoire minimale (*Lazy Initialization*) : `#state` et `#event`
- * restent à `null` tant qu'aucun état ou gestionnaire d'événement n'est réellement appelé.
+ * Utilise l'initialisation paresseuse (*Lazy Initialization*) : `#state` et `#event`
+ * restent à `null` jusqu'à leur première utilisation.
  *
  * @example <caption>Exemple 1 : Utilisation directe avec état réactif et écoute d'événement via obj.event</caption>
  * const compteur = new NObject({ state: { total: 0 } });
@@ -61,7 +61,7 @@ export class NObject {
 
     /**
      * Dictionnaire interne stockant les variables d'état (clé -> valeur) de l'instance.
-     * Reste à `null` tant qu'aucune donnée d'état n'est définie (économie de mémoire).
+     * Initialisé à `null` jusqu'à ce qu'une donnée d'état soit définie.
      * @type {Map<string, any>|null}
      * @private
      */
@@ -69,7 +69,7 @@ export class NObject {
 
     /**
      * Instance interne de `NEvent` gérant les événements de cet objet.
-     * Reste à `null` et n'est instanciée que lors du premier appel à `this.event` (économie de mémoire).
+     * Initialisée lors du premier appel à `this.event`.
      * @type {NEvent|null}
      * @private
      */
@@ -88,7 +88,7 @@ export class NObject {
 
     /**
      * Crée une nouvelle instance de `NObject`.
-     * N'alloue `#state` en mémoire que si `options.state` contient au moins une propriété,
+     * Initialise `#state` si `options.state` contient au moins une propriété,
      * et laisse `#event` à `null` jusqu'au premier accès à `this.event`.
      *
      * @param {Object} [options={}] - Options de configuration de l'instance.
@@ -111,7 +111,7 @@ export class NObject {
                     this.#state = new Map(entries);
                 }
             } catch (error) {
-                this.util.log.error(`NObject: Erreur lors de l'initialisation de l'état dans le constructeur de ${this.className}.`, {
+                this.util?.log?.error?.(`NObject: Erreur lors de l'initialisation de l'état dans le constructeur de ${this.className}.`, {
                     code: 'ERR_INIT_STATE',
                     error,
                     stack: error?.stack,
@@ -169,7 +169,7 @@ export class NObject {
 
     /**
      * Retourne une copie sous forme d'objet JavaScript simple de tout l'état interne (`#state`).
-     * Si aucun état n'a encore été initialisé (`#state === null`), retourne `{}` sans allouer de `Map`.
+     * Si `#state` vaut `null`, retourne `{}`.
      *
      * @returns {Object<string, any>} Copie clé-valeur de l'état actuel.
      *
@@ -258,18 +258,17 @@ export class NObject {
      *
      * @param {string} event - Nom de l'événement.
      * @param {Function} callback - Fonction exécutée à la première émission.
-     * @param {Function|null} [handlerRemove=null] - Fonction appelée lorsque l'écouteur est retiré.
      * @returns {this} L'instance courante pour chaînage fluide.
      *
      * @example <caption>Exemple 1 : Écoute unique</caption>
      * const obj = new NObject();
      * obj.once('connected', () => console.log('Première connexion'));
      *
-     * @example <caption>Exemple 2 : Nettoyage au retrait via handlerRemove</caption>
-     * obj.once('init', () => {}, () => console.log('Écouteur retiré'));
+     * @example <caption>Exemple 2 : Chaînage</caption>
+     * obj.once('init', () => {}).emit('init');
      */
-    once(event, callback, handlerRemove = null) {
-        this.event.once(event, callback, handlerRemove);
+    once(event, callback) {
+        this.event.once(event, callback);
         return this;
     }
 
@@ -438,7 +437,7 @@ export class NObject {
                 this.#state = null;
             }
         } catch (error) {
-            this.util.log.error(`NObject: Erreur lors de la destruction de ${this.className}.`, {
+            this.util?.log?.error?.(`NObject: Erreur lors de la destruction de ${this.className}.`, {
                 code: 'ERR_DESTROY_FAILED',
                 error,
                 stack: error?.stack,
@@ -455,7 +454,6 @@ export class NObject {
 
     /**
      * Vérifie si une clé existe dans l'état interne `#state`.
-     * N'alloue aucune mémoire si `#state` est encore à `null`.
      *
      * @param {string} key - Clé de la variable d'état à vérifier.
      * @returns {boolean} `true` si la clé existe dans `#state`, sinon `false`.
@@ -478,7 +476,6 @@ export class NObject {
 
     /**
      * Récupère la valeur d'une variable dans l'état interne `#state`.
-     * N'alloue aucune mémoire si `#state` est encore à `null`.
      *
      * @param {string} key - Clé de la variable d'état recherchée.
      * @param {any} [defaultValue=undefined] - Valeur retournée si la clé n'existe pas dans `#state`.
@@ -562,7 +559,7 @@ export class NObject {
                 }
             }
         } catch (error) {
-            this.util.log.error(`NObject: Erreur lors de la modification de l'état sur ${this.className}.`, {
+            this.util?.log?.error?.(`NObject: Erreur lors de la modification de l'état sur ${this.className}.`, {
                 code: 'ERR_SET_STATE_FAILED',
                 error,
                 stack: error?.stack,
@@ -597,7 +594,7 @@ export class NObject {
                 state: this.state
             };
         } catch (error) {
-            this.util.log.error(`NObject: Erreur lors de la sérialisation toJSON sur ${this.className}.`, {
+            this.util?.log?.error?.(`NObject: Erreur lors de la sérialisation toJSON sur ${this.className}.`, {
                 code: 'ERR_TO_JSON_FAILED',
                 error,
                 stack: error?.stack,
@@ -630,7 +627,7 @@ export class NObject {
      */
     fromJSON(data = {}) {
         if (!data || typeof data !== 'object') {
-            this.util.log.warn(`NObject: Données invalides fournies à fromJSON sur ${this.className}.`, {
+            this.util?.log?.warn?.(`NObject: Données invalides fournies à fromJSON sur ${this.className}.`, {
                 code: 'WARN_FROM_JSON_INVALID',
                 data,
                 target: this
@@ -642,7 +639,7 @@ export class NObject {
                 this.setState(data.state);
             }
         } catch (error) {
-            this.util.log.error(`NObject: Erreur lors de la désérialisation fromJSON sur ${this.className}.`, {
+            this.util?.log?.error?.(`NObject: Erreur lors de la désérialisation fromJSON sur ${this.className}.`, {
                 code: 'ERR_FROM_JSON_FAILED',
                 error,
                 stack: error?.stack,
@@ -683,7 +680,7 @@ export class NObject {
                     : JSON.parse(JSON.stringify(this.state))
             });
         } catch (error) {
-            this.util.log.error(`NObject: Échec du clonage de l'instance ${this.className}.`, {
+            this.util?.log?.error?.(`NObject: Échec du clonage de l'instance ${this.className}.`, {
                 code: 'ERR_CLONE_FAILED',
                 error,
                 stack: error?.stack,

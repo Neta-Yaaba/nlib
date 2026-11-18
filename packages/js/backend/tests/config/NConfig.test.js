@@ -39,4 +39,38 @@ describe('NConfig (config/NConfig.js)', () => {
         cfg.set('PORT', 4000);
         assert.equal(cfg.getInt('PORT'), 3000);
     });
+
+    it('gère getFloat, getObject, setDefaults, merge, remove, reset, clear, all, toJSON et destroy', () => {
+        const cfg = new NConfig({
+            dotEnv: 'HOST=localhost\n# commentaire\nBASE_URL=http://${HOST}:8080 # inline'
+        });
+        assert.equal(cfg.getString('BASE_URL'), 'http://localhost:8080');
+
+        cfg.setDefaults({ db: { host: '127.0.0.1', port: 3306 }, ratio: '1,75' });
+        cfg.merge({ db: { port: 5432, name: 'nlib' } });
+
+        assert.equal(cfg.getFloat('ratio'), 1.75);
+        assert.deepEqual(cfg.getObject('db'), { host: '127.0.0.1', port: 5432, name: 'nlib' });
+        assert.deepEqual(cfg.all('db'), { host: '127.0.0.1', port: 5432, name: 'nlib' });
+
+        assert.equal(cfg.remove(['db', 'name']), true);
+        assert.equal(cfg.has(['db', 'name']), false);
+        assert.equal(cfg.remove('inexistant'), false);
+
+        cfg.reset();
+        assert.equal(cfg.getInt(['db', 'port']), 3306);
+
+        const json = cfg.toJSON();
+        assert.equal(json.frozen, false);
+        assert.equal(json.data.db.port, 3306);
+
+        cfg.freeze().clear();
+        assert.equal(cfg.isFrozen, false);
+        assert.equal(cfg.isEmpty, true);
+
+        cfg.set('tmp', 1);
+        cfg.destroy();
+        assert.equal(cfg.isDestroyed, true);
+        assert.equal(cfg.isEmpty, true);
+    });
 });

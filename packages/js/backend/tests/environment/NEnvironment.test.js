@@ -20,5 +20,18 @@ describe('NEnvironment (environment/NEnvironment.js)', () => {
         assert.ok(info && typeof info === 'object');
         assert.equal(info.type, env.type);
         assert.equal(info.os, env.os);
+        assert.equal(info.browser, env.browser);
+        assert.equal(info.isDesktop, !env.isMobile && !env.isTablet);
+        assert.equal(typeof env.isAndroid, 'boolean');
+        assert.equal(typeof env.isHarmonyOS, 'boolean');
+        assert.equal(typeof env.isIOS, 'boolean');
+        assert.equal(typeof env.isWindows, 'boolean');
+        assert.equal(typeof env.isMacOS, 'boolean');
+        assert.equal(typeof env.isLinux, 'boolean');
+        assert.equal(typeof env.isTouch, 'boolean');
+        assert.equal(typeof env.isWebView, 'boolean');
+        assert.equal(typeof env.isSecureContext, 'boolean');
+        assert.equal(typeof env.isDarkMode, 'boolean');
+        assert.equal(typeof env.userAgent, 'string');
     });
 });

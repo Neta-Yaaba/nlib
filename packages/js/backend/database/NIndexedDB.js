@@ -1908,7 +1908,7 @@ export class NIndexedDB extends NObject {
     }
 
     /**
-     * Formate une réponse d'erreur standardisée sans lever d'exception.
+     * Formate une réponse d'erreur standardisée.
      * @private
      * @param {any} error - Message ou objet d'erreur.
      * @param {string} [code='IDB_ERROR'] - Code machine standardisé.

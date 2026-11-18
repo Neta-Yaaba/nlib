@@ -127,7 +127,7 @@ export class NWorker extends NObject {
      * Crée une instance de `NWorker`.
      * - Tente d'initialiser un Web Worker natif si supporté par l'environnement.
      * - Si l'environnement ne supporte pas les Web Workers ou si le script échoue,
-     *   l'instance bascule en repli local sans lever d'exception bloquante.
+     *   l'instance bascule en repli local.
      *
      * @param {Object} [options={}] - Options de configuration du worker.
      * @param {string} [options.name='worker'] - Nom d'identification du worker.

@@ -27,4 +27,15 @@ describe('NEmail (utils/NEmail.js)', () => {
             ['a@test.com', 'b@test.org']
         );
     });
+
+    it('gère hasDomain, equals, getLocalPart/getDomain/getTld et listes personnalisées', () => {
+        assert.equal(email.hasDomain('admin@sub.nlib.dev', 'nlib.dev', true), true);
+        assert.equal(email.hasDomain('admin@sub.nlib.dev', 'nlib.dev', false), false);
+        assert.equal(email.equals('User+1@Gmail.com', 'user@gmail.com', { stripPlusTag: true }), true);
+        assert.equal(email.getLocalPart('User+VIP@Test.fr', true), 'user');
+        assert.equal(email.getDomain('User@Test.FR'), 'test.fr');
+        assert.equal(email.getTld('User@Test.FR'), 'fr');
+        assert.equal(email.isFreeProvider('a@customfree.org', ['customfree.org']), true);
+        assert.equal(email.isDisposable('a@trash.org', ['trash.org']), true);
+    });
 });

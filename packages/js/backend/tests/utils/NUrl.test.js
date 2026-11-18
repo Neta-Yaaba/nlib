@@ -26,4 +26,18 @@ describe('NUrl (utils/NUrl.js)', () => {
         assert.equal(url.decodeId(token, 'mon-sel', true), 12345);
         assert.equal(url.decodeId(token, 'mauvais-sel', true), null);
     });
+
+    it('gère isHttps, isAbsolute/isRelative, isSameOrigin, equals, setQueryParams, join et normalize', () => {
+        assert.equal(url.isHttps('https://nlib.dev'), true);
+        assert.equal(url.isAbsolute('https://nlib.dev/a'), true);
+        assert.equal(url.isRelative('/api/users'), true);
+        assert.equal(url.isSameOrigin('https://nlib.dev/a', 'https://nlib.dev/b'), true);
+        assert.equal(url.equals('https://nlib.dev/a?b=2&a=1', 'https://nlib.dev/a/?a=1&b=2', { sortQuery: true, stripTrailingSlash: true }), true);
+        assert.equal(url.setQueryParams('https://nlib.dev?a=1', { b: 2 }), 'https://nlib.dev/?a=1&b=2');
+        assert.equal(url.join('https://nlib.dev/', '/v1/', '/items'), 'https://nlib.dev/v1/items');
+        assert.equal(url.getProtocol('https://nlib.dev'), 'https');
+        assert.equal(url.getHash('https://nlib.dev/#top'), 'top');
+        const b64u = url.encodeBase64Url('NLib+Test/1');
+        assert.equal(url.decodeBase64Url(b64u), 'NLib+Test/1');
+    });
 });

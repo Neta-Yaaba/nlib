@@ -24,24 +24,24 @@ export type NEventCallback = (...args: any[]) => any;
  * Gestionnaire d'événements synchrone et asynchrone (`core/NEvent.js`).
  */
 export class NEvent {
-    constructor(target?: object | null);
+    constructor(target?: any);
 
     readonly isEmpty: boolean;
-    readonly target: object | null;
+    readonly target: any;
     readonly util: typeof NUtil;
 
-    has(event: string): boolean;
-    hasListener(event: string, callback: NEventCallback): boolean;
+    has(event: string, callback?: NEventCallback): boolean;
+    hasListener(event: string, callback?: NEventCallback): boolean;
     listenerCount(event?: string): number;
     eventNames(): string[];
     on(event: string, callback: NEventCallback): this;
-    once(event: string, callback: NEventCallback, handlerRemove?: ((info: { event: string; callback: NEventCallback; target: any }) => void) | null): this;
-    off(event?: string, callback?: NEventCallback): this;
-    emit(event: string, ...args: any[]): this;
-    waitFor<T = any>(event: string, timeout?: number): Promise<T | null>;
+    once(event: string, callback: NEventCallback): this;
+    off(event: string, callback?: NEventCallback): this;
+    emit(event: string, data?: any): this;
+    waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
     clear(): this;
 
-    static create(target?: object | null): NEvent;
+    static create(target?: any): NEvent;
     static registerUtil(util: typeof NUtil): typeof NEvent;
 }
 
@@ -59,11 +59,11 @@ export class NObject {
     readonly isDestroyed: boolean;
 
     on(event: string, callback: NEventCallback): this;
-    once(event: string, callback: NEventCallback, handlerRemove?: ((info: { event: string; callback: NEventCallback; target: any }) => void) | null): this;
-    off(event?: string, callback?: NEventCallback): this;
+    once(event: string, callback: NEventCallback): this;
+    off(event: string, callback?: NEventCallback): this;
     emit(event: string, data?: any): this;
     waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
-    hasListener(event: string, callback: NEventCallback): boolean;
+    hasListener(event: string, callback?: NEventCallback): boolean;
     listenerCount(event?: string): number;
     eventNames(): string[];
     clearEvents(): this;
@@ -74,7 +74,7 @@ export class NObject {
     setState(keyOrObject: string | Record<string, any>, value?: any): this;
     toString(): string;
     toJSON(): NObjectSerialized;
-    fromJSON(json: string | Record<string, any>): this;
+    fromJSON(data?: Partial<NObjectSerialized> | Record<string, any>): this;
     clone(): this;
 
     static create<T extends NObject = NObject>(options?: NObjectOptions): T;
@@ -86,57 +86,92 @@ export class NObject {
  * 2. DOSSIER log/ (NLog)                                                     *
  * ========================================================================== */
 
-export type NLogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type NLogLevel = 'debug' | 'info' | 'warn' | 'warning' | 'error' | 'none';
+export type NLogLevelLabel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'NONE';
+export type NLogContext = string | Record<string, any> | null;
 
-export interface NLogOptions {
+export interface NLogOptions extends NObjectOptions {
     consoleEnabled?: boolean;
     traceEnabled?: boolean;
     maxLogs?: number;
-    context?: Record<string, any>;
+    context?: NLogContext;
 }
 
 export interface NLogEntry {
-    id: string;
+    id: number;
     timestamp: string;
-    level: NLogLevel;
+    level: NLogLevelLabel;
+    levelNum: number;
     message: string;
+    context: NLogContext;
+    caller: string | null;
     details: any;
-    context: Record<string, any>;
-    trace?: string | null;
+    code: any;
+    stack: string | null;
 }
 
 export interface NLogFilter {
-    level?: NLogLevel;
+    level?: NLogLevel | number;
+    context?: string;
     search?: string;
     limit?: number;
-    since?: Date | string | number;
+}
+
+export interface NLogExceptionResult {
+    success: boolean;
+    message: string;
+    code: any;
+    log: NLogEntry;
+}
+
+export interface NLogImportOptions {
+    merge?: boolean;
+}
+
+export interface NLogImportResult {
+    success: boolean;
+    count: number;
 }
 
 /**
  * Gestionnaire de journalisation centralisé avec historique circulaire en mémoire (`log/NLog.js`).
  */
 export class NLog extends NObject {
+    static readonly LEVEL: Readonly<{
+        DEBUG: 0;
+        INFO: 1;
+        WARN: 2;
+        ERROR: 3;
+        NONE: 99;
+    }>;
+
     constructor(options?: NLogOptions);
 
     readonly event: NEvent;
     readonly isConsoleEnabled: boolean;
     readonly isTraceEnabled: boolean;
     readonly maxLogs: number;
-    readonly context: Record<string, any>;
+    readonly context: NLogContext;
 
-    setConsoleEnabled(enabled: boolean): this;
-    setTraceEnabled(enabled: boolean): this;
+    setConsoleEnabled(enabled?: boolean): this;
+    setTraceEnabled(enabled?: boolean): this;
     setMaxLogs(max: number): this;
-    setContext(contextObj: Record<string, any>, merge?: boolean): this;
-    debug(message: string, details?: any): NLogEntry;
-    info(message: string, details?: any): NLogEntry;
-    warn(message: string, details?: any): NLogEntry;
-    error(message: string, details?: any): NLogEntry;
-    write(level: NLogLevel, message: string, details?: any): NLogEntry;
-    captureException(err: unknown, customMessage?: string | null, extraDetails?: Record<string, any>): NLogEntry;
-    getLogs(filter?: NLogLevel | ((entry: NLogEntry) => boolean) | NLogFilter | null): NLogEntry[];
-    export(pretty?: boolean): string;
-    import(jsonOrArray: string | NLogEntry[], append?: boolean): number;
+    setContext(context: NLogContext): this;
+    debug(message: string, details?: any, context?: NLogContext): NLogEntry;
+    info(message: string, details?: any, context?: NLogContext): NLogEntry;
+    warn(message: string, details?: any, context?: NLogContext): NLogEntry;
+    error(message: string, errorOrDetails?: Error | any, context?: NLogContext): NLogEntry;
+    write(
+        level: NLogLevel | number,
+        message: string,
+        details?: any,
+        context?: NLogContext,
+        extra?: { stack?: string | null; code?: any; caller?: string | null }
+    ): NLogEntry;
+    captureException(error: unknown, additionalContext?: Record<string, any>): NLogExceptionResult;
+    getLogs(filter?: NLogFilter | null): NLogEntry[];
+    export(format?: 'json' | 'text' | 'raw'): string | NLogEntry[];
+    import(data: string | Array<Partial<NLogEntry>>, options?: NLogImportOptions): NLogImportResult;
     clear(): this;
     destroy(): void;
 
@@ -147,13 +182,21 @@ export class NLog extends NObject {
  * 3. DOSSIER config/ (NConfig)                                               *
  * ========================================================================== */
 
-export type NConfigPath = string | Array<string | number>;
+export type NConfigPath = string | number | Array<string | number>;
+
+export interface NConfigOptions extends NObjectOptions {
+    defaults?: Record<string, any>;
+    data?: Record<string, any>;
+    dotEnv?: string;
+    loadProcessEnv?: boolean;
+    freeze?: boolean;
+}
 
 /**
  * Gestionnaire de configuration applicative en mémoire avec typage fort et valeurs par défaut (`config/NConfig.js`).
  */
 export class NConfig extends NObject {
-    constructor(initialValues?: Record<string, any>, defaults?: Record<string, any>);
+    constructor(options?: NConfigOptions);
 
     readonly isFrozen: boolean;
     readonly isEmpty: boolean;
@@ -168,17 +211,17 @@ export class NConfig extends NObject {
     getArray<T = any>(path: NConfigPath, fallback?: T[]): T[];
     getObject<T extends Record<string, any> = Record<string, any>>(path: NConfigPath, fallback?: T): T;
     set(path: NConfigPath, value: any): this;
-    setDefaults(defaultsObj: Record<string, any>): this;
-    merge(configObj: Record<string, any>): this;
+    setDefaults(defaultsObject: Record<string, any>): this;
+    merge(configObject: Record<string, any>): this;
     remove(path: NConfigPath): boolean;
     reset(): this;
     clear(): this;
     freeze(): this;
-    require(keys: NConfigPath[]): { valid: boolean; missing: string[] };
-    loadFromDotEnv(envContent: string, prefix?: string): this;
-    loadFromProcess(prefix?: string): this;
+    require(requiredPaths?: NConfigPath[]): boolean;
+    loadFromDotEnv(dotEnvContent: string): this;
+    loadFromProcess(overwrite?: boolean, prefix?: string): this;
     all(sectionPath?: string): Record<string, any>;
-    toJSON(pretty?: boolean): string;
+    toJSON(): { frozen: boolean; data: Record<string, any> };
     destroy(): void;
 }
 
@@ -187,34 +230,30 @@ export class NConfig extends NObject {
  * ========================================================================== */
 
 export type NEnvironmentType = 'browser' | 'worker' | 'node' | 'unknown';
-export type NEnvironmentOS = 'Windows' | 'macOS' | 'iOS' | 'Android' | 'HarmonyOS' | 'Linux' | 'Unknown';
-export type NEnvironmentBrowser = 'Chrome' | 'Firefox' | 'Safari' | 'Edge' | 'Opera' | 'Unknown';
+export type NEnvironmentOS = 'android' | 'harmonyos' | 'ios' | 'windows' | 'macos' | 'linux' | 'unknown';
+export type NEnvironmentBrowser = 'edge' | 'opera' | 'firefox' | 'chrome' | 'safari' | 'unknown';
 
 export interface NEnvironmentInfo {
     type: NEnvironmentType;
     os: NEnvironmentOS;
     browser: NEnvironmentBrowser;
-    isBrowser: boolean;
-    isNode: boolean;
-    isWorker: boolean;
     isMobile: boolean;
     isTablet: boolean;
     isDesktop: boolean;
     isTouch: boolean;
-    isWebView: boolean;
     isOnline: boolean;
+    isWebView: boolean;
     isSecureContext: boolean;
     isDarkMode: boolean;
     language: string;
     timezone: string;
-    userAgent: string;
 }
 
 /**
  * Détection des caractéristiques de l'environnement d'exécution (`environment/NEnvironment.js`).
  */
 export class NEnvironment extends NObject {
-    constructor();
+    constructor(options?: NObjectOptions);
 
     readonly type: NEnvironmentType;
     readonly isBrowser: boolean;
@@ -247,10 +286,17 @@ export class NEnvironment extends NObject {
  * 5. DOSSIER system/ (NSystem)                                               *
  * ========================================================================== */
 
+export interface NSystemOptions extends NObjectOptions {
+    watchNetwork?: boolean;
+    onOnline?: (networkInfo: NSystemNetworkInfo) => void;
+    onOffline?: (networkInfo: NSystemNetworkInfo) => void;
+}
+
 export interface NSystemMemoryInfo {
     used: number;
     total: number;
-    limit: number | null;
+    limit: number;
+    usagePercent: number;
     formattedUsed: string;
     formattedTotal: string;
 }
@@ -258,62 +304,73 @@ export interface NSystemMemoryInfo {
 export interface NSystemScreenInfo {
     width: number;
     height: number;
-    availWidth: number;
-    availHeight: number;
+    viewportWidth: number;
+    viewportHeight: number;
     pixelRatio: number;
     colorDepth: number;
-    orientation: string;
+    orientation: 'landscape' | 'portrait';
 }
 
 export interface NSystemNetworkInfo {
     online: boolean;
-    effectiveType: string | null;
-    downlink: number | null;
-    rtt: number | null;
+    effectiveType: string;
+    downlinkMbps: number | null;
+    rttMs: number | null;
     saveData: boolean;
 }
 
 export interface NSystemBatteryInfo {
-    supported: boolean;
-    charging: boolean | null;
-    level: number | null;
-    chargingTime: number | null;
-    dischargingTime: number | null;
+    level: number;
+    charging: boolean;
+    chargingTime: number;
+    dischargingTime: number;
 }
 
 export interface NSystemStorageQuota {
-    supported: boolean;
     usage: number;
     quota: number;
-    free: number;
-    percentUsed: number;
+    usagePercent: number;
     formattedUsage: string;
     formattedQuota: string;
-    formattedFree: string;
+}
+
+export interface NSystemMeasureResult<T = any> {
+    success: boolean;
+    label: string;
+    durationMs: number;
+    result: T | null;
+    code?: string;
+    error?: string;
 }
 
 /**
  * Informations matérielles, mesures de performance, presse-papiers et passerelle native (`system/NSystem.js`).
  */
 export class NSystem extends NObject {
-    constructor();
+    constructor(options?: NSystemOptions);
 
     readonly cpuCores: number;
     readonly arch: string;
     readonly deviceMemory: number | null;
-    readonly memory: NSystemMemoryInfo | null;
+    readonly memory: NSystemMemoryInfo;
     readonly screen: NSystemScreenInfo;
     readonly network: NSystemNetworkInfo;
 
-    uptime(): number;
+    uptime(inSeconds?: boolean): number;
     hrtime(): number;
-    measure<T = any>(fn: () => T | Promise<T>, label?: string): Promise<{ result: T; durationMs: number; label: string }>;
-    getBattery(): Promise<NSystemBatteryInfo>;
+    measure<T = any>(label: string, fn: () => T | Promise<T>): Promise<NSystemMeasureResult<T>>;
+    getBattery(): Promise<NSystemBatteryInfo | null>;
     getStorageQuota(): Promise<NSystemStorageQuota>;
     copyToClipboard(text: string): Promise<boolean>;
-    readFromClipboard(): Promise<string | null>;
-    watchNetwork(callback: (state: NSystemNetworkInfo) => void): () => void;
-    invokeNative<T = any>(payload: Record<string, any>): Promise<T>;
+    readFromClipboard(): Promise<string>;
+    watchNetwork(
+        enable?: boolean,
+        callbacks?: {
+            onOnline?: (networkInfo: NSystemNetworkInfo) => void;
+            onOffline?: (networkInfo: NSystemNetworkInfo) => void;
+        }
+    ): this;
+    invokeNative<T = any>(actionOrParams: string | Record<string, any>, payloadOrOptions?: Record<string, any>): Promise<T>;
     getSnapshot(): Promise<Record<string, any>>;
     toJSON(): Record<string, any>;
     destroy(): void;
@@ -323,11 +380,11 @@ export class NSystem extends NObject {
  * 6. DOSSIER utils/ (NUtil + 11 classes utilitaires)                         *
  * ========================================================================== */
 
-export interface NRetryOptions {
-    retries?: number;
-    delay?: number;
-    backoff?: number;
-    onRetry?: (attempt: number, error: any) => void;
+export interface NRetryOptions<T = any> {
+    attempts?: number;
+    delayMs?: number;
+    exponential?: boolean;
+    fallback?: T;
 }
 
 export type NDebouncedFunction<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
@@ -367,17 +424,17 @@ export class NUtil extends NObject {
     static readonly language: NLanguage;
 
     static uuid(): string;
-    static uid(prefix?: string): string;
+    static uid(prefix?: string, randomLength?: number): string;
     static getType(value: any): string;
     static isEmpty(value: any): boolean;
     static isDefined<T>(value: T | null | undefined): value is T;
-    static toBoolean(value: any): boolean;
-    static sleep(ms: number): Promise<void>;
-    static setTimeout(callback: (...args: any[]) => void, ms?: number, ...args: any[]): any;
-    static clearTimeout(timerId: any): void;
-    static debounce<T extends (...args: any[]) => any>(fn: T, delay?: number): NDebouncedFunction<T>;
-    static throttle<T extends (...args: any[]) => any>(fn: T, limit?: number): (...args: Parameters<T>) => void;
-    static retry<T = any>(fn: (attempt: number) => Promise<T> | T, options?: NRetryOptions): Promise<T | null>;
+    static toBoolean(value: any, fallback?: boolean): boolean;
+    static sleep(ms?: number): Promise<void>;
+    static setTimeout(callback: (...args: any[]) => void, delayOrTarget?: number | Record<string, any>, ...args: any[]): any;
+    static clearTimeout(timerOrId: any): void;
+    static debounce<T extends (...args: any[]) => any>(fn: T, waitMs?: number): NDebouncedFunction<T>;
+    static throttle<T extends (...args: any[]) => any>(fn: T, limitMs?: number): (...args: Parameters<T>) => void;
+    static retry<T = any>(fn: (attempt: number) => Promise<T> | T, options?: NRetryOptions<T>): Promise<T | { success: false; code: string; error: string; attempts: number }>;
     static isUuid(value: any): boolean;
     static isBoolean(value: any): value is boolean;
     static isFunction(value: any): value is (...args: any[]) => any;
@@ -441,7 +498,7 @@ export class NString extends NObject {
     constructor();
 
     isString(value: any): value is string;
-    isEmpty(text: any, trim?: boolean): boolean;
+    isEmpty(text: any): boolean;
     isEmail(text: string): boolean;
     isAlphanumeric(text: string): boolean;
     equals(textA: string, textB: string, options?: NStringCompareOptions): boolean;
@@ -451,7 +508,7 @@ export class NString extends NObject {
     endsWith(text: string, suffix: string, options?: NStringCompareOptions): boolean;
     toUpper(text: string): string;
     toLower(text: string): string;
-    capitalize(text: string, lowerRest?: boolean): string;
+    capitalize(text: string): string;
     toTitleCase(text: string): string;
     toCamelCase(text: string): string;
     toPascalCase(text: string): string;
@@ -501,12 +558,12 @@ export class NNumber extends NObject {
     isNumeric(value: any): boolean;
     isInteger(value: any): boolean;
     isFloat(value: any): boolean;
-    isPositive(value: any, strict?: boolean): boolean;
-    isNegative(value: any, strict?: boolean): boolean;
+    isPositive(value: any, includeZero?: boolean): boolean;
+    isNegative(value: any, includeZero?: boolean): boolean;
     isEven(value: any): boolean;
     isOdd(value: any): boolean;
     isBetween(value: any, min: number, max: number, inclusive?: boolean): boolean;
-    equals(a: any, b: any, epsilon?: number): boolean;
+    equals(numA: any, numB: any, tolerance?: number): boolean;
     toInt(value: any, defaultValue?: number, radix?: number): number;
     toFloat(value: any, defaultValue?: number): number;
     round(value: any, decimals?: number): number;
@@ -540,12 +597,12 @@ export class NDateTime extends NObject {
     nowTime(format?: string, utc?: boolean): string;
     timestamp(inSeconds?: boolean): number;
     create(year: number, month?: number, day?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
-    toDate(value: NDateInput, defaultValue?: Date | null): Date | null;
+    toDate(value: NDateInput): Date | null;
     isValid(value: any): boolean;
     isLeapYear(yearOrDate?: number | NDateInput): boolean;
     isToday(value: NDateInput): boolean;
-    isPast(value: NDateInput): boolean;
-    isFuture(value: NDateInput): boolean;
+    isPast(value: NDateInput, reference?: NDateInput): boolean;
+    isFuture(value: NDateInput, reference?: NDateInput): boolean;
     isWeekend(value: NDateInput): boolean;
     isWeekday(value: NDateInput): boolean;
     equals(dateA: NDateInput, dateB: NDateInput, options?: { unit?: string; ignoreTime?: boolean }): boolean;
@@ -582,22 +639,27 @@ export class NDateTime extends NObject {
     toIso(value?: NDateInput): string;
 }
 
+export interface NAmountValidOptions {
+    allowNegative?: boolean;
+    allowZero?: boolean;
+}
+
 /**
  * Calculs monétaires exacts en centimes, TVA, remises et formatage de devises (`utils/NAmount.js`).
  */
 export class NAmount extends NObject {
     constructor();
 
-    isValid(value: any, allowNegative?: boolean): boolean;
+    isValid(value: any, options?: NAmountValidOptions): boolean;
     parse(value: any, fallback?: number | null): number | null;
     equals(amountA: any, amountB: any, decimals?: number): boolean;
     toMinorUnits(amount: any, decimals?: number): number;
     fromMinorUnits(minorUnits: number, decimals?: number): number;
-    add(amountA: any, amountB: any, decimals?: number): number;
+    add(amountA: any, amountB?: any, decimals?: number): number;
     subtract(amountA: any, amountB: any, decimals?: number): number;
     multiply(amount: any, factor: number, decimals?: number): number;
     divide(amount: any, divisor: number, decimals?: number): number;
-    allocate(amount: any, parts?: number, decimals?: number): number[];
+    allocate(amount: any, partsOrRatios: number | number[], decimals?: number): number[];
     taxAmount(amountHT: any, taxRate: number, decimals?: number): number;
     addTax(amountHT: any, taxRate: number, decimals?: number): number;
     extractTax(amountTTC: any, taxRate: number, decimals?: number): { ht: number; tax: number; ttc: number };
@@ -627,8 +689,8 @@ export class NEmail extends NObject {
     constructor();
 
     isValid(email: any): boolean;
-    isFreeProvider(email: string): boolean;
-    isDisposable(email: string): boolean;
+    isFreeProvider(email: string, customProviders?: string[]): boolean;
+    isDisposable(email: string, customBlacklist?: string[]): boolean;
     isBusiness(email: string): boolean;
     hasDomain(email: string, allowedDomains: string | string[], allowSubdomains?: boolean): boolean;
     normalize(email: string, options?: NEmailNormalizeOptions): string;
@@ -657,20 +719,19 @@ export interface NPhoneParsed {
 export class NPhoneNumber extends NObject {
     constructor();
 
-    clean(phone: string, keepPlus?: boolean): string;
+    clean(phone: string | number, keepPlus?: boolean): string;
     isValid(phone: any, options?: { countryCode?: string; minLength?: number; maxLength?: number }): boolean;
     isE164(phone: string): boolean;
-    equals(phoneA: string, phoneB: string, defaultCountryCode?: string): boolean;
-    toE164(phone: string, defaultCountryCode?: string): string;
-    toNational(phone: string, countryCode?: string, nationalPrefix?: string): string;
+    equals(phoneA: string | number, phoneB: string | number, defaultCountryCode?: string): boolean;
+    toE164(phone: string | number, defaultCountryCode?: string, stripLeadingZero?: boolean): string;
+    toNational(phone: string | number, countryCode?: string, nationalPrefix?: string): string;
     format(
-        phone: string,
-        style?: 'e164' | 'international' | 'national' | 'rfc3966',
-        options?: { defaultCountryCode?: string; groupSize?: number; separator?: string }
+        phone: string | number,
+        options?: { groupSize?: number; separator?: string; countryCode?: string | number }
     ): string;
-    mask(phone: string, options?: NStringMaskOptions): string;
-    toTelUri(phone: string, scheme?: string): string;
-    toWhatsAppUrl(phone: string, message?: string): string;
+    mask(phone: string | number, options?: NStringMaskOptions): string;
+    toTelUri(phone: string | number, scheme?: string): string;
+    toWhatsAppUrl(phone: string | number, message?: string): string;
 }
 
 export interface NUrlParsed {
@@ -741,10 +802,10 @@ export type NJsonPath = string | number | Array<string | number>;
 export class NJson extends NObject {
     constructor();
 
-    isValid(jsonString: any): boolean;
+    isValid(str: any, options?: { requireObjectOrArray?: boolean }): boolean;
     isPlainObject(value: any): value is Record<string, any>;
     isEmpty(value: any): boolean;
-    size(data: any): number;
+    size(value: any, path?: NJsonPath): number;
     count(value: any, path?: NJsonPath): number;
     parse<T = any>(value: any, fallback?: T, reviver?: ((key: string, value: any) => any) | null): T;
     stringify(
@@ -782,21 +843,16 @@ export interface NPasswordRules {
     requireUppercase?: boolean;
     requireLowercase?: boolean;
     requireNumber?: boolean;
-    requireSymbol?: boolean;
+    requireSpecial?: boolean;
     disallowSpaces?: boolean;
 }
 
-export interface NPasswordValidationResult {
-    valid: boolean;
-    errors: string[];
-    checks: Record<string, boolean>;
-}
-
 export interface NPasswordStrengthResult {
-    score: 0 | 1 | 2 | 3 | 4;
-    label: 'very_weak' | 'weak' | 'medium' | 'strong' | 'very_strong';
-    entropyBits: number;
-    length: number;
+    score: number;
+    level: 'very-weak' | 'weak' | 'fair' | 'strong' | 'very-strong';
+    entropy: number;
+    isValid: boolean;
+    missingRules: string[];
 }
 
 /**
@@ -806,7 +862,7 @@ export class NPassword extends NObject {
     constructor();
 
     isValid(password: string, options?: NPasswordRules): boolean;
-    evaluate(password: string, options?: NPasswordRules): NPasswordStrengthResult & { valid: boolean; errors: string[] };
+    evaluate(password: string, options?: NPasswordRules): NPasswordStrengthResult;
     calculateEntropy(password: string): number;
     isCommon(password: string): boolean;
     generate(
@@ -820,8 +876,8 @@ export class NPassword extends NObject {
         }
     ): string;
     generatePin(length?: number): string;
-    hash(password: string, iterations?: number): Promise<string>;
-    verify(password: string, storedHash: string): Promise<boolean>;
+    hash(password: string, options?: { iterations?: number; saltHex?: string }): Promise<string>;
+    verify(plainPassword: string, storedHash: string): Promise<boolean>;
     timingSafeEquals(a: string, b: string): boolean;
 }
 
@@ -846,15 +902,15 @@ export class NArray extends NObject {
     size<T = any>(list: T[], predicate?: (item: T) => boolean): number;
     count<T = any>(list: T[], predicate?: (item: T) => boolean): number;
     toArray<T = any>(value: any): T[];
-    equals(listA: any[], listB: any[]): boolean;
+    equals(listA: any[], listB: any[], ignoreOrder?: boolean): boolean;
     contains<T = any>(list: T[], target: any, key?: keyof T): boolean;
     get<T = any>(list: T[], index: number, fallback?: any): T | any;
-    first<T = any>(list: T[], count?: number, defaultValue?: any): T | T[] | any;
-    last<T = any>(list: T[], count?: number, defaultValue?: any): T | T[] | any;
+    first<T = any>(list: T[], count?: number): T | T[] | undefined;
+    last<T = any>(list: T[], count?: number): T | T[] | undefined;
     insertAt<T = any>(list: T[], index: number, ...items: T[]): T[];
     removeAt<T = any>(list: T[], index: number): T[];
-    removeValue<T = any>(list: T[], valueToRemove: T): T[];
-    compact<T = any>(list: T[], keepZeroAndFalse?: boolean): NonNullable<T>[];
+    removeValue<T = any>(list: T[], valueToRemove: any, key?: keyof T): T[];
+    compact<T = any>(list: T[], removeFalsy?: boolean): NonNullable<T>[];
     unique<T = any>(list: T[], key?: keyof T | ((item: T) => any)): T[];
     flatten<T = any>(list: any[], depth?: number): T[];
     pluck<T = any, K extends keyof T = keyof T>(list: T[], key: K): Array<T[K]>;
@@ -884,6 +940,7 @@ export interface NIndexedDBStoreIndexConfig {
 }
 
 export interface NIndexedDBStoreConfig {
+    name?: string;
     keyPath?: string | string[] | null;
     autoIncrement?: boolean;
     indexes?: NIndexedDBStoreIndexConfig[];
@@ -910,8 +967,8 @@ export class NDatabase extends NObject {
     readonly name: string;
     readonly version: number;
     readonly isInitialized: boolean;
-    readonly autoSave: boolean;
-    readonly autoSaveDelay: number;
+    autoSave: boolean;
+    autoSaveDelay: number;
     readonly sql: NSql;
     readonly indexed: NIndexedDB;
     readonly idb: NIndexedDB;
@@ -920,13 +977,13 @@ export class NDatabase extends NObject {
     readonly util: typeof NUtil;
 
     init(options?: NDatabaseOptions): Promise<boolean>;
-    saveSql(snapshotKey?: string): Promise<boolean>;
-    loadSql(snapshotKey?: string): Promise<Uint8Array | null>;
+    saveSql(): Promise<{ ok: boolean; error?: string }>;
+    loadSql(): Promise<boolean>;
     scheduleAutoSave(delayMs?: number): void;
     flushAutoSave(): Promise<boolean>;
     cancelAutoSave(): this;
     clearAll(): Promise<boolean>;
-    close(): Promise<boolean>;
+    close(): boolean;
     drop(): Promise<boolean>;
     destroy(): void;
 }
@@ -959,7 +1016,7 @@ export class NSql extends NObject {
     readonly event: NEvent;
 
     init(options?: NSqlOptions): Promise<boolean>;
-    close(): Promise<boolean>;
+    close(): boolean;
     createTable(tableName: string, sqlCreateTable: string): Promise<boolean>;
     createTables(dbStructure: Record<string, string>): Promise<boolean>;
     query<T = any>(sql: string, params?: any[]): Promise<T>;
@@ -978,8 +1035,8 @@ export class NSql extends NObject {
     getNextId(tableName: string): Promise<number>;
     generatePrimaryKeyValue(tableName: string): Promise<string | number | null>;
     getDbStruct(): Promise<Record<string, any>>;
-    export(): Uint8Array | null;
-    exportBase64(): string;
+    export(): Promise<Uint8Array | null>;
+    exportBase64(): Promise<string>;
     clear(): Promise<boolean>;
     deleteDb(): Promise<boolean>;
     buildSearchClause(queryText: string, fields: string[]): { where: string; order: string; params: Record<string, string> } | null;
@@ -1087,12 +1144,11 @@ export class NStorage extends NObject {
 export type NFileSystemDriver = 'native' | 'fs' | 'idb';
 
 export interface NFilePathParts {
-    fullPath: string;
-    dir: string;
-    fileName: string;
+    path: string;
+    directory: string;
+    name: string;
     baseName: string;
-    ext: string;
-    extWithDot: string;
+    extension: string;
 }
 
 export interface NFileStat {
@@ -1251,7 +1307,7 @@ export interface NCacheItemOptions {
     mimeType?: string;
     defaultValue?: any;
     rawResponse?: boolean;
-    as?: 'bytes' | 'text' | 'base64' | 'dataUrl' | 'blob';
+    format?: 'bytes' | 'text' | 'base64' | 'dataUrl' | 'blob';
     all?: boolean;
 }
 
@@ -1529,6 +1585,17 @@ export class NService extends NObject {
 
 export type NDataSyncConflictStrategy = 'serverWins' | 'clientWins' | 'manual' | 'merge';
 
+export interface NDataSyncConflict {
+    conflictId?: string;
+    collection?: string;
+    recordId?: any;
+    clientRecord?: Record<string, any> | null;
+    serverRecord?: Record<string, any> | null;
+    clientVersion?: any;
+    serverVersion?: any;
+    [key: string]: any;
+}
+
 export interface NDataSyncCollectionConfig {
     endpoint: string;
     primaryKey?: string;
@@ -1651,7 +1718,7 @@ export class NWorkerManager extends NObject {
     readonly names: string[];
 
     registerAction(action: string, handler: NWorkerActionHandler): this;
-    unregisterAction(action: string): boolean;
+    unregisterAction(action: string): this;
     hasAction(action: string): boolean;
     executeAction<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null): Promise<T | null>;
 

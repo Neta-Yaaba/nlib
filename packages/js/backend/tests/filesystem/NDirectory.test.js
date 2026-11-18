@@ -10,5 +10,7 @@ describe('NDirectory (filesystem/NDirectory.js)', () => {
         assert.equal(dir.getName('projets/2026/rapports'), 'rapports');
         assert.equal(dir.getParent('projets/2026/rapports'), 'projets/2026');
         assert.equal(['native', 'fs', 'idb'].includes(dir.driver), true);
+        assert.equal(typeof dir.isNativeAvailable, 'boolean');
+        assert.equal(typeof dir.isFsApiAvailable, 'boolean');
     });
 });

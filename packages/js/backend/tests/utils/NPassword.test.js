@@ -10,13 +10,19 @@ describe('NPassword (utils/NPassword.js)', () => {
         assert.equal(pwd.isValid(generated), true);
 
         const evalResult = pwd.evaluate(generated);
-        assert.ok(evalResult.score >= 3);
+        assert.equal(evalResult.isValid, true);
+        assert.ok(evalResult.score >= 50);
+
+        assert.equal(pwd.isCommon('123456'), true);
+        assert.ok(pwd.calculateEntropy('Abc123!@#xyz') > 0);
+        assert.equal(pwd.timingSafeEquals('abc', 'abc'), true);
+        assert.equal(pwd.timingSafeEquals('abc', 'abd'), false);
 
         const pin = pwd.generatePin(6);
         assert.equal(pin.length, 6);
         assert.equal(/^\d{6}$/.test(pin), true);
 
-        const hashed = await pwd.hash('MonSuperMotDePasse!2026', 1000);
+        const hashed = await pwd.hash('MonSuperMotDePasse!2026', { iterations: 1000 });
         if (hashed) {
             const verified = await pwd.verify('MonSuperMotDePasse!2026', hashed);
             const wrong = await pwd.verify('MauvaisMotDePasse', hashed);

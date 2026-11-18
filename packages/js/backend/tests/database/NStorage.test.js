@@ -36,6 +36,9 @@ describe('NStorage (database/NStorage.js)', () => {
 
         store.remove('counter');
         assert.equal(store.has('counter'), false);
+        assert.equal(store.getBoolean('missing_bool', true), true);
+        assert.deepEqual(store.getArray('missing_arr', [1, 2]), [1, 2]);
+        assert.deepEqual(store.toObject(), { profile: { name: 'Alice', level: 3 } });
         store.clear();
         assert.equal(store.length, 0);
 

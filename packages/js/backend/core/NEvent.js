@@ -54,7 +54,7 @@ export class NEvent {
 
     /**
      * Registre interne des écouteurs d'événements (`nomEvenement -> Set<Function>`).
-     * Reste à `null` tant qu'aucun écouteur n'est abonné (économie de mémoire).
+     * Initialisé à `null` jusqu'au premier abonnement.
      * @type {Map<string, Set<Function>>|null}
      * @private
      */
@@ -66,14 +66,6 @@ export class NEvent {
      * @private
      */
     #target = null;
-
-    /**
-     * Métadonnées des écouteurs `once` (`wrapper -> { event, callback, handlerRemove }`).
-     * Reste à `null` tant qu'aucun écouteur `once` n'est actif.
-     * @type {Map<Function, { event: string, callback: Function, handlerRemove: Function|null }>|null}
-     * @private
-     */
-    #onceEntries = null;
 
     // =========================================================================
     // Constructeur
@@ -162,9 +154,8 @@ export class NEvent {
     // =========================================================================
 
     /**
-     * Vérifie s'il existe déjà au moins un écouteur pour un événement donné,
-     * ou si une fonction de rappel spécifique (`callback`) y est déjà abonnée.
-     * N'alloue aucune mémoire si `#listeners` est encore à `null`.
+     * Vérifie s'il existe au moins un écouteur pour un événement donné,
+     * ou si une fonction de rappel spécifique (`callback`) y est abonnée.
      *
      * @param {string} event - Nom de l'événement à vérifier.
      * @param {Function} [callback] - Fonction précise à rechercher (optionnel).
@@ -269,8 +260,8 @@ export class NEvent {
 
     /**
      * Abonne une fonction de rappel (`callback`) à un événement nommé.
-     * Initialise automatiquement `this.#listeners = new Map()` lors du tout premier abonnement.
-     * Si l'événement ou le rappel est invalide, consigne un avertissement et retourne `this` sans lever d'exception.
+     * Initialise automatiquement `this.#listeners = new Map()` lors du premier abonnement.
+     * Si l'événement ou le rappel est invalide, consigne un avertissement et retourne `this`.
      *
      * @param {string} event - Nom de l'événement à écouter.
      * @param {Function} callback - Fonction exécutée lorsque l'événement est émis.
@@ -312,14 +303,11 @@ export class NEvent {
     }
 
     /**
-     * Abonne une fonction de rappel (`callback`) qui ne sera exécutée qu'une seule fois
+     * Abonne une fonction de rappel (`callback`) qui est exécutée une seule fois
      * lors de la prochaine émission de l'événement, puis automatiquement désabonnée.
-     * Un rappel optionnel `handlerRemove` peut être fourni pour être notifié lorsque l'écouteur est retiré
-     * (après exécution, via `off()` ou via `clear()`).
      *
      * @param {string} event - Nom de l'événement à écouter une seule fois.
      * @param {Function} callback - Fonction exécutée lors de la première émission.
-     * @param {Function|null} [handlerRemove=null] - Fonction appelée lorsque l'écouteur est retiré.
      * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Réagir uniquement au premier événement</caption>
@@ -328,15 +316,13 @@ export class NEvent {
      * evt.emit('pret'); // Affiche 'Exécuté une seule fois'
      * evt.emit('pret'); // Ne fait plus rien
      *
-     * @example <caption>Exemple 2 : Nettoyer une ressource au retrait via handlerRemove</caption>
+     * @example <caption>Exemple 2 : Libération automatique après exécution</caption>
      * const evt = new NEvent();
-     * evt.once('init', () => {}, ({ event }) => {
-     *     console.log(`Écouteur ${event} retiré`);
-     * });
+     * evt.once('init', () => {});
      * evt.emit('init');
      * console.log(evt.isEmpty); // true
      */
-    once(event, callback, handlerRemove = null) {
+    once(event, callback) {
         if (typeof event !== 'string' || event.trim().length === 0) {
             this.util?.log?.warn?.('NEvent.once: Nom d\'événement invalide fourni.', {
                 code: 'WARN_EVENT_INVALID',
@@ -352,18 +338,8 @@ export class NEvent {
             });
             return this;
         }
-        const removeCb = typeof handlerRemove === 'function' ? handlerRemove : null;
         const wrapper = (payload) => {
-            const set = this.#listeners?.get(event);
-            if (set) {
-                set.delete(wrapper);
-                if (set.size === 0) {
-                    this.#listeners.delete(event);
-                }
-                if (this.#listeners.size === 0) {
-                    this.#listeners = null;
-                }
-            }
+            this.off(event, wrapper);
             try {
                 callback.call(this.#target ?? this, payload);
             } catch (error) {
@@ -374,18 +350,8 @@ export class NEvent {
                     stack: error?.stack,
                     target: this.#target ?? this
                 });
-            } finally {
-                this.#notifyOnceRemoved(wrapper);
             }
         };
-        if (!this.#onceEntries) {
-            this.#onceEntries = new Map();
-        }
-        this.#onceEntries.set(wrapper, {
-            event,
-            callback,
-            handlerRemove: removeCb
-        });
         return this.on(event, wrapper);
     }
 
@@ -415,45 +381,23 @@ export class NEvent {
             return this;
         }
         if (!callback) {
-            const removed = Array.from(this.#listeners.get(event));
             this.#listeners.delete(event);
-            if (this.#listeners.size === 0) {
-                this.#listeners = null;
-            }
-            for (const fn of removed) {
-                this.#notifyOnceRemoved(fn);
-            }
-            return this;
-        }
-        const set = this.#listeners.get(event);
-        let targetFn = null;
-        if (set.has(callback)) {
-            targetFn = callback;
-        } else if (this.#onceEntries) {
-            for (const [wrapper, entry] of this.#onceEntries.entries()) {
-                if (entry.event === event && entry.callback === callback && set.has(wrapper)) {
-                    targetFn = wrapper;
-                    break;
-                }
-            }
-        }
-        if (targetFn) {
-            set.delete(targetFn);
+        } else {
+            const set = this.#listeners.get(event);
+            set.delete(callback);
             if (set.size === 0) {
                 this.#listeners.delete(event);
             }
-            if (this.#listeners.size === 0) {
-                this.#listeners = null;
-            }
-            this.#notifyOnceRemoved(targetFn);
+        }
+        if (this.#listeners.size === 0) {
+            this.#listeners = null;
         }
         return this;
     }
 
     /**
      * Émet un événement et déclenche de manière synchrone tous les écouteurs enregistrés sur cet événement.
-     * N'effectue aucune allocation si aucun écouteur n'est enregistré (`#listeners === null`).
-     * Chaque écouteur est encapsulé dans un bloc sécurisé : si une fonction de rappel lève une erreur,
+     * Chaque écouteur est exécuté dans un bloc `try/catch` : si une fonction de rappel lève une erreur,
      * celle-ci est journalisée tout en poursuivant l'exécution des autres écouteurs.
      *
      * @param {string} event - Nom de l'événement à émettre.
@@ -510,7 +454,7 @@ export class NEvent {
      * @example <caption>Exemple 2 : Attente avec délai maximal d'expiration (timeout)</caption>
      * const evt = new NEvent();
      * const resultat = await evt.waitFor('introuvable', 50);
-     * console.log(resultat); // null (délai dépassé sans lever d'erreur)
+     * console.log(resultat); // null (délai dépassé)
      */
     waitFor(event, timeoutMs = 0) {
         if (typeof event !== 'string' || event.trim().length === 0) {
@@ -521,25 +465,16 @@ export class NEvent {
             return Promise.resolve(null);
         }
         return new Promise((resolve) => {
-            let settled = false;
             let timer = null;
-            const settle = (value) => {
-                if (settled) {
-                    return;
-                }
-                settled = true;
+            const handler = (data) => {
                 if (timer) {
                     clearTimeout(timer);
                     timer = null;
                 }
-                resolve(value);
+                this.off(event, handler);
+                resolve(data);
             };
-            const handler = (data) => {
-                settle(data);
-            };
-            this.once(event, handler, () => {
-                settle(null);
-            });
+            this.on(event, handler);
             if (typeof timeoutMs === 'number' && timeoutMs > 0) {
                 timer = setTimeout(() => {
                     timer = null;
@@ -549,7 +484,7 @@ export class NEvent {
                         event,
                         timeoutMs
                     });
-                    settle(null);
+                    resolve(null);
                 }, timeoutMs);
             }
         });
@@ -574,58 +509,7 @@ export class NEvent {
             this.#listeners.clear();
             this.#listeners = null;
         }
-        if (this.#onceEntries) {
-            const pending = Array.from(this.#onceEntries.values());
-            this.#onceEntries.clear();
-            this.#onceEntries = null;
-            for (const entry of pending) {
-                this.#invokeRemoveHandler(entry);
-            }
-        }
         return this;
-    }
-
-    /**
-     * Notifie et supprime l'entrée `once` associée à un wrapper retiré.
-     * @param {Function} wrapper - Fonction enveloppe enregistrée par `once()`.
-     * @private
-     */
-    #notifyOnceRemoved(wrapper) {
-        if (!this.#onceEntries || !this.#onceEntries.has(wrapper)) {
-            return;
-        }
-        const entry = this.#onceEntries.get(wrapper);
-        this.#onceEntries.delete(wrapper);
-        if (this.#onceEntries.size === 0) {
-            this.#onceEntries = null;
-        }
-        this.#invokeRemoveHandler(entry);
-    }
-
-    /**
-     * Exécute en toute sécurité le callback `handlerRemove` d'une entrée `once`.
-     * @param {{ event: string, callback: Function, handlerRemove: Function|null }} entry - Métadonnées `once`.
-     * @private
-     */
-    #invokeRemoveHandler(entry) {
-        if (!entry || typeof entry.handlerRemove !== 'function') {
-            return;
-        }
-        try {
-            entry.handlerRemove.call(this.#target ?? this, {
-                event: entry.event,
-                callback: entry.callback,
-                target: this.#target ?? this
-            });
-        } catch (error) {
-            this.util?.log?.error?.(`NEvent: Erreur dans handlerRemove pour "${entry.event}".`, {
-                code: 'ERR_EVENT_ONCE_REMOVE_HANDLER',
-                event: entry.event,
-                error,
-                stack: error?.stack,
-                target: this.#target ?? this
-            });
-        }
     }
 
     // =========================================================================

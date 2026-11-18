@@ -29,7 +29,19 @@ describe('NService (requests/NService.js)', () => {
 
         assert.equal(typeof srv.refreshId, 'function');
         assert.equal(typeof srv.fetchId, 'function');
+        assert.equal(srv.pollingInterval, 2000);
+        assert.equal(typeof srv.isNativeAvailable, 'boolean');
+        assert.equal(typeof srv.isWebSocketAvailable, 'boolean');
+        assert.equal(typeof srv.isSseAvailable, 'boolean');
+        assert.equal(typeof srv.isPollingAvailable, 'boolean');
+
+        srv.configure({ pollingInterval: 3000 });
+        assert.equal(srv.pollingInterval, 3000);
+
+        const fn = () => {};
+        srv.on('id', fn).off('id', fn);
 
         srv.destroy();
+        assert.equal(srv.isDestroyed, true);
     });
 });

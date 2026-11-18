@@ -70,4 +70,36 @@ describe('NObject (core/NObject.js)', () => {
         assert.equal(obj.listenerCount(), 0);
         obj.destroy();
     });
+
+    it('émet state:<key> et beforeDestroy, gère toString(), isNObject() et les cas limites', () => {
+        class CustomEntity extends NObject {}
+        const entity = CustomEntity.create({ state: { status: 'idle' } });
+
+        assert.equal(entity.toString(), '[CustomEntity]');
+        assert.equal(NObject.isNObject(entity), true);
+        assert.equal(NObject.isNObject({}), false);
+        assert.equal(NObject.isNObject(null), false);
+
+        // Sous-classe clonée préserve sa classe
+        const cloned = entity.clone();
+        assert.equal(cloned instanceof CustomEntity, true);
+        assert.equal(cloned.getState('status'), 'idle');
+
+        // Événement spécifique state:<key> et beforeDestroy
+        const events = [];
+        entity.on('state:status', (p) => events.push(`status:${p.oldValue}->${p.value}`));
+        entity.on('beforeDestroy', ({ target }) => events.push(`destroy:${target.className}`));
+
+        entity.setState('status', 'running');
+        entity.setState('status', 'running'); // Pas de changement -> pas d'événement
+        entity.fromJSON(null); // Ignoré sans erreur
+        entity.destroy();
+        entity.setState('status', 'after'); // Ignoré après destruction
+
+        assert.deepEqual(events, ['status:idle->running', 'destroy:CustomEntity']);
+        assert.equal(entity.isDestroyed, true);
+        assert.equal(entity.hasListener('state:status', () => {}), false);
+        assert.equal(entity.listenerCount(), 0);
+        assert.deepEqual(entity.eventNames(), []);
+    });
 });

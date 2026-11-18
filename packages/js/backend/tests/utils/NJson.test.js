@@ -43,4 +43,22 @@ describe('NJson (utils/NJson.js)', () => {
         assert.deepEqual(objOut, ['x=1', 'y=2']);
         assert.equal(json.forEach(null, () => {}), false);
     });
+
+    it('gère isValid avec options, size/count avec chemin, has, remove, pick, prettify et minify', () => {
+        assert.equal(json.isValid('42', { requireObjectOrArray: true }), false);
+        assert.equal(json.isValid('{"a":1}', { requireObjectOrArray: true }), true);
+        assert.equal(json.isPlainObject({ a: 1 }), true);
+        assert.equal(json.isPlainObject([]), false);
+        assert.equal(json.isEmpty({}), true);
+
+        const doc = { items: [1, 2, 3], meta: { ok: true, secret: 'x' } };
+        assert.equal(json.size(doc, 'items'), 3);
+        assert.equal(json.count(doc, 'meta'), 2);
+        assert.equal(json.has(doc, ['meta', 'ok']), true);
+        assert.equal(json.remove(doc, ['meta', 'secret']), true);
+        assert.equal(json.has(doc, ['meta', 'secret']), false);
+        assert.deepEqual(json.pick(doc.meta, ['ok']), { ok: true });
+        assert.equal(json.minify('{"a": 1, "b": 2}'), '{"a":1,"b":2}');
+        assert.ok(json.prettify({ a: 1 }).includes('\n'));
+    });
 });

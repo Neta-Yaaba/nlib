@@ -93,8 +93,8 @@ export class NTag extends NObject {
     getHeight(): number;
 
     on(event: string, callback: (data: any) => any): this;
-    once(event: string, callback: (data: any) => any, handlerRemove?: ((info: { event: string; callback: (data: any) => any; target: any }) => void) | null): this;
-    off(event?: string, callback?: (data: any) => any): this;
+    once(event: string, callback: (data: any) => any): this;
+    off(event: string, callback?: (data: any) => any): this;
     waitFor<T = any>(event: string, timeoutMs?: number): Promise<T | null>;
     clearEvents(): this;
     destroy(): void;
@@ -119,6 +119,7 @@ export class NImage extends NTag {
 
     src: string;
     alt: string;
+    text: string;
 
     setText(text: string | number | null | undefined): this;
     setSrc(src: string | null | undefined): this;
@@ -222,21 +223,12 @@ export class NAudio extends NMedia {
 export type NButtonType = 'button' | 'submit' | 'reset';
 export type NButtonPosition = 'left' | 'right' | 'top' | 'bottom';
 
-export type NButtonIconConfig =
-    | string
-    | NImageOptions
-    | {
-        emoji?: string;
-        isEmoji?: boolean;
-        text?: string;
-        classes?: string | string[];
-        style?: Record<string, string | number>;
-        attrs?: Record<string, any>;
-    };
+export type NButtonIconConfig = string | NImageOptions;
 
 export interface NButtonOptions extends NTagOptions {
     text?: string;
     icon?: NButtonIconConfig | null;
+    isEmoji?: boolean;
     iconPosition?: NButtonPosition;
     disabled?: boolean;
     loading?: boolean;
@@ -251,7 +243,7 @@ export class NButton extends NTag {
 
     setText(text: string | number | null | undefined): this;
     getText(): string;
-    setIcon(icon: NButtonIconConfig | null | undefined): this;
+    setIcon(icon: NButtonIconConfig | null | undefined, isEmoji?: boolean): this;
     setIconPosition(position: NButtonPosition): this;
     setDisabled(disabled?: boolean): this;
     isDisabled(): boolean;
@@ -278,8 +270,8 @@ export interface NInputOptions extends NTagOptions {
     step?: string | number;
     minLength?: number;
     maxLength?: number;
-    pattern?: string;
-    accept?: string;
+    pattern?: string | RegExp;
+    accept?: string | string[];
     multiple?: boolean;
 }
 
@@ -294,6 +286,7 @@ export class NInput extends NTag {
     value: string;
     checked: boolean;
     placeholder: string;
+    text: string;
 
     setType(type: string): this;
     setText(text: string | number | null | undefined): this;

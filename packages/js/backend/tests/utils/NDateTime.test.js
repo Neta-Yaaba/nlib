@@ -27,4 +27,25 @@ describe('NDateTime (utils/NDateTime.js)', () => {
         assert.equal(dt.isAfter(plus10, start), true);
         assert.equal(dt.toSql(start, false), '2026-11-01');
     });
+
+    it('gère startOf/endOf, addMonths/addYears, equals, isBetween, diffInHours/Minutes/Seconds et getAge', () => {
+        const d1 = dt.create(2026, 5, 15, 14, 30, 0);
+        const d2 = dt.create(2026, 5, 15, 16, 30, 0);
+        assert.equal(dt.equals(d1, d2, { ignoreTime: true }), true);
+        assert.equal(dt.diffInHours(d1, d2), 2);
+        assert.equal(dt.diffInMinutes(d1, d2), 120);
+        assert.equal(dt.diffInSeconds(d1, d2), 7200);
+
+        const sod = dt.startOfDay(d1);
+        const eod = dt.endOfDay(d1);
+        assert.equal(dt.getHours(sod), 0);
+        assert.equal(dt.getHours(eod), 23);
+        assert.equal(dt.isBetween(d1, sod, eod), true);
+
+        const eom = dt.endOfMonth(dt.create(2024, 2, 1));
+        assert.equal(dt.getDay(eom), 29);
+        assert.equal(dt.getAge('2000-01-01', '2026-06-01'), 26);
+        assert.equal(dt.isPast('2020-01-01', '2026-01-01'), true);
+        assert.equal(dt.isFuture('2030-01-01', '2026-01-01'), true);
+    });
 });

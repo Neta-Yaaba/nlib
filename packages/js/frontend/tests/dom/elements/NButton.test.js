@@ -58,15 +58,20 @@ describe('NButton (dom/elements/NButton.js)', () => {
         assert.equal(btn.children.length, 1);
         btn.setIcon('/icons/custom.png');
 
-        // Icône emoji -> crée un NTag span
+        // Icône emoji via isEmoji: true et setIcon('🔥', true)
         const emojiBtn = new NButton({
             text: 'Lancer',
-            icon: { emoji: '🚀' }
+            icon: '🚀',
+            isEmoji: true
         });
-        assert.equal(emojiBtn.children[0] instanceof NImage, false);
-        assert.equal(emojiBtn.children[0].tagName, 'span');
-        assert.equal(emojiBtn.children[0].text, '🚀');
-        assert.equal(emojiBtn.children[0].hasClass('n-button__icon'), true);
+        const emojiTag = emojiBtn.children[0];
+        assert.equal(emojiTag instanceof NImage, false);
+        assert.equal(emojiTag.tagName, 'span');
+        assert.equal(emojiTag.text, '🚀');
+        assert.equal(emojiTag.hasClass('n-button__icon'), true);
+        emojiBtn.setIcon('🔥', true);
+        assert.equal(emojiBtn.children[0], emojiTag);
+        assert.equal(emojiBtn.children[0].text, '🔥');
         emojiBtn.destroy();
 
         btn.setIconPosition('top');

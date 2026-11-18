@@ -24,33 +24,14 @@ describe('NEvent (core/NEvent.js)', () => {
         assert.equal(bus.has('ping'), false);
     });
 
-    it('exécute once une seule fois et appelle handlerRemove au retrait (emit, off, clear)', () => {
+    it('exécute once une seule fois', () => {
         const bus = new NEvent();
         let count = 0;
-        let removedReasons = 0;
-        bus.once('init', () => { count += 1; }, ({ event }) => {
-            if (event === 'init') removedReasons += 1;
-        });
+        bus.once('init', () => { count += 1; });
 
         bus.emit('init');
         bus.emit('init');
         assert.equal(count, 1);
-        assert.equal(removedReasons, 1);
-
-        // Retrait manuel via off(event, callback original)
-        let manualRemoved = 0;
-        const fn = () => { count += 1; };
-        bus.once('step', fn, () => { manualRemoved += 1; });
-        bus.off('step', fn);
-        bus.emit('step');
-        assert.equal(count, 1);
-        assert.equal(manualRemoved, 1);
-
-        // Retrait via clear()
-        let clearedCount = 0;
-        bus.once('later', () => {}, () => { clearedCount += 1; });
-        bus.clear();
-        assert.equal(clearedCount, 1);
     });
 
     it('supporte waitFor (résolution et timeout) et clear', async () => {
@@ -64,11 +45,47 @@ describe('NEvent (core/NEvent.js)', () => {
         assert.equal(expired, null);
         assert.equal(bus.listenerCount('never'), 0);
 
-        // Annulation d'un waitFor via clear()
-        const pending = bus.waitFor('cancelled', 5000);
         bus.on('tmp', () => {});
         bus.clear();
-        assert.equal(await pending, null);
         assert.equal(bus.isEmpty, true);
+    });
+
+    it('gère le contexte cible (target), NEvent.create(), listenerCount() global et has(event, cb)', () => {
+        const owner = { label: 'ServiceAuth' };
+        const bus = NEvent.create(owner);
+        assert.equal(bus.target, owner);
+
+        let capturedThis = null;
+        const fnA = function () { capturedThis = this; };
+        const fnB = () => {};
+
+        bus.on('login', fnA).on('logout', fnB);
+        assert.equal(bus.listenerCount(), 2);
+        assert.equal(bus.has('login', fnA), true);
+        assert.equal(bus.has('login', fnB), false);
+
+        bus.emit('login');
+        assert.equal(capturedThis, owner);
+
+        bus.off('login');
+        assert.equal(bus.has('login'), false);
+        assert.equal(bus.listenerCount(), 1);
+    });
+
+    it('isole les erreurs des écouteurs et ignore les arguments invalides', async () => {
+        const bus = new NEvent();
+        let secondCalled = false;
+
+        bus.on('', () => {});
+        bus.on('valid', null);
+        assert.equal(bus.isEmpty, true);
+
+        bus.on('boom', () => { throw new Error('échec écouteur'); });
+        bus.on('boom', () => { secondCalled = true; });
+        bus.emit('boom');
+        assert.equal(secondCalled, true);
+
+        const invalidWait = await bus.waitFor('');
+        assert.equal(invalidWait, null);
     });
 });

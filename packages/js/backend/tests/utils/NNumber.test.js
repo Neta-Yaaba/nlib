@@ -29,4 +29,19 @@ describe('NNumber (utils/NNumber.js)', () => {
         assert.equal(num.pad(7, 3), '007');
         assert.equal(num.format(1250000.5, { decimals: 2 }), '1 250 000,50');
     });
+
+    it('gère floor, ceil, equals avec tolérance, isNegative, randomInt/randomFloat, formatCurrency et formatBytes', () => {
+        assert.equal(num.isNegative(-3), true);
+        assert.equal(num.equals(0.1 + 0.2, 0.3, 1e-9), true);
+        assert.equal(num.floor(3.987, 2), 3.98);
+        assert.equal(num.ceil(3.111, 2), 3.12);
+
+        const ri = num.randomInt(5, 10);
+        assert.equal(ri >= 5 && ri <= 10, true);
+        const rf = num.randomFloat(0, 1, 2);
+        assert.equal(rf >= 0 && rf <= 1, true);
+
+        assert.equal(num.formatCurrency(1500, { symbol: '€', decimals: 0 }), '1 500 €');
+        assert.equal(num.formatBytes(1024, 0), '1 Ko');
+    });
 });

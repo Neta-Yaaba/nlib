@@ -92,7 +92,7 @@ Si le volume du CSS grandit (thèmes, design tokens partagés), il pourra être 
 
 `@nlib/js-backend` fournit une couche logique JavaScript pure (sans dépendance DOM ni npm) dont toutes les classes héritent de `NObject` (cycle de vie, état observable avec événements, sérialisation JSON, clonage et destruction) :
 
-- **Noyau et événements (`core/`)** : `NObject` (socle commun avec `util` et `event` intégrés) et `NEvent` (bus d'événements synchrone/asynchrone avec `on`, `once`, `off`, `emit`, `emitAsync`, `waitFor`).
+- **Noyau et événements (`core/`)** : `NObject` (socle commun avec `util` et `event` intégrés) et `NEvent` (bus d'événements synchrone/asynchrone avec `on`, `once`, `off`, `emit`, `waitFor`).
 - **Journalisation, configuration et diagnostic (`log/`, `config/`, `environment/`, `system/`)** : `NLog` (journaux multi-niveaux, contexte, filtres, export/import), `NConfig` (accès typé par chemins hiérarchiques, parsing `.env`, validation `require` et verrouillage `freeze`), `NEnvironment` (détection du runtime Navigateur/Node/Worker/ServiceWorker, OS et capacités) et `NSystem` (métriques CPU/mémoire/réseau/batterie, chronométrage et snapshots).
 - **Utilitaires (`utils/`)** : `NUtil` (façade singleton paresseuse) donnant accès à `NCryptography` (SHA-256, Base64, AES-GCM local déterministe, chiffrement asymétrique/hybride RSA-OAEP + AES-CBC, symétrique AES-CBC), `NString`, `NNumber`, `NDateTime`, `NAmount`, `NEmail`, `NPhoneNumber`, `NUrl`, `NJson`, `NPassword` et `NArray`.
 - **Persistance locale et fichiers (`database/`, `filesystem/`, `cache/`)** : `NDatabase` unifiant `NStorage` (`localStorage`/`sessionStorage` avec contextes et TTL), `NIndexedDB` (chiffrable via `NCryptography.encryptLocal`/`decryptLocal`) et `NSql` (SQLite WebAssembly persisté en IndexedDB) ; `NFile` et `NDirectory` (abstraction fichiers/répertoires) ; `NCache` (cache mémoire/persistant avec TTL).
@@ -127,9 +127,9 @@ const res = await NUtil.db.idb.getAll('ntable'); // IndexedDB : { ok, data, erro
 
 ## Avancement
 
-- Fait : `packages/js/backend` — 11 modules complets (`core`, `log`, `config`, `environment`, `system`, `utils`, `database`, `filesystem`, `cache`, `requests` dont `NService`, `worker` dont `NServiceWorker`), héritage universel `NObject`, typings TypeScript (`index.d.ts`) et suite de 49 tests unitaires (`tests.html` / `tests/index.js`).
-- Squelette : `packages/js/frontend` (`dom/`, `style/`), `website/`.
-- À venir : classes du frontend, serveurs PHP et Node, conteneurs natifs.
+- Fait : `packages/js/backend` — 12 modules complets (`core`, `log`, `config`, `environment`, `system`, `utils`, `database`, `filesystem`, `cache`, `requests` dont `NService`, `worker` dont `NServiceWorker`, `language` avec `NLanguage`), héritage universel `NObject`, typings TypeScript (`index.d.ts`) et suite de 30 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
+- Fait (socle DOM) : `packages/js/frontend` — 7 composants `dom/elements/` (`NTag`, `NImage`, `NMedia`, `NVideo`, `NAudio`, `NButton`, `NInput`), typings TypeScript (`index.d.ts`) et 7 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
+- À venir : `dom/components/`, `style/`, `website/`, serveurs PHP et Node, conteneurs natifs.
 
 ## Licence
 

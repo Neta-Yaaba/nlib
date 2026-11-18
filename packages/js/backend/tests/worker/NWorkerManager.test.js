@@ -18,8 +18,19 @@ describe('NWorkerManager (worker/NWorkerManager.js)', () => {
 
         const chosen = mgr.get('calcPool');
         assert.ok(pool.includes(chosen));
+        assert.equal(typeof mgr.isWorkerContext, 'boolean');
+        assert.equal(typeof mgr.isSupported, 'boolean');
+        assert.deepEqual(mgr.names, ['calcPool']);
+        const snapshot = mgr.toJSON();
+        assert.equal(typeof snapshot, 'object');
+        assert.equal(snapshot.size, 2);
+
+        assert.equal(mgr.unregisterAction('doubleVal'), mgr);
+        assert.equal(mgr.hasAction('doubleVal'), false);
 
         mgr.terminateAll();
         assert.equal(mgr.size, 0);
+        mgr.destroy();
+        assert.equal(mgr.isDestroyed, true);
     });
 });

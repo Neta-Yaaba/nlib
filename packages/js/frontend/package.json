@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
+  "scripts": {
+    "test": "node ./tests/index.js"
+  },
   "exports": {
     ".": {
       "types": "./index.d.ts",

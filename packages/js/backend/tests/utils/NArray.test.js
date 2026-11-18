@@ -26,4 +26,23 @@ describe('NArray (utils/NArray.js)', () => {
         assert.deepEqual(page.data, [3, 4]);
         assert.equal(page.totalPages, 3);
     });
+
+    it('gère equals, contains, insertAt/removeAt/removeValue, groupBy, keyBy, flatten, ensembles et range', () => {
+        assert.equal(arr.equals([1, 2, 3], [3, 1, 2], true), true);
+        assert.equal(arr.contains([{ id: 1 }, { id: 2 }], 2, 'id'), true);
+        assert.deepEqual(arr.insertAt([1, 3], 1, 2), [1, 2, 3]);
+        assert.deepEqual(arr.removeAt([1, 2, 3], 1), [1, 3]);
+        assert.deepEqual(arr.removeValue([{ id: 1 }, { id: 2 }], 1, 'id'), [{ id: 2 }]);
+        assert.deepEqual(arr.flatten([1, [2, [3]]]), [1, 2, 3]);
+
+        const grouped = arr.groupBy([{ t: 'A', v: 1 }, { t: 'B', v: 2 }, { t: 'A', v: 3 }], 't');
+        assert.equal(grouped.A.length, 2);
+        const keyed = arr.keyBy([{ id: 'x' }, { id: 'y' }], 'id');
+        assert.deepEqual(keyed.x, { id: 'x' });
+
+        assert.deepEqual(arr.intersection([1, 2, 3], [2, 3, 4]), [2, 3]);
+        assert.deepEqual(arr.difference([1, 2, 3], [2]), [1, 3]);
+        assert.deepEqual(arr.union([1, 2], [2, 3]), [1, 2, 3]);
+        assert.deepEqual(arr.range(1, 5, 2), [1, 3, 5]);
+    });
 });

@@ -43,15 +43,39 @@ describe('NUtil (utils/NUtil.js)', () => {
         assert.equal(NUtil.toBoolean('0'), false);
     });
 
-    it('supporte sleep et retry', async () => {
+    it('supporte sleep, retry, debounce, throttle et isUuid/isBoolean/isFunction/isPromise', async () => {
+        assert.equal(NUtil.isUuid(NUtil.uuid()), true);
+        assert.equal(NUtil.isUuid('not-a-uuid'), false);
+        assert.equal(NUtil.isBoolean(false), true);
+        assert.equal(NUtil.isFunction(() => {}), true);
+        assert.equal(NUtil.isPromise(Promise.resolve(1)), true);
+
         let attempts = 0;
         const result = await NUtil.retry(async (attempt) => {
             attempts = attempt;
             if (attempt < 2) throw new Error('Retry me');
             return 'success';
-        }, { retries: 3, delay: 10, backoff: 1 });
+        }, { attempts: 3, delayMs: 10, exponential: false });
 
         assert.equal(result, 'success');
         assert.equal(attempts, 2);
+
+        const failedFallback = await NUtil.retry(async () => {
+            throw new Error('Always fails');
+        }, { attempts: 2, delayMs: 5, fallback: 'repli' });
+        assert.equal(failedFallback, 'repli');
+
+        let debouncedCount = 0;
+        const debounced = NUtil.debounce(() => { debouncedCount += 1; }, 20);
+        debounced();
+        debounced.cancel();
+        await NUtil.sleep(30);
+        assert.equal(debouncedCount, 0);
+
+        let throttledCount = 0;
+        const throttled = NUtil.throttle(() => { throttledCount += 1; }, 100);
+        throttled();
+        throttled();
+        assert.equal(throttledCount, 1);
     });
 });

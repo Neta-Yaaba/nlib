@@ -25,4 +25,25 @@ describe('NString (utils/NString.js)', () => {
         assert.equal(str.template('Salut {name}!', { name: 'Alice' }), 'Salut Alice!');
         assert.equal(str.mask('1234567890', { visibleStart: 2, visibleEnd: 2 }), '12******90');
     });
+
+    it('gère escapeHtml/unescapeHtml, truncate, pad, repeat, reverse, countOccurrences et wordCount', () => {
+        assert.equal(str.startsWith('Bonjour', 'bon', { caseSensitive: false }), true);
+        assert.equal(str.endsWith('fichier.PDF', '.pdf', { caseSensitive: false }), true);
+        assert.equal(str.isEmail('contact@nlib.dev'), true);
+        assert.equal(str.isAlphanumeric('NLib2026'), true);
+        assert.equal(str.indexOf('Café crème', 'creme', { ignoreAccents: true }), 5);
+
+        const escaped = str.escapeHtml('<script>"test"</script>');
+        assert.equal(str.unescapeHtml(escaped), '<script>"test"</script>');
+        assert.equal(str.truncate('Bonjour tout le monde', 10), 'Bonjour...');
+        assert.equal(str.padStart('7', 3, '0'), '007');
+        assert.equal(str.padEnd('A', 3, '_'), 'A__');
+        assert.equal(str.repeat('ab', 3), 'ababab');
+        assert.equal(str.reverse('abc'), 'cba');
+        assert.equal(str.replaceAll('a-b-c', '-', '_'), 'a_b_c');
+        assert.equal(str.insertEvery('12345678', 4, ' '), '1234 5678');
+        assert.equal(str.countOccurrences('banane', 'an'), 2);
+        assert.equal(str.wordCount('Un deux trois'), 3);
+        assert.equal(str.random(12).length, 12);
+    });
 });

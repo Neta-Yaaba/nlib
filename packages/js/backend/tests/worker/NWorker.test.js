@@ -15,7 +15,14 @@ describe('NWorker (worker/NWorker.js)', () => {
         const res = await worker.request('addition', { a: 15, b: 27 });
         assert.equal(res.success, true);
         assert.equal(res.result, 42);
+        assert.equal(typeof worker.isRunning, 'boolean');
+        assert.equal(worker.pendingCount, 0);
 
+        const missingRes = await worker.request('unknown_action', {});
+        assert.equal(missingRes.success, false);
+
+        worker.terminate();
         worker.destroy();
+        assert.equal(worker.isDestroyed, true);
     });
 });

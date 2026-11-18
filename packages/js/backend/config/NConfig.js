@@ -80,7 +80,7 @@ export class NConfig extends NObject {
      * @param {boolean} [options.loadProcessEnv=false] - Si `true` (sous Node.js), importe `process.env`.
      * @param {boolean} [options.freeze=false] - Si `true`, verrouille immédiatement la configuration après chargement.
      *
-     * @example <caption>Exemple 1 : Création légère (zéro objet alloué tant que vide)</caption>
+     * @example <caption>Exemple 1 : Création d'une instance vide</caption>
      * const cfg = new NConfig();
      * console.log(cfg.isEmpty); // true
      *

@@ -29,4 +29,36 @@ describe('NCache (cache/NCache.js)', () => {
 
         await cache.clear();
     });
+
+    it('gère stats, getOrSet, keys, delete, prune, cacheFile/getFile, putResponse/matchUrl et destroy', async () => {
+        const cache = new NCache({ namespace: 'test_ns_ext' });
+        await cache.clear();
+
+        assert.equal(['native', 'caches', 'idb', 'store', 'memory'].includes(cache.driver), true);
+        await cache.getOrSet('k_or_set', 60, () => 99);
+        assert.equal(await cache.get('k_or_set'), 99);
+
+        const keyList = await cache.keys();
+        assert.equal(keyList.includes('k_or_set'), true);
+
+        await cache.delete('k_or_set');
+        assert.equal(await cache.has('k_or_set'), false);
+
+        assert.equal(typeof cache.stats.hits, 'number');
+        assert.equal(typeof cache.stats.misses, 'number');
+        assert.equal(typeof await cache.prune(), 'number');
+
+        await cache.cacheFile('notes.txt', 'Contenu test', { mimeType: 'text/plain' });
+        const fileText = await cache.getFile('notes.txt', { format: 'text' });
+        assert.equal(fileText, 'Contenu test');
+
+        await cache.putResponse('https://nlib.dev/api/ping', { ok: true });
+        const matched = await cache.matchUrl('https://nlib.dev/api/ping');
+        assert.deepEqual(matched, { ok: true });
+        await cache.deleteUrl('https://nlib.dev/api/ping');
+
+        await cache.clear();
+        cache.destroy();
+        assert.equal(cache.isDestroyed, true);
+    });
 });

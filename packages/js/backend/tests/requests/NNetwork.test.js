@@ -6,6 +6,12 @@ describe('NNetwork (requests/NNetwork.js)', () => {
         const net = new NNetwork({ baseUrl: 'https://api.nlib.dev/', timeout: 15000 });
         assert.equal(net.baseUrl, 'https://api.nlib.dev');
         assert.equal(typeof net.driver, 'string');
+        assert.equal(NNetwork.CHUNK_SIZE, 1024 * 1024);
+
+        net.baseUrl = 'https://v2.nlib.dev/';
+        assert.equal(net.baseUrl, 'https://v2.nlib.dev');
+        net.driver = 'fetch';
+        assert.equal(net.driver, 'fetch');
 
         if (NUtil.crypto.isWebCryptoAvailable()) {
             const kp = await net.generateClientKeyPair({ modulusLength: 2048 });
