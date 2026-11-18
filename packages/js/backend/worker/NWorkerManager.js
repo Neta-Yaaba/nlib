@@ -323,6 +323,19 @@ export class NWorkerManager extends NObject {
         return worker;
     }
 
+    /**
+     * Crée, configure et enregistre un nouveau `NWorker` géré sous le nom donné.
+     *
+     * @param {string} name - Nom unique du worker.
+     * @param {Object} [options={}] - Options transmises à `NWorker`.
+     * @returns {NWorker|null} Worker enregistré ou `null` si le nom est invalide.
+     *
+     * @example <caption>Exemple 1 : Créer un worker dédié</caption>
+     * const w = NUtil.worker.create('compute', { url: './compute-worker.js' });
+     *
+     * @example <caption>Exemple 2 : Créer un worker avec repli local</caption>
+     * const local = NUtil.worker.create('math');
+     */
     create(name, options = {}) {
         return this.add(name, this.#createManagedWorker({ ...options, name }));
     }

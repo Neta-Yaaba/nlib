@@ -8,7 +8,6 @@ import { NObject, NObjectOptions } from '../backend/index.js';
 
 export interface NTagOptions extends NObjectOptions {
     tagName?: string;
-    element?: Element | null;
     id?: string;
     classes?: string | string[];
     className?: string;
@@ -223,9 +222,21 @@ export class NAudio extends NMedia {
 export type NButtonType = 'button' | 'submit' | 'reset';
 export type NButtonPosition = 'left' | 'right' | 'top' | 'bottom';
 
+export type NButtonIconConfig =
+    | string
+    | NImageOptions
+    | {
+        emoji?: string;
+        isEmoji?: boolean;
+        text?: string;
+        classes?: string | string[];
+        style?: Record<string, string | number>;
+        attrs?: Record<string, any>;
+    };
+
 export interface NButtonOptions extends NTagOptions {
     text?: string;
-    icon?: string | NImageOptions | NImage | NTag | null;
+    icon?: NButtonIconConfig | null;
     iconPosition?: NButtonPosition;
     disabled?: boolean;
     loading?: boolean;
@@ -240,7 +251,7 @@ export class NButton extends NTag {
 
     setText(text: string | number | null | undefined): this;
     getText(): string;
-    setIcon(icon: string | NImageOptions | NTagOptions | NImage | NTag | null | undefined): this;
+    setIcon(icon: NButtonIconConfig | null | undefined): this;
     setIconPosition(position: NButtonPosition): this;
     setDisabled(disabled?: boolean): this;
     isDisabled(): boolean;

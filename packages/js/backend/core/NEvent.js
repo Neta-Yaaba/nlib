@@ -354,7 +354,16 @@ export class NEvent {
         }
         const removeCb = typeof handlerRemove === 'function' ? handlerRemove : null;
         const wrapper = (payload) => {
-            this.off(event, wrapper);
+            const set = this.#listeners?.get(event);
+            if (set) {
+                set.delete(wrapper);
+                if (set.size === 0) {
+                    this.#listeners.delete(event);
+                }
+                if (this.#listeners.size === 0) {
+                    this.#listeners = null;
+                }
+            }
             try {
                 callback.call(this.#target ?? this, payload);
             } catch (error) {
@@ -365,6 +374,8 @@ export class NEvent {
                     stack: error?.stack,
                     target: this.#target ?? this
                 });
+            } finally {
+                this.#notifyOnceRemoved(wrapper);
             }
         };
         if (!this.#onceEntries) {

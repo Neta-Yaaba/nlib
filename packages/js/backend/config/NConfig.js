@@ -137,7 +137,7 @@ export class NConfig extends NObject {
     }
 
     /**
-     * Indique si la configuration ne contient aucune clé.
+     * Indique si la configuration est vide.
      *
      * @returns {boolean} `true` si `#data` est vide ou `null`.
      *

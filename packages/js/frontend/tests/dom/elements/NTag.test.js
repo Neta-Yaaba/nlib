@@ -26,6 +26,12 @@ describe('NTag (dom/elements/NTag.js)', () => {
         assert.equal(tag.text, 'Bienvenue');
         assert.equal(tag.getState('visible'), true);
 
+        const existingEl = document.createElement('span');
+        const createdTag = new NTag({ element: existingEl, tagName: 123 });
+        assert.equal(createdTag.tagName, 'div');
+        assert.equal(createdTag.element !== existingEl, true);
+        createdTag.destroy();
+
         tag.destroy();
     });
 

@@ -161,7 +161,6 @@ export class NTag extends NObject {
      * @constructor
      * @param {Object|string} [options={}] - Options de configuration ou nom de balise HTML.
      * @param {string} [options.tagName='div'] - Nom de la balise HTML à créer.
-     * @param {Element|null} [options.element] - Élément DOM existant à encapsuler.
      * @param {string} [options.id] - Identifiant DOM (`id`).
      * @param {string|string[]} [options.classes] - Classe(s) CSS initiale(s).
      * @param {string} [options.className] - Chaîne de classes CSS initiale.
@@ -187,17 +186,12 @@ export class NTag extends NObject {
 
         super({ state: opts.state });
 
-        if (opts.element && typeof opts.element === 'object' && opts.element.tagName) {
-            this.#element = opts.element;
-            this.#tagName = String(opts.element.tagName).toLowerCase();
-        } else {
-            const rawTag = typeof opts.tagName === 'string' && opts.tagName.trim()
-                ? opts.tagName.trim().toLowerCase()
-                : 'div';
-            this.#tagName = rawTag;
-            if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-                this.#element = document.createElement(this.#tagName);
-            }
+        const rawTag = typeof opts.tagName === 'string' && opts.tagName.trim()
+            ? opts.tagName.trim().toLowerCase()
+            : 'div';
+        this.#tagName = rawTag;
+        if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+            this.#element = document.createElement(this.#tagName);
         }
 
         if (this.#element) {

@@ -44,18 +44,27 @@ describe('NButton (dom/elements/NButton.js)', () => {
         assert.equal(btn.children[1], oldIcon);
         assert.equal(oldIcon.src, '/icons/next.png');
 
-        const customIcon = new NImage('/icons/custom.png');
-        btn.setIcon(customIcon);
+        // NTag externe refusé en icône et en texte
+        const externalTag = new NTag('span').setText('Externe');
+        btn.setIcon(externalTag);
+        assert.equal(btn.children[1], oldIcon);
+        btn.setText(externalTag);
+        assert.equal(btn.getText(), 'Suivant');
+        externalTag.destroy();
+
+        btn.setIcon({ src: '/icons/custom.png' });
         assert.equal(oldIcon.isDestroyed, true);
         btn.setIcon(null);
-        assert.equal(customIcon.isDestroyed, true);
+        assert.equal(btn.children.length, 1);
         btn.setIcon('/icons/custom.png');
 
-        // Icône NTag simple avec emoji
+        // Icône emoji -> crée un NTag span
         const emojiBtn = new NButton({
             text: 'Lancer',
-            icon: new NTag({ tagName: 'span', text: '🚀' })
+            icon: { emoji: '🚀' }
         });
+        assert.equal(emojiBtn.children[0] instanceof NImage, false);
+        assert.equal(emojiBtn.children[0].tagName, 'span');
         assert.equal(emojiBtn.children[0].text, '🚀');
         assert.equal(emojiBtn.children[0].hasClass('n-button__icon'), true);
         emojiBtn.destroy();

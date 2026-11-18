@@ -317,6 +317,16 @@ export class NDatabase extends NObject {
         return this.#autoSave;
     }
 
+    /**
+     * Active ou désactive la sauvegarde automatique sur modification SQL.
+     * @param {boolean} value - Nouvel état d'auto-sauvegarde.
+     *
+     * @example <caption>Exemple 1 : Désactiver temporairement</caption>
+     * db.autoSave = false;
+     *
+     * @example <caption>Exemple 2 : Réactiver l'auto-sauvegarde</caption>
+     * db.autoSave = true;
+     */
     set autoSave(value) {
         this.#autoSave = Boolean(value);
         if (!this.#autoSave) {
@@ -338,6 +348,16 @@ export class NDatabase extends NObject {
         return this.#autoSaveDelay;
     }
 
+    /**
+     * Définit le délai d'attente (debounce en ms) avant la sauvegarde automatique.
+     * @param {number} value - Délai en millisecondes (`>= 0`).
+     *
+     * @example <caption>Exemple 1 : Délai court de 200 ms</caption>
+     * db.autoSaveDelay = 200;
+     *
+     * @example <caption>Exemple 2 : Délai long de 2000 ms</caption>
+     * db.autoSaveDelay = 2000;
+     */
     set autoSaveDelay(value) {
         if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
             this.#autoSaveDelay = Math.floor(value);

@@ -58,16 +58,13 @@ export class NMedia extends NTag {
             ? { src: options }
             : (options && typeof options === 'object' ? options : {});
 
-        const rawTag = opts.element?.tagName
-            ? String(opts.element.tagName).trim().toLowerCase()
-            : (typeof opts.tagName === 'string' ? opts.tagName.trim().toLowerCase() : 'audio');
+        const rawTag = typeof opts.tagName === 'string'
+            ? opts.tagName.trim().toLowerCase()
+            : 'audio';
 
         const safeTag = NMedia.#ALLOWED_TAGS.has(rawTag) ? rawTag : 'audio';
-        const safeElement = opts.element?.tagName && NMedia.#ALLOWED_TAGS.has(String(opts.element.tagName).trim().toLowerCase())
-            ? opts.element
-            : undefined;
 
-        super({ ...opts, element: safeElement, tagName: safeTag });
+        super({ ...opts, tagName: safeTag });
 
         if (opts.controls !== undefined) {
             this.setControls(opts.controls);

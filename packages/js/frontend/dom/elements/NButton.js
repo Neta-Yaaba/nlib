@@ -88,7 +88,7 @@ export class NButton extends NTag {
      * @constructor
      * @param {Object|string} [options={}] - Options de configuration ou texte du bouton.
      * @param {string} [options.text] - Texte du bouton.
-     * @param {string|Object|NImage|NTag} [options.icon] - Source d'image, options `NImage` ou instance `NImage`/`NTag`.
+     * @param {string|Object} [options.icon] - URL d'image, options `NImage` ou `{ emoji: '...' }` pour créer un `NTag`.
      * @param {'left'|'right'|'top'|'bottom'} [options.iconPosition='left'] - Position de l'icône.
      * @param {boolean} [options.disabled=false] - Désactive le bouton.
      * @param {boolean} [options.loading=false] - Active l'indicateur de chargement.
@@ -149,7 +149,7 @@ export class NButton extends NTag {
      * btn.setText('');
      */
     setText(text) {
-        if (this.isDestroyed) {
+        if (this.isDestroyed || (text && typeof text === 'object')) {
             return this;
         }
         const value = (text === null || text === undefined) ? '' : String(text);
@@ -192,21 +192,21 @@ export class NButton extends NTag {
     }
 
     /**
-     * Définit, remplace ou supprime l'icône du bouton (`string` URL pour `NImage`, objet d'options `NImage`/`NTag`,
-     * instance `NImage`/`NTag`, ou `null`/`''` pour la supprimer et la détruire).
+     * Définit, remplace ou supprime l'icône du bouton (`string` URL pour `NImage`, objet d'options `NImage`,
+     * `{ emoji: '...' }` pour créer un `NTag`, ou `null`/`''` pour la supprimer).
      *
-     * @param {string|Object|NImage|NTag|null} icon - Source, configuration ou instance de l'icône.
+     * @param {string|{ src?: string, alt?: string }|{ emoji: string }|null} icon - Source ou configuration de l'icône.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Ajouter une icône par URL ou emoji NTag</caption>
+     * @example <caption>Exemple 1 : Ajouter une icône image ou emoji</caption>
      * btn.setIcon('/icons/save.svg');
-     * btn.setIcon(new NTag({ tagName: 'span', text: '🚀' }));
+     * btn.setIcon({ emoji: '🚀' });
      *
      * @example <caption>Exemple 2 : Supprimer l'icône</caption>
      * btn.setIcon(null);
      */
     setIcon(icon) {
-        if (this.isDestroyed) {
+        if (this.isDestroyed || icon instanceof NTag) {
             return this;
         }
         if (icon === null || icon === undefined || icon === '') {
@@ -226,20 +226,20 @@ export class NButton extends NTag {
         this.#clearIcon();
 
         let iconTag = null;
-        if (icon instanceof NTag) {
-            iconTag = icon;
-        } else if (typeof icon === 'string') {
+        if (typeof icon === 'string') {
             iconTag = new NImage({
                 src: icon,
                 alt: '',
                 attrs: { 'aria-hidden': 'true' }
             });
         } else if (typeof icon === 'object') {
-            const isTagConfig = !('src' in icon) && ('tagName' in icon || 'text' in icon || 'html' in icon || 'classes' in icon);
-            iconTag = isTagConfig
+            const isEmoji = icon.emoji !== undefined || icon.isEmoji === true;
+            iconTag = isEmoji
                 ? new NTag({
                     tagName: 'span',
-                    ...icon,
+                    text: String(icon.emoji ?? icon.text ?? ''),
+                    classes: icon.classes,
+                    style: icon.style,
                     attrs: { 'aria-hidden': 'true', ...(icon.attrs || {}) }
                 })
                 : new NImage({
