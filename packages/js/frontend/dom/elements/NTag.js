@@ -1512,30 +1512,26 @@ export class NTag extends NObject {
     }
 
     /**
-     * Retire un enfant (`NTag` ou `Node` DOM) de cette balise.
+     * Retire un enfant (`NTag` ou `Node` DOM) de cette balise sans le détruire.
      *
      * @param {NTag|Node} child - Enfant à retirer.
-     * @param {boolean|{ destroy?: boolean }} [destroy=true] - Détruit l'enfant `NTag` retiré (`true` par défaut) ou le conserve (`false` / `{ destroy: false }`).
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Retirer et détruire une balise enfant</caption>
+     * @example <caption>Exemple 1 : Retirer une balise enfant</caption>
      * ul.removeChild(li);
      *
-     * @example <caption>Exemple 2 : Retirer sans détruire pour réutiliser ailleurs</caption>
-     * ul.removeChild(li, false);
+     * @example <caption>Exemple 2 : Retirer puis vérifier la liste des enfants</caption>
+     * ul.removeChild(li);
+     * console.log(ul.children.length);
      */
-    removeChild(child, destroy = true) {
+    removeChild(child) {
         if (!child || !this.#element) return this;
-        const shouldDestroy = typeof destroy === 'boolean' ? destroy : (destroy?.destroy !== false);
         const targetNode = child instanceof NTag ? child.#element : child;
         if (targetNode && targetNode.parentNode === this.#element) {
             this.#element.removeChild(targetNode);
             const childTag = child instanceof NTag ? child : targetNode._ntag;
             if (childTag instanceof NTag) {
                 childTag.#syncSubtreeMountState();
-                if (shouldDestroy && !childTag.isDestroyed) {
-                    childTag.destroy();
-                }
             }
         }
         return this;

@@ -55,13 +55,6 @@ export class NButton extends NTag {
     #spinnerTag = null;
 
     /**
-     * Indique si `#iconTag` a été créé et est possédé par ce bouton.
-     * @type {boolean}
-     * @private
-     */
-    #ownsIcon = false;
-
-    /**
      * Position de l'icône par rapport au texte (`left`, `right`, `top`, `bottom`).
      * @type {'left'|'right'|'top'|'bottom'}
      * @private
@@ -199,10 +192,8 @@ export class NButton extends NTag {
     }
 
     /**
-     * Définit ou remplace l'icône du bouton (`string` URL pour `NImage`, objet d'options `NImage`/`NTag`, ou instance `NImage`/`NTag`).
-     * Les icônes créées en interne depuis une URL ou un objet d'options sont détruites lors d'un remplacement ou de `removeIcon()` ;
-     * les instances `NTag`/`NImage` fournies directement sont uniquement détachées lors d'un remplacement ou de `removeIcon()`,
-     * et restent soumises à `destroy()` du bouton si elles y sont encore attachées lors de sa destruction.
+     * Définit, remplace ou supprime l'icône du bouton (`string` URL pour `NImage`, objet d'options `NImage`/`NTag`,
+     * instance `NImage`/`NTag`, ou `null`/`''` pour la supprimer et la détruire).
      *
      * @param {string|Object|NImage|NTag|null} icon - Source, configuration ou instance de l'icône.
      * @returns {this} L'instance courante pour chaînage.
@@ -211,38 +202,38 @@ export class NButton extends NTag {
      * btn.setIcon('/icons/save.svg');
      * btn.setIcon(new NTag({ tagName: 'span', text: '🚀' }));
      *
-     * @example <caption>Exemple 2 : Réutiliser une instance externe après removeIcon()</caption>
-     * const star = new NImage('/icons/star.png');
-     * btn.setIcon(star).removeIcon();
-     * otherBtn.setIcon(star);
+     * @example <caption>Exemple 2 : Supprimer l'icône</caption>
+     * btn.setIcon(null);
      */
     setIcon(icon) {
         if (this.isDestroyed) {
             return this;
         }
         if (icon === null || icon === undefined || icon === '') {
-            return this.removeIcon();
+            if (this.#iconTag) {
+                this.#clearIcon();
+                this.#syncStructure();
+            }
+            return this;
         }
 
-        if (typeof icon === 'string' && this.#ownsIcon && this.#iconTag instanceof NImage && !this.#iconTag.isDestroyed) {
+        if (typeof icon === 'string' && this.#iconTag instanceof NImage && !this.#iconTag.isDestroyed) {
             this.#iconTag.setSrc(icon);
             this.#syncStructure();
             return this;
         }
 
-        this.#destroyOwnedIcon();
+        this.#clearIcon();
 
         let iconTag = null;
         if (icon instanceof NTag) {
             iconTag = icon;
-            this.#ownsIcon = false;
         } else if (typeof icon === 'string') {
             iconTag = new NImage({
                 src: icon,
                 alt: '',
                 attrs: { 'aria-hidden': 'true' }
             });
-            this.#ownsIcon = true;
         } else if (typeof icon === 'object') {
             const isTagConfig = !('src' in icon) && ('tagName' in icon || 'text' in icon || 'html' in icon || 'classes' in icon);
             iconTag = isTagConfig
@@ -256,7 +247,6 @@ export class NButton extends NTag {
                     ...icon,
                     attrs: { 'aria-hidden': 'true', ...(icon.attrs || {}) }
                 });
-            this.#ownsIcon = true;
         }
 
         if (iconTag) {
@@ -267,27 +257,6 @@ export class NButton extends NTag {
             this.#iconTag = iconTag;
             this.#syncStructure();
         }
-        return this;
-    }
-
-    /**
-     * Retire l'icône du bouton ; la détruit si elle a été créée en interne par `NButton`,
-     * ou la détache simplement si une instance `NTag`/`NImage` externe avait été fournie.
-     *
-     * @returns {this} L'instance courante pour chaînage.
-     *
-     * @example <caption>Exemple 1 : Retirer l'icône</caption>
-     * btn.removeIcon();
-     *
-     * @example <caption>Exemple 2 : Retirer l'icône puis changer le texte</caption>
-     * btn.removeIcon().setText('Terminé');
-     */
-    removeIcon() {
-        if (!this.#iconTag) {
-            return this;
-        }
-        this.#destroyOwnedIcon();
-        this.#syncStructure();
         return this;
     }
 
@@ -464,24 +433,24 @@ export class NButton extends NTag {
         this.#textTag = null;
         this.#iconTag = null;
         this.#spinnerTag = null;
-        this.#ownsIcon = false;
         this.#autoAriaLabel = '';
         super.destroy();
     }
 
     /**
-     * Détache et détruit l'icône interne si elle appartient au bouton.
+     * Détache et détruit l'icône interne du bouton.
      * @private
      */
-    #destroyOwnedIcon() {
+    #clearIcon() {
         if (!this.#iconTag) {
             return;
         }
         const tag = this.#iconTag;
-        const owns = this.#ownsIcon;
         this.#iconTag = null;
-        this.#ownsIcon = false;
-        this.removeChild(tag, owns);
+        this.removeChild(tag);
+        if (!tag.isDestroyed) {
+            tag.destroy();
+        }
     }
 
     /**

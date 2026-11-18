@@ -196,14 +196,12 @@ describe('NTag (dom/elements/NTag.js)', () => {
         assert.equal(p2.children.length, 1);
         assert.equal(child.isDestroyed, false);
 
-        // 4) Suppression avec destroy = true par défaut vs destroy = false
+        // 4) removeChild() retire sans détruire ; empty() détruit par défaut sauf destroyChildren=false
         const keepChild = new NTag('span');
-        const dropChild = new NTag('span');
-        p2.append(keepChild, dropChild);
-        p2.removeChild(keepChild, { destroy: false });
+        p2.append(keepChild);
+        p2.removeChild(keepChild);
         assert.equal(keepChild.isDestroyed, false);
-        p2.removeChild(dropChild);
-        assert.equal(dropChild.isDestroyed, true);
+        assert.equal(keepChild.parent, null);
 
         p2.empty({ destroy: false });
         assert.equal(child.isDestroyed, false);

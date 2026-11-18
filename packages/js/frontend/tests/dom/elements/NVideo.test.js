@@ -4,7 +4,6 @@ import { NVideo, NTag } from '../../../index.js';
 describe('NVideo (dom/elements/NVideo.js)', () => {
     it('hérite de NTag, crée une balise video et configure attributs, sources, volume et vitesse', () => {
         const video = new NVideo({
-            src: '/demo.mp4',
             poster: '/poster.jpg',
             controls: true,
             loop: true,
@@ -22,7 +21,7 @@ describe('NVideo (dom/elements/NVideo.js)', () => {
 
         assert.equal(video instanceof NTag, true);
         assert.equal(video.tagName, 'video');
-        assert.equal(video.src, '/demo.mp4');
+        assert.equal(video.src, '');
         assert.equal(video.poster, '/poster.jpg');
         assert.equal(video.hasAttr('controls'), true);
         assert.equal(video.hasAttr('loop'), true);
@@ -34,6 +33,10 @@ describe('NVideo (dom/elements/NVideo.js)', () => {
         assert.equal(video.children.length, 1);
         assert.equal(video.children[0].tagName, 'source');
         assert.equal(video.children[0].getAttr('type'), 'video/webm');
+
+        video.setSrc('/demo.mp4');
+        assert.equal(video.src, '/demo.mp4');
+        assert.equal(video.children.length, 0);
 
         video.setVolume(2).setPlaybackRate(0.75);
         assert.equal(video.volume, 1);

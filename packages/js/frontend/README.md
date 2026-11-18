@@ -37,6 +37,7 @@ Toutes les classes CSS générées par les composants NLib suivent une conventio
 
 - **`NTag`** : classe de base générique sans classe CSS imposée par défaut.
 - **`NImage`** : `n-image`
+- **`NMedia`** : classe de base commune à `NVideo` et `NAudio` (`tagName: 'audio' | 'video'`, sans classe CSS propre).
 - **`NVideo`** : `n-video`
 - **`NAudio`** : `n-audio`
 - **`NButton`** :
@@ -46,6 +47,20 @@ Toutes les classes CSS générées par les composants NLib suivent une conventio
 - **`NInput`** :
   - Racine : `n-input`
   - États : `n-input--disabled`, `n-input--readonly`, `n-input--invalid`
+
+## Importation
+
+```js
+import {
+    NTag,
+    NImage,
+    NMedia,
+    NVideo,
+    NAudio,
+    NButton,
+    NInput
+} from '@nlib/js-frontend';
+```
 
 ## Principes
 

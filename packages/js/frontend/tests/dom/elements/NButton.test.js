@@ -47,9 +47,8 @@ describe('NButton (dom/elements/NButton.js)', () => {
         const customIcon = new NImage('/icons/custom.png');
         btn.setIcon(customIcon);
         assert.equal(oldIcon.isDestroyed, true);
-        btn.removeIcon();
-        assert.equal(customIcon.isDestroyed, false);
-        customIcon.destroy();
+        btn.setIcon(null);
+        assert.equal(customIcon.isDestroyed, true);
         btn.setIcon('/icons/custom.png');
 
         // Icône NTag simple avec emoji
@@ -82,7 +81,7 @@ describe('NButton (dom/elements/NButton.js)', () => {
         assert.equal(iconOnly.hasAttr('aria-label'), false);
         iconOnly.destroy();
 
-        btn.removeIcon();
+        btn.setIcon(null);
         assert.equal(btn.children.length, 0);
         assert.equal(btn.hasClass('n-button--icon-only'), false);
 

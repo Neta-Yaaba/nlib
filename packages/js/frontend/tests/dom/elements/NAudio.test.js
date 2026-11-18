@@ -1,10 +1,9 @@
 import { describe, it, assert } from '../../../../backend/tests/test-helper.js';
-import { NAudio, NTag } from '../../../index.js';
+import { NAudio, NMedia, NTag } from '../../../index.js';
 
 describe('NAudio (dom/elements/NAudio.js)', () => {
     it('hérite de NTag, crée une balise audio et configure attributs, sources, volume et vitesse', () => {
         const audio = new NAudio({
-            src: '/track.mp3',
             controls: true,
             loop: true,
             muted: true,
@@ -18,7 +17,7 @@ describe('NAudio (dom/elements/NAudio.js)', () => {
 
         assert.equal(audio instanceof NTag, true);
         assert.equal(audio.tagName, 'audio');
-        assert.equal(audio.src, '/track.mp3');
+        assert.equal(audio.src, '');
         assert.equal(audio.hasAttr('controls'), true);
         assert.equal(audio.hasAttr('loop'), true);
         assert.equal(audio.isMuted(), true);
@@ -28,6 +27,14 @@ describe('NAudio (dom/elements/NAudio.js)', () => {
         assert.equal(audio.children.length, 1);
         assert.equal(audio.children[0].tagName, 'source');
         assert.equal(audio.children[0].getAttr('type'), 'audio/ogg');
+
+        // Mutualité src / <source>
+        audio.setSrc('/track.mp3');
+        assert.equal(audio.src, '/track.mp3');
+        assert.equal(audio.children.length, 0);
+        audio.addSource('/track.ogg', 'audio/ogg');
+        assert.equal(audio.src, '');
+        assert.equal(audio.children.length, 1);
 
         audio.setVolume(-1).setPlaybackRate(0.5);
         assert.equal(audio.volume, 0);
@@ -39,6 +46,10 @@ describe('NAudio (dom/elements/NAudio.js)', () => {
 
         audio.destroy();
         assert.equal(audio.isDestroyed, true);
+
+        const fallbackMedia = new NMedia({ tagName: 'div' });
+        assert.equal(fallbackMedia.tagName, 'audio');
+        fallbackMedia.destroy();
     });
 
     it('gère setSrc(null), stop() et destroy()', () => {
@@ -51,5 +62,9 @@ describe('NAudio (dom/elements/NAudio.js)', () => {
 
         audio.destroy();
         assert.equal(audio.isDestroyed, true);
+
+        const fallbackMedia = new NMedia({ tagName: 'div' });
+        assert.equal(fallbackMedia.tagName, 'audio');
+        fallbackMedia.destroy();
     });
 });

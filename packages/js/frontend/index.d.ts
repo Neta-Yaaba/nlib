@@ -81,7 +81,7 @@ export class NTag extends NObject {
     addTag(tags: NTag | Node | string | Array<NTag | Node | string>, position?: number | NTag | Node | null): this;
     append(...nodes: Array<NTag | Node | string>): this;
     prepend(...nodes: Array<NTag | Node | string>): this;
-    removeChild(child: NTag | Node, destroy?: boolean | { destroy?: boolean }): this;
+    removeChild(child: NTag | Node): this;
     empty(destroyChildren?: boolean | { destroy?: boolean }): this;
     mount(target: NTag | Element | string): this;
     unmount(): this;
@@ -140,6 +140,7 @@ export interface NMediaSource {
 }
 
 export interface NMediaOptions extends NTagOptions {
+    tagName?: 'audio' | 'video';
     src?: string;
     controls?: boolean;
     autoplay?: boolean;
@@ -239,8 +240,7 @@ export class NButton extends NTag {
 
     setText(text: string | number | null | undefined): this;
     getText(): string;
-    setIcon(icon: string | NImageOptions | NImage | NTag | null | undefined): this;
-    removeIcon(): this;
+    setIcon(icon: string | NImageOptions | NTagOptions | NImage | NTag | null | undefined): this;
     setIconPosition(position: NButtonPosition): this;
     setDisabled(disabled?: boolean): this;
     isDisabled(): boolean;

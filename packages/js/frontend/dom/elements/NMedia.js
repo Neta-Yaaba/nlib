@@ -25,13 +25,15 @@ import { NTag } from './NTag.js';
  */
 export class NMedia extends NTag {
 
+    static #ALLOWED_TAGS = new Set(['audio', 'video']);
+
     /**
      * Crée une nouvelle instance `NMedia`.
      *
      * @constructor
      * @param {Object|string} [options={}] - Options de configuration ou URL `src`.
-     * @param {string} [options.tagName='audio'] - Nom de la balise média (`'audio'` ou `'video'`).
-     * @param {string} [options.src] - URL du flux média.
+     * @param {'audio'|'video'} [options.tagName='audio'] - Nom de la balise média (`'audio'` ou `'video'`).
+     * @param {string} [options.src] - URL directe du flux média (mutuellement exclusif avec `sources` ; prioritaire si les deux sont fournis).
      * @param {boolean} [options.controls=false] - Affiche les contrôles natifs.
      * @param {boolean} [options.autoplay=false] - Lecture automatique.
      * @param {boolean} [options.loop=false] - Lecture en boucle.
@@ -40,7 +42,7 @@ export class NMedia extends NTag {
      * @param {number} [options.volume] - Volume initial entre `0` et `1`.
      * @param {number} [options.playbackRate] - Vitesse de lecture initiale (`> 0`).
      * @param {string|null} [options.crossOrigin] - Politique CORS (`'anonymous'`, `'use-credentials'`).
-     * @param {Array<{ src: string, type?: string }|string>} [options.sources] - Liste de sources `<source>`.
+     * @param {Array<{ src: string, type?: string }|string>} [options.sources] - Liste de sources `<source>` (utilisée uniquement si `src` est omis).
      *
      * @example <caption>Exemple 1 : Créer un média avec contrôles</caption>
      * const m = new NMedia({ tagName: 'video', src: '/clip.mp4', controls: true });
@@ -56,7 +58,16 @@ export class NMedia extends NTag {
             ? { src: options }
             : (options && typeof options === 'object' ? options : {});
 
-        super({ ...opts, tagName: opts.tagName || 'audio' });
+        const rawTag = opts.element?.tagName
+            ? String(opts.element.tagName).trim().toLowerCase()
+            : (typeof opts.tagName === 'string' ? opts.tagName.trim().toLowerCase() : 'audio');
+
+        const safeTag = NMedia.#ALLOWED_TAGS.has(rawTag) ? rawTag : 'audio';
+        const safeElement = opts.element?.tagName && NMedia.#ALLOWED_TAGS.has(String(opts.element.tagName).trim().toLowerCase())
+            ? opts.element
+            : undefined;
+
+        super({ ...opts, element: safeElement, tagName: safeTag });
 
         if (opts.controls !== undefined) {
             this.setControls(opts.controls);
@@ -76,7 +87,9 @@ export class NMedia extends NTag {
         if (opts.crossOrigin !== undefined) {
             this.setCrossOrigin(opts.crossOrigin);
         }
-        if (Array.isArray(opts.sources)) {
+        if (opts.src !== undefined && opts.src !== null && opts.src !== '') {
+            this.setSrc(opts.src);
+        } else if (Array.isArray(opts.sources)) {
             for (const entry of opts.sources) {
                 if (typeof entry === 'string') {
                     this.addSource(entry);
@@ -84,9 +97,6 @@ export class NMedia extends NTag {
                     this.addSource(entry.src, entry.type);
                 }
             }
-        }
-        if (opts.src !== undefined) {
-            this.setSrc(opts.src);
         }
         if (typeof opts.volume === 'number') {
             this.setVolume(opts.volume);
@@ -228,7 +238,8 @@ export class NMedia extends NTag {
     }
 
     /**
-     * Définit l'URL source (`src`) du média.
+     * Définit l'URL source (`src`) du média et supprime les éventuels enfants `<source>` existants
+     * (`src` et `<source>` étant mutuellement exclusifs en HTML5).
      *
      * @param {string|null} src - URL du média (`null` pour supprimer l'attribut).
      * @returns {this} L'instance courante pour chaînage.
@@ -243,11 +254,20 @@ export class NMedia extends NTag {
         if (src === null || src === undefined || src === '') {
             return this.removeAttr('src');
         }
+        for (const child of this.children) {
+            if (child.tagName === 'source') {
+                this.removeChild(child);
+                if (!child.isDestroyed) {
+                    child.destroy();
+                }
+            }
+        }
         return this.setAttr('src', String(src));
     }
 
     /**
-     * Ajoute une balise enfant `<source>` au média.
+     * Ajoute une balise enfant `<source>` au média et supprime l'attribut `src` s'il était défini
+     * (`src` et `<source>` étant mutuellement exclusifs en HTML5).
      *
      * @param {string} src - URL de la source média.
      * @param {string} [type] - Type MIME optionnel.
@@ -263,6 +283,7 @@ export class NMedia extends NTag {
         if (this.isDestroyed || typeof src !== 'string' || !src.trim()) {
             return this;
         }
+        this.removeAttr('src');
         const sourceTag = new NTag({
             tagName: 'source',
             attrs: {
