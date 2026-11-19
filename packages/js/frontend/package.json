@@ -19,7 +19,7 @@
     "index.js",
     "index.d.ts",
     "dom",
-    "style"
+    "styles"
   ],
   "dependencies": {
     "@nlib/js-backend": "workspace:*"

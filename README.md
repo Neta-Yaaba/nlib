@@ -76,7 +76,7 @@ Le dossier [`website/`](./website) est dédié au site web documentant **chaque 
 
 ## Décision d'architecture : emplacement du CSS
 
-Le DOM et le style de NLib vivent **dans `packages/js/frontend`** (`@nlib/js-frontend`) : `dom/` pour les balises créées en JS, `style/` pour le **CSS objet** (objets JS appliqués au DOM). Il n'y a **pas** de package séparé `@nlib/ui` ou `js/ui`.
+Le DOM et le style de NLib vivent **dans `packages/js/frontend`** (`@nlib/js-frontend`) : `dom/` pour les balises créées en JS, `styles/` pour le **CSS objet** (objets JS appliqués au DOM). Il n'y a **pas** de package séparé `@nlib/ui` ou `js/ui`.
 
 Raisons :
 - Le frontend est déjà défini comme « interface 100 % JS : balises DOM en JS, CSS objet, NWindow » : le style est indissociable des composants DOM.
@@ -129,7 +129,7 @@ const res = await NUtil.db.idb.getAll('ntable'); // IndexedDB : { ok, data, erro
 
 - Fait : `packages/js/backend` — 12 modules complets (`core`, `log`, `config`, `environment`, `system`, `utils`, `database`, `filesystem`, `cache`, `requests` dont `NService`, `worker` dont `NServiceWorker`, `language` avec `NLanguage`), héritage universel `NObject`, typings TypeScript (`index.d.ts`) et suite de 30 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
 - Fait (socle DOM) : `packages/js/frontend` — 7 composants `dom/elements/` (`NTag`, `NImage`, `NMedia`, `NVideo`, `NAudio`, `NButton`, `NInput`), typings TypeScript (`index.d.ts`) et 7 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
-- À venir : `dom/components/`, `style/`, `website/`, serveurs PHP et Node, conteneurs natifs.
+- À venir : `dom/components/`, `styles/`, `website/`, serveurs PHP et Node, conteneurs natifs.
 
 ## Licence
 

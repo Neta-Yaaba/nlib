@@ -16,7 +16,7 @@ frontend/
 │   │   ├── NButton.js
 │   │   └── NInput.js
 │   └── components/
-├── style/
+├── styles/
 ├── tests/
 ├── index.js
 ├── index.d.ts
