@@ -1,0 +1,9 @@
+/**
+ * @file NVideo.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `default` pour `NVideo` (`.n-video`).
+ */
+
+.n-video {
+    box-shadow: var(--n-shadow-sm);
+}

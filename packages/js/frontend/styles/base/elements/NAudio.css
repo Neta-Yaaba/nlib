@@ -1,0 +1,17 @@
+/**
+ * @file NAudio.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le composant `NAudio` (`.n-audio`).
+ */
+
+.n-audio {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--n-control-radius);
+}
+
+.n-audio:focus-visible {
+    outline: none;
+    box-shadow: var(--n-focus-ring);
+}

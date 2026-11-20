@@ -1,0 +1,13 @@
+/**
+ * @file NButton.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `default` pour `NButton` (`.n-button`).
+ */
+
+.n-button:hover {
+    border-color: var(--n-border-strong);
+}
+
+.n-button:focus-visible {
+    border-color: var(--n-border-focus);
+}

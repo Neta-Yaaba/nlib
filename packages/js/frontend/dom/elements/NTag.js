@@ -35,6 +35,34 @@ import { NObject } from '../../../backend/core/NObject.js';
 export class NTag extends NObject {
 
     // =========================================================================
+    // Constantes statiques (Thèmes & Styles visuels)
+    // =========================================================================
+
+    /**
+     * Liste des thèmes pris en charge par NLib (`'light'`, `'dark'`, `'auto'`, `'system'`).
+     * @readonly
+     * @type {readonly ['light', 'dark', 'auto', 'system']}
+     */
+    static THEMES = Object.freeze(['light', 'dark', 'auto', 'system']);
+
+    /**
+     * Liste des styles visuels pris en charge par NLib.
+     * @readonly
+     * @type {readonly string[]}
+     */
+    static STYLES = Object.freeze([
+        'default',
+        'solid',
+        'outline',
+        'flat',
+        'fluent',
+        'glass',
+        'material',
+        'minimal',
+        'neumorphism'
+    ]);
+
+    // =========================================================================
     // Propriétés privées
     // =========================================================================
 
@@ -59,6 +87,20 @@ export class NTag extends NObject {
      * @private
      */
     #domBridge = null;
+
+    /**
+     * MediaQueryList utilisée lorsque le thème de l'instance suit `'auto'` / `'system'`.
+     * @type {MediaQueryList|null}
+     * @private
+     */
+    #systemThemeMql = null;
+
+    /**
+     * Fonction de rappel attachée à `#systemThemeMql`.
+     * @type {Function|null}
+     * @private
+     */
+    #systemThemeHandler = null;
 
     /**
      * Observateur de redimensionnement partagé entre toutes les instances `NTag` abonnées à `'resize'`.
@@ -167,6 +209,8 @@ export class NTag extends NObject {
      * @param {Object<string, any>} [options.attrs] - Attributs HTML initiaux.
      * @param {Object<string, any>} [options.data] - Attributs `data-*` initiaux.
      * @param {Object<string, string>} [options.style] - Styles CSS en ligne initiaux.
+     * @param {'light'|'dark'|'auto'|null} [options.theme] - Thème visuel appliqué via `data-n-theme`.
+     * @param {string|null} [options.styleName] - Nom du style visuel appliqué via `data-n-style` (`'default'`, `'solid'`, `'glass'`, etc.).
      * @param {string} [options.text] - Contenu textuel initial (`textContent`).
      * @param {string} [options.html] - Contenu HTML initial (`innerHTML`).
      * @param {Array<NTag|Node|string>} [options.children] - Enfants initiaux à ajouter.
@@ -229,6 +273,12 @@ export class NTag extends NObject {
         }
         if (opts.style && typeof opts.style === 'object') {
             this.setStyle(opts.style);
+        }
+        if (opts.theme !== undefined) {
+            this.setTheme(opts.theme);
+        }
+        if (opts.styleName !== undefined) {
+            this.setStyleName(opts.styleName);
         }
         if (opts.text !== undefined) {
             this.setText(opts.text);
@@ -317,6 +367,24 @@ export class NTag extends NObject {
      */
     get parent() {
         return this.#element?.parentElement?._ntag ?? null;
+    }
+
+    /**
+     * Retourne l'instance unique `NWindow` attachée à `document.body`, ou `null`.
+     * @returns {import('../NWindow.js').NWindow|null}
+     *
+     * @example <caption>Exemple 1 : Accéder à la fenêtre applicative depuis un composant</caption>
+     * const btn = new NTag('button');
+     * btn.getWindow()?.navigate('/profile');
+     *
+     * @example <caption>Exemple 2 : Afficher un message toast depuis un élément</caption>
+     * this.getWindow()?.showMessage('Action effectuée');
+     */
+    getWindow() {
+        if (typeof document === 'undefined') {
+            return null;
+        }
+        return document.body?._nwindow ?? null;
     }
 
     /**
@@ -975,6 +1043,130 @@ export class NTag extends NObject {
             this.#applyLanguageFn.call(this, this);
         }
         return this;
+    }
+
+    /**
+     * Définit le thème visuel de la balise via l'attribut `data-n-theme` (`'light'`, `'dark'`).
+     * Passer `'auto'` ou `'system'` détecte automatiquement le mode du système/navigateur (`'light'` ou `'dark'`).
+     * Passer `null` ou `''` supprime l'attribut afin d'hériter du thème parent ou global.
+     *
+     * @param {'light'|'dark'|'auto'|'system'|null} theme - Thème à appliquer.
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Activer le thème sombre ou automatique sur un composant</caption>
+     * card.setTheme('dark');
+     * console.log(card.getTheme()); // 'dark'
+     * card.setTheme('system');
+     *
+     * @example <caption>Exemple 2 : Supprimer l'attribut pour hériter du thème global</caption>
+     * card.setTheme(null);
+     * console.log(card.getTheme()); // null
+     */
+    setTheme(theme) {
+        if (this.isDestroyed || !this.#element) {
+            return this;
+        }
+        if (theme === null || theme === undefined || theme === '') {
+            this.#stopSystemThemeListener();
+            this.removeAttr('data-n-theme');
+            return this;
+        }
+        if (typeof theme !== 'string') {
+            return this;
+        }
+        const normalized = theme.trim().toLowerCase();
+        if (!normalized) {
+            this.#stopSystemThemeListener();
+            this.removeAttr('data-n-theme');
+            return this;
+        }
+        if (normalized === 'auto' || normalized === 'system') {
+            this.#stopSystemThemeListener();
+            this.setAttr('data-n-theme', NTag.#resolveSystemTheme());
+            const sub = NTag.#attachMediaThemeListener((mode) => {
+                if (!this.isDestroyed && this.#element) {
+                    this.setAttr('data-n-theme', mode);
+                }
+            });
+            if (sub) {
+                this.#systemThemeMql = sub.mql;
+                this.#systemThemeHandler = sub.handler;
+            }
+            return this;
+        }
+        if (normalized === 'light' || normalized === 'dark') {
+            this.#stopSystemThemeListener();
+            this.setAttr('data-n-theme', normalized);
+        }
+        return this;
+    }
+
+    /**
+     * Retourne le thème défini explicitement sur cette balise (`'light'`, `'dark'` ou `null`).
+     *
+     * @returns {'light'|'dark'|null} Thème actif sur l'élément ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire le thème appliqué</caption>
+     * const card = new NTag({ theme: 'dark' });
+     * console.log(card.getTheme()); // 'dark'
+     *
+     * @example <caption>Exemple 2 : Élément sans thème explicite</caption>
+     * console.log(new NTag().getTheme()); // null
+     */
+    getTheme() {
+        return this.getAttr('data-n-theme');
+    }
+
+    /**
+     * Définit le style visuel de la balise via l'attribut `data-n-style`
+     * (`'default'`, `'solid'`, `'outline'`, `'flat'`, `'fluent'`, `'glass'`, `'material'`, `'minimal'`, `'neumorphism'`).
+     * Passer `null` ou `''` supprime l'attribut afin d'hériter du style parent ou global.
+     *
+     * @param {string|null} styleName - Nom du style visuel à appliquer.
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Appliquer le style glass sur un élément</caption>
+     * panel.setStyleName('glass');
+     * console.log(panel.getStyleName()); // 'glass'
+     *
+     * @example <caption>Exemple 2 : Supprimer la surcharge locale de style</caption>
+     * panel.setStyleName(null);
+     * console.log(panel.getStyleName()); // null
+     */
+    setStyleName(styleName) {
+        if (this.isDestroyed || !this.#element) {
+            return this;
+        }
+        if (styleName === null || styleName === undefined || styleName === '') {
+            this.removeAttr('data-n-style');
+            return this;
+        }
+        if (typeof styleName !== 'string') {
+            return this;
+        }
+        const normalized = styleName.trim().toLowerCase();
+        if (!normalized) {
+            this.removeAttr('data-n-style');
+            return this;
+        }
+        this.setAttr('data-n-style', normalized);
+        return this;
+    }
+
+    /**
+     * Retourne le nom du style visuel défini explicitement sur cette balise (`null` si aucun).
+     *
+     * @returns {string|null} Nom du style actif sur l'élément ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire le style appliqué</caption>
+     * const box = new NTag({ styleName: 'solid' });
+     * console.log(box.getStyleName()); // 'solid'
+     *
+     * @example <caption>Exemple 2 : Élément sans style explicite</caption>
+     * console.log(new NTag().getStyleName()); // null
+     */
+    getStyleName() {
+        return this.getAttr('data-n-style');
     }
 
     /**
@@ -1793,6 +1985,7 @@ export class NTag extends NObject {
             const children = this.children;
             super.destroy();
             this.#detachAllDomBridges();
+            this.#stopSystemThemeListener();
 
             for (const child of children) {
                 if (!child.isDestroyed) {
@@ -1825,6 +2018,12 @@ export class NTag extends NObject {
      * Attache un écouteur DOM unique sur `#element` (ou `ResizeObserver` / geste `longclick`)
      * qui relaie l'événement vers `this.event.emit()`.
      * @private
+     *
+     * @example <caption>Exemple 1 : Relais interne d'un clic DOM</caption>
+     * this.#attachDomBridge('click');
+     *
+     * @example <caption>Exemple 2 : Relais interne d'un observateur de taille</caption>
+     * this.#attachDomBridge('resize');
      */
     #attachDomBridge(eventName) {
         if (this.isDestroyed || !this.#element || typeof eventName !== 'string') return;
@@ -1960,6 +2159,12 @@ export class NTag extends NObject {
     /**
      * Détache le pont DOM (ou `ResizeObserver` / `longclick`) associé à un nom d'événement.
      * @private
+     *
+     * @example <caption>Exemple 1 : Détacher le pont DOM d'un événement</caption>
+     * this.#detachDomBridge('click');
+     *
+     * @example <caption>Exemple 2 : Détacher l'observateur de visibilité</caption>
+     * this.#detachDomBridge('visibility');
      */
     #detachDomBridge(eventName) {
         if (typeof eventName !== 'string') return;
@@ -2049,6 +2254,12 @@ export class NTag extends NObject {
     /**
      * Détache tous les ponts DOM, `ResizeObserver` et `longclick` actifs sur `#element`.
      * @private
+     *
+     * @example <caption>Exemple 1 : Nettoyer tous les ponts dans clearEvents()</caption>
+     * this.#detachAllDomBridges();
+     *
+     * @example <caption>Exemple 2 : Nettoyer tous les ponts dans destroy()</caption>
+     * if (!this.isDestroyed) this.#detachAllDomBridges();
      */
     #detachAllDomBridges() {
         if (this.#resizeObserved) {
@@ -2073,6 +2284,12 @@ export class NTag extends NObject {
     /**
      * Synchronise l'état `isConnected` et émet `'mount'` ou `'unmount'` lors d'une transition.
      * @private
+     *
+     * @example <caption>Exemple 1 : Vérifier après insertion</caption>
+     * this.#syncMountState();
+     *
+     * @example <caption>Exemple 2 : Vérifier après retrait du DOM</caption>
+     * parent.removeChild(this); // déclenche #syncMountState()
      */
     #syncMountState() {
         const connected = Boolean(this.#element?.isConnected);
@@ -2086,6 +2303,12 @@ export class NTag extends NObject {
     /**
      * Propage la vérification d'attachement DOM sur cette balise et ses descendants `NTag`.
      * @private
+     *
+     * @example <caption>Exemple 1 : Propager lors de append()</caption>
+     * node.#syncSubtreeMountState();
+     *
+     * @example <caption>Exemple 2 : Propager lors de mount()</caption>
+     * this.#syncSubtreeMountState();
      */
     #syncSubtreeMountState() {
         this.#syncMountState();
@@ -2098,6 +2321,12 @@ export class NTag extends NObject {
      * Crée paresseusement l'unique `ResizeObserver` statique partagé par tous les `NTag`.
      * @returns {ResizeObserver|null}
      * @private
+     *
+     * @example <caption>Exemple 1 : Obtenir l'observateur partagé</caption>
+     * const ro = NTag.#ensureResizeObserver();
+     *
+     * @example <caption>Exemple 2 : Observer un élément</caption>
+     * NTag.#ensureResizeObserver()?.observe(this.#element);
      */
     static #ensureResizeObserver() {
         if (!NTag.#resizeObserver && typeof ResizeObserver === 'function') {
@@ -2121,6 +2350,12 @@ export class NTag extends NObject {
      * Crée paresseusement l'unique `IntersectionObserver` statique partagé pour `'visibility'`.
      * @returns {IntersectionObserver|null}
      * @private
+     *
+     * @example <caption>Exemple 1 : Obtenir l'observateur de visibilité</caption>
+     * const io = NTag.#ensureVisibilityObserver();
+     *
+     * @example <caption>Exemple 2 : Observer un élément</caption>
+     * NTag.#ensureVisibilityObserver()?.observe(this.#element);
      */
     static #ensureVisibilityObserver() {
         if (!NTag.#visibilityObserver && typeof IntersectionObserver === 'function') {
@@ -2144,6 +2379,238 @@ export class NTag extends NObject {
             });
         }
         return NTag.#visibilityObserver;
+    }
+
+    // =========================================================================
+    // Méthodes statiques — Thème et Style globaux (`document.documentElement`)
+    // =========================================================================
+
+    static #systemThemeMql = null;
+    static #systemThemeHandler = null;
+
+    /**
+     * Détecte le mode du système ou du navigateur (`'dark'` ou `'light'`).
+     * @returns {'light'|'dark'}
+     * @private
+     *
+     * @example <caption>Exemple 1 : Résoudre le thème système</caption>
+     * const mode = NTag.#resolveSystemTheme();
+     *
+     * @example <caption>Exemple 2 : Appliquer sur un attribut</caption>
+     * this.setAttr('data-n-theme', NTag.#resolveSystemTheme());
+     */
+    static #resolveSystemTheme() {
+        if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        return 'light';
+    }
+
+    /**
+     * Détache l'écouteur de thème système attaché à cette instance.
+     * @private
+     *
+     * @example <caption>Exemple 1 : Arrêter l'écoute lors d'un thème explicite</caption>
+     * this.#stopSystemThemeListener();
+     *
+     * @example <caption>Exemple 2 : Nettoyer à la destruction</caption>
+     * this.#stopSystemThemeListener();
+     */
+    #stopSystemThemeListener() {
+        NTag.#detachMediaThemeListener(this.#systemThemeMql, this.#systemThemeHandler);
+        this.#systemThemeMql = null;
+        this.#systemThemeHandler = null;
+    }
+
+    /**
+     * Attache un écouteur `matchMedia('(prefers-color-scheme: dark)')` et retourne `{ mql, handler }`.
+     * @param {(mode: 'light'|'dark') => void} onChange
+     * @returns {{ mql: MediaQueryList, handler: Function }|null}
+     * @private
+     *
+     * @example <caption>Exemple 1 : S'abonner au changement de thème OS</caption>
+     * const sub = NTag.#attachMediaThemeListener((mode) => console.log(mode));
+     *
+     * @example <caption>Exemple 2 : Mettre à jour un attribut sur changement</caption>
+     * NTag.#attachMediaThemeListener((mode) => tag.setAttr('data-n-theme', mode));
+     */
+    static #attachMediaThemeListener(onChange) {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+            return null;
+        }
+        const mql = window.matchMedia('(prefers-color-scheme: dark)');
+        const handler = (ev) => onChange(ev.matches ? 'dark' : 'light');
+        if (typeof mql.addEventListener === 'function') {
+            mql.addEventListener('change', handler);
+        } else if (typeof mql.addListener === 'function') {
+            mql.addListener(handler);
+        }
+        return { mql, handler };
+    }
+
+    /**
+     * Détache un écouteur `matchMedia` précédemment attaché.
+     * @param {MediaQueryList|null} mql
+     * @param {Function|null} handler
+     * @private
+     *
+     * @example <caption>Exemple 1 : Détacher un écouteur stocké sur l'instance</caption>
+     * NTag.#detachMediaThemeListener(this.#systemThemeMql, this.#systemThemeHandler);
+     *
+     * @example <caption>Exemple 2 : Détacher un écouteur global</caption>
+     * NTag.#detachMediaThemeListener(NTag.#systemThemeMql, NTag.#systemThemeHandler);
+     */
+    static #detachMediaThemeListener(mql, handler) {
+        if (!mql || !handler) {
+            return;
+        }
+        if (typeof mql.removeEventListener === 'function') {
+            mql.removeEventListener('change', handler);
+        } else if (typeof mql.removeListener === 'function') {
+            mql.removeListener(handler);
+        }
+    }
+
+    /**
+     * Détache l'écouteur de changement de thème système s'il est actif.
+     * @private
+     *
+     * @example <caption>Exemple 1 : Arrêter l'écoute globale avant un thème fixe</caption>
+     * NTag.#stopSystemThemeListener();
+     *
+     * @example <caption>Exemple 2 : Réinitialiser le thème global</caption>
+     * NTag.#stopSystemThemeListener();
+     */
+    static #stopSystemThemeListener() {
+        NTag.#detachMediaThemeListener(NTag.#systemThemeMql, NTag.#systemThemeHandler);
+        NTag.#systemThemeMql = null;
+        NTag.#systemThemeHandler = null;
+    }
+
+    /**
+     * Définit le thème global sur `document.documentElement` via `data-n-theme` (`'light'`, `'dark'`).
+     * Passer `'auto'` ou `'system'` détecte automatiquement le mode du système/navigateur et suit ses changements.
+     * Passer `null` ou `''` supprime l'attribut global.
+     *
+     * @param {'light'|'dark'|'auto'|'system'|null} theme - Thème global à appliquer.
+     * @returns {typeof NTag} La classe `NTag` pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Activer le mode sombre global</caption>
+     * NTag.setGlobalTheme('dark');
+     *
+     * @example <caption>Exemple 2 : Suivre automatiquement le thème du système</caption>
+     * NTag.setGlobalTheme('system');
+     */
+    static setGlobalTheme(theme) {
+        if (typeof document === 'undefined' || !document.documentElement) {
+            return NTag;
+        }
+        const root = document.documentElement;
+        if (theme === null || theme === undefined || theme === '') {
+            NTag.#stopSystemThemeListener();
+            root.removeAttribute('data-n-theme');
+            return NTag;
+        }
+        if (typeof theme !== 'string') {
+            return NTag;
+        }
+        const normalized = theme.trim().toLowerCase();
+        if (!normalized) {
+            NTag.#stopSystemThemeListener();
+            root.removeAttribute('data-n-theme');
+            return NTag;
+        }
+        if (normalized === 'auto' || normalized === 'system') {
+            NTag.#stopSystemThemeListener();
+            root.setAttribute('data-n-theme', NTag.#resolveSystemTheme());
+            const sub = NTag.#attachMediaThemeListener((mode) => {
+                root.setAttribute('data-n-theme', mode);
+            });
+            if (sub) {
+                NTag.#systemThemeMql = sub.mql;
+                NTag.#systemThemeHandler = sub.handler;
+            }
+            return NTag;
+        }
+        if (normalized === 'light' || normalized === 'dark') {
+            NTag.#stopSystemThemeListener();
+            root.setAttribute('data-n-theme', normalized);
+        }
+        return NTag;
+    }
+
+    /**
+     * Retourne le thème global défini sur `document.documentElement` (`'light'`, `'dark'` ou `null`).
+     *
+     * @returns {'light'|'dark'|null} Thème global actif ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire le thème global</caption>
+     * NTag.setGlobalTheme('dark');
+     * console.log(NTag.getGlobalTheme()); // 'dark'
+     *
+     * @example <caption>Exemple 2 : Vérifier l'absence de thème forcé</caption>
+     * NTag.setGlobalTheme('auto');
+     * console.log(NTag.getGlobalTheme()); // null
+     */
+    static getGlobalTheme() {
+        if (typeof document === 'undefined' || !document.documentElement) {
+            return null;
+        }
+        return document.documentElement.getAttribute('data-n-theme');
+    }
+
+    /**
+     * Définit le style visuel global sur `document.documentElement` via `data-n-style`.
+     * Passer `null` ou `''` supprime l'attribut global.
+     *
+     * @param {string|null} styleName - Nom du style visuel (`'default'`, `'solid'`, `'glass'`, etc.).
+     * @returns {typeof NTag} La classe `NTag` pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Appliquer le style glass à toute l'application</caption>
+     * NTag.setGlobalStyle('glass');
+     *
+     * @example <caption>Exemple 2 : Réinitialiser le style global</caption>
+     * NTag.setGlobalStyle(null);
+     */
+    static setGlobalStyle(styleName) {
+        if (typeof document === 'undefined' || !document.documentElement) {
+            return NTag;
+        }
+        const root = document.documentElement;
+        if (styleName === null || styleName === undefined || styleName === '') {
+            root.removeAttribute('data-n-style');
+            return NTag;
+        }
+        if (typeof styleName !== 'string') {
+            return NTag;
+        }
+        const normalized = styleName.trim().toLowerCase();
+        if (!normalized) {
+            root.removeAttribute('data-n-style');
+        } else {
+            root.setAttribute('data-n-style', normalized);
+        }
+        return NTag;
+    }
+
+    /**
+     * Retourne le style visuel global défini sur `document.documentElement` (`null` si aucun).
+     *
+     * @returns {string|null} Nom du style global actif ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire le style global</caption>
+     * NTag.setGlobalStyle('solid');
+     * console.log(NTag.getGlobalStyle()); // 'solid'
+     *
+     * @example <caption>Exemple 2 : Vérifier après réinitialisation</caption>
+     * NTag.setGlobalStyle(null);
+     * console.log(NTag.getGlobalStyle()); // null
+     */
+    static getGlobalStyle() {
+        if (typeof document === 'undefined' || !document.documentElement) {
+            return null;
+        }
+        return document.documentElement.getAttribute('data-n-style');
     }
 }
 

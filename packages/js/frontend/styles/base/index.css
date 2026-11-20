@@ -1,0 +1,19 @@
+/**
+ * @file base/index.css
+ * @package @nlib/js-frontend
+ * @description Point d'entrée des styles structurels partagés NLib (couche `nlib.base`, hérite de `core/`).
+ */
+
+@layer nlib.core, nlib.base, nlib.style;
+
+@import '../core/index.css';
+@import './base.css' layer(nlib.base);
+@import './elements/NImage.css' layer(nlib.base);
+@import './elements/NVideo.css' layer(nlib.base);
+@import './elements/NAudio.css' layer(nlib.base);
+@import './elements/NButton.css' layer(nlib.base);
+@import './elements/NInput.css' layer(nlib.base);
+@import './components/NFrame.css' layer(nlib.base);
+@import './components/NWindow.css' layer(nlib.base);
+@import './components/NToast.css' layer(nlib.base);
+@import './components/NProgress.css' layer(nlib.base);

@@ -1,0 +1,45 @@
+/**
+ * @file NFrame.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le composant `NFrame` (`.n-frame`).
+ */
+
+.n-frame {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-height: 100%;
+    background-color: var(--n-bg);
+    color: var(--n-text);
+}
+
+.n-frame--floating {
+    position: fixed;
+    inset: 0;
+    z-index: var(--n-z-modal);
+    overflow: auto;
+    background-color: var(--n-surface);
+    box-shadow: var(--n-shadow-lg);
+}
+
+.n-frame__alert {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--n-space-3);
+    padding: var(--n-space-8) var(--n-space-4);
+    text-align: center;
+    color: var(--n-text-muted);
+}
+
+.n-frame__alert-icon {
+    width: 3rem;
+    height: 3rem;
+    object-fit: contain;
+}
+
+.n-frame__alert-text {
+    font-size: var(--n-text-sm);
+    line-height: var(--n-leading-normal);
+}

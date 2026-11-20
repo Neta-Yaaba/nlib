@@ -1,0 +1,40 @@
+/**
+ * @file NToast.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le composant `NToast` (`.n-toast`).
+ */
+
+.n-toast {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--n-z-toast);
+    padding: var(--n-space-3) var(--n-space-5);
+    border-radius: var(--n-radius-md);
+    background-color: var(--n-surface-elevated);
+    color: var(--n-text);
+    border: 1px solid var(--n-border);
+    box-shadow: var(--n-shadow-lg);
+    font-size: var(--n-text-sm);
+    max-width: min(90vw, 28rem);
+}
+
+.n-toast--bottom {
+    bottom: var(--n-space-6);
+}
+
+.n-toast--top {
+    top: var(--n-space-6);
+}
+
+.n-toast--success {
+    border-color: var(--n-success);
+}
+
+.n-toast--warning {
+    border-color: var(--n-warning);
+}
+
+.n-toast--error {
+    border-color: var(--n-danger);
+}

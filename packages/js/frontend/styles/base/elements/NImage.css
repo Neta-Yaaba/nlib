@@ -1,0 +1,13 @@
+/**
+ * @file NImage.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le composant `NImage` (`.n-image`).
+ */
+
+.n-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;
+    border-radius: var(--n-radius-none);
+}

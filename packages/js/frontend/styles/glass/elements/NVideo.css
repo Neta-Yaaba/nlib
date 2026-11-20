@@ -1,0 +1,11 @@
+/**
+ * @file NVideo.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `glass` pour `NVideo` (`.n-video`).
+ */
+
+.n-video {
+    border-radius: var(--n-radius-lg);
+    border: var(--n-border);
+    box-shadow: var(--n-surface-shadow);
+}

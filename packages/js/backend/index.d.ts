@@ -359,6 +359,14 @@ export class NSystem extends NObject {
     getStorageQuota(): Promise<NSystemStorageQuota>;
     copyToClipboard(text: string): Promise<boolean>;
     readFromClipboard(): Promise<string>;
+    getBrowserUrl(): string;
+    setBrowserTitle(title: string): Promise<any> | void;
+    setBrowserUrl(url: string, state?: any): Promise<any> | void;
+    pushBrowserUrl(url: string, state?: any): Promise<any> | void;
+    browserBack(): Promise<any> | void;
+    openUrl(url: string, target?: string): Promise<any> | Window | null;
+    loadUrl(url: string): Promise<any> | void;
+    share(data?: { title?: string; text?: string; url?: string }): Promise<boolean>;
     watchNetwork(
         enable?: boolean,
         callbacks?: {

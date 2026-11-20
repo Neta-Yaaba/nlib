@@ -1,0 +1,9 @@
+/**
+ * @file NAudio.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `default` pour `NAudio` (`.n-audio`).
+ */
+
+.n-audio {
+    box-shadow: var(--n-shadow-xs);
+}

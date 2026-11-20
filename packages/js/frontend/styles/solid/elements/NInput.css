@@ -1,0 +1,15 @@
+/**
+ * @file NInput.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `solid` pour `NInput` (`.n-input`).
+ */
+
+:is([data-n-style="solid"], .n-style-solid) .n-input {
+    background-color: var(--n-surface-muted);
+    border-color: transparent;
+}
+
+:is([data-n-style="solid"], .n-style-solid) .n-input:focus {
+    background-color: var(--n-bg);
+    border-color: var(--n-border-focus);
+}

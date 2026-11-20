@@ -432,6 +432,14 @@ Accessible via `NUtil.sys` (ou `NUtil.system`) et par instanciation directe `new
 | `getStorageQuota` | `getStorageQuota()` | `Promise<{ supported, usage, quota, free, percentUsed, formattedUsage, formattedQuota, formattedFree }>` | Calcule l'espace disque utilisé et disponible pour l'origine. |
 | `copyToClipboard` | `copyToClipboard(text)` | `Promise<boolean>` | Copie une chaîne de caractères dans le presse-papiers système. |
 | `readFromClipboard` | `readFromClipboard()` | `Promise<string\|null>` | Lit le texte contenu dans le presse-papiers système. |
+| `getBrowserUrl` | `getBrowserUrl()` | `string` | Retourne l'URL courante du navigateur ou `''` hors navigateur. |
+| `setBrowserTitle` | `setBrowserTitle(title)` | `Promise<any>\|void` | Met à jour `document.title` (et notifie l'OS natif en WebView via `invokeNative`). |
+| `setBrowserUrl` | `setBrowserUrl(url, state = null)` | `Promise<any>\|void` | Remplace l'entrée courante de `window.history` (et notifie l'OS natif en WebView). |
+| `pushBrowserUrl` | `pushBrowserUrl(url, state = null)` | `Promise<any>\|void` | Empile une nouvelle entrée dans `window.history` (et notifie l'OS natif en WebView). |
+| `browserBack` | `browserBack()` | `Promise<any>\|void` | Effectue un `window.history.back()` ou `invokeNative('finishApp')` en WebView. |
+| `openUrl` | `openUrl(url, target = '_blank')` | `Promise<any>\|Window\|null` | Ouvre une URL dans le navigateur système (via `invokeNative` en WebView ou `window.open`). |
+| `loadUrl` | `loadUrl(url)` | `Promise<any>\|void` | Charge une URL dans la vue courante (via `invokeNative` en WebView ou `location.assign`). |
+| `share` | `share(data = {})` | `Promise<boolean>` | Partage des données via `invokeNative` (WebView), Web Share API ou copie de repli. |
 | `watchNetwork` | `watchNetwork(callback)` | `Function` | Écoute les changements de connectivité (`online`/`offline`) et retourne une fonction de désabonnement. |
 | `invokeNative` | `invokeNative(payload)` | `Promise<any>` | Envoie une commande au pont natif OS (ou la relaie via `NWorker.requestMain('invokeNative', payload)` si appelé depuis un Web Worker). |
 | `getSnapshot` | `getSnapshot()` | `Promise<Object>` | Retourne un rapport complet matériel, mémoire, écran, réseau, batterie et stockage. |

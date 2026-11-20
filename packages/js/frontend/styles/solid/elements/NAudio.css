@@ -1,0 +1,9 @@
+/**
+ * @file NAudio.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `solid` pour `NAudio` (`.n-audio`).
+ */
+
+:is([data-n-style="solid"], .n-style-solid) .n-audio {
+    background-color: var(--n-surface-muted);
+}

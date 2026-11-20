@@ -6,6 +6,18 @@
 
 import { NObject, NObjectOptions } from '../backend/index.js';
 
+export type NThemeName = 'light' | 'dark' | 'auto' | 'system';
+export type NStyleName =
+    | 'default'
+    | 'solid'
+    | 'outline'
+    | 'flat'
+    | 'fluent'
+    | 'glass'
+    | 'material'
+    | 'minimal'
+    | 'neumorphism';
+
 export interface NTagOptions extends NObjectOptions {
     tagName?: string;
     id?: string;
@@ -14,6 +26,8 @@ export interface NTagOptions extends NObjectOptions {
     attrs?: Record<string, any>;
     data?: Record<string, any>;
     style?: Record<string, string | number>;
+    theme?: NThemeName | null;
+    styleName?: NStyleName | string | null;
     text?: string | number;
     html?: string;
     children?: Array<NTag | Node | string>;
@@ -27,6 +41,9 @@ export interface NTagOptions extends NObjectOptions {
  * Classe de base universelle pour les balises DOM de `@nlib/js-frontend` (`dom/elements/NTag.js`).
  */
 export class NTag extends NObject {
+    static readonly THEMES: readonly ['light', 'dark', 'auto', 'system'];
+    static readonly STYLES: readonly NStyleName[];
+
     constructor(options?: NTagOptions | string);
 
     readonly tagName: string;
@@ -37,6 +54,8 @@ export class NTag extends NObject {
     id: string;
     text: string;
     html: string;
+
+    getWindow(): NWindow | null;
 
     setAttr(name: string, value: string | number | boolean | object | null | undefined): this;
     setAttrs(attrs?: Record<string, any>): this;
@@ -60,6 +79,10 @@ export class NTag extends NObject {
     setHtml(html: string | null | undefined, destroyChildren?: boolean | { destroy?: boolean }): this;
     setLanguage(language: string | null): this;
     applyLanguage(): this;
+    setTheme(theme: NThemeName | null): this;
+    getTheme(): 'light' | 'dark' | null;
+    setStyleName(styleName: NStyleName | string | null): this;
+    getStyleName(): string | null;
     show(display?: string): this;
     hide(): this;
     isShow(): boolean;
@@ -96,6 +119,11 @@ export class NTag extends NObject {
     off(event: string, callback?: (data: any) => any): this;
     clearEvents(): this;
     destroy(): void;
+
+    static setGlobalTheme(theme: NThemeName | null): typeof NTag;
+    static getGlobalTheme(): 'light' | 'dark' | null;
+    static setGlobalStyle(styleName: NStyleName | string | null): typeof NTag;
+    static getGlobalStyle(): string | null;
 }
 
 export interface NImageOptions extends NTagOptions {
@@ -322,4 +350,157 @@ export class NInput extends NTag {
     setCustomValidity(message?: string): this;
     getValidationMessage(): string;
     clear(): this;
+}
+
+export interface NFrameOptions extends NTagOptions {
+    title?: string;
+    link?: string;
+    backLink?: string;
+    floating?: boolean;
+    pullToRefresh?: boolean;
+}
+
+export interface NFrameScrollParams {
+    isBack?: boolean;
+    isNew?: boolean;
+    scrollTo?: { x?: number; y?: number };
+    scrollToTag?: NTag;
+}
+
+export interface NFrameDescriptor<T extends NFrame = NFrame> {
+    window: any;
+    isNew: boolean;
+    frame: T;
+}
+
+/**
+ * Classe de base des vues et pages applicatives (`dom/components/frames/NFrame.js`).
+ */
+export class NFrame extends NTag {
+    constructor(options?: NFrameOptions | string);
+
+    init(): void;
+    setTitle(title: string): this;
+    getTitle(): string;
+    setLink(link: string): this;
+    getLink(): string;
+    isLink(link: string): boolean;
+    setBackLink(link: string): this;
+    getBackLink(): string;
+    canGoBack(): boolean;
+    setFloating(floating?: boolean): this;
+    isFloating(): boolean;
+    setPullToRefresh(enabled?: boolean): this;
+    isPullToRefresh(): boolean;
+    onPullToRefresh(): this;
+    initAlert(parentTag?: NTag): this;
+    showAlert(message: string, icon?: string | null): this;
+    hideAlert(): this;
+    verifyAlert(data: any, emptyMessage?: string): boolean;
+    saveScrollPosition(scrollX?: number, scrollY?: number): this;
+    restoreScrollPosition(params?: NFrameScrollParams): this;
+    scrollTo(scrollX?: number, scrollY?: number): this;
+    onActivate(params?: Record<string, any>): this;
+    onDeactivate(params?: Record<string, any>): this;
+    onResume(): this;
+    onPause(): this;
+    onFocus(): this;
+    onBlur(): this;
+    destroy(): void;
+
+    static validateLink(windowInstance: any, params?: Record<string, any>): boolean;
+    static isFloating(windowInstance: any, params?: Record<string, any>): boolean;
+    static createFrame<T extends NFrame = NFrame>(windowInstance: any, params?: NFrameOptions): NFrameDescriptor<T>;
+}
+
+export interface NToastOptions extends NTagOptions {
+    type?: 'info' | 'success' | 'warning' | 'error';
+    duration?: number;
+    position?: 'bottom' | 'top';
+}
+
+export declare class NToast extends NTag {
+    constructor(options?: NTagOptions);
+
+    static show(message: string, options?: NToastOptions): NToast;
+    static hide(): void;
+
+    showMessage(message: string, options?: NToastOptions): this;
+    hideMessage(): this;
+    destroy(): void;
+}
+
+export interface NProgressOptions extends NTagOptions {
+    fixed?: boolean;
+}
+
+export declare class NProgress extends NTag {
+    constructor(options?: NProgressOptions);
+
+    static show(message?: string, value?: number | null, options?: NProgressOptions): NProgress;
+    static set(value: number | null, message?: string): void;
+    static hide(): void;
+
+    showProgress(message?: string, value?: number | null): this;
+    setProgress(value: number | null, message?: string): this;
+    hideProgress(): this;
+    destroy(): void;
+}
+
+export interface NWindowOptions extends NTagOptions {
+    config?: Record<string, any>;
+    frames?: Record<string, typeof NFrame>;
+}
+
+export interface NWindowNavigateParams extends Record<string, any> {
+    link?: string;
+    path?: string;
+    query?: Record<string, string>;
+    frameName?: string;
+    frameClass?: typeof NFrame;
+    forceNew?: boolean;
+    replace?: boolean;
+    skipHistory?: boolean;
+    isBack?: boolean;
+    target?: string;
+}
+
+export declare class NWindow extends NTag {
+    constructor(options?: NWindowOptions);
+
+    static instance(): NWindow | null;
+
+    getBaseUrl(): string;
+    getFrames(): NFrame[];
+    getCurrentFrame(): NFrame | null;
+    getInitialLink(): string;
+    openInitialLink(defaultLink?: string | null): NFrame | null;
+    getHomeLink(): string;
+    getWelcomeLink(): string;
+    getFrame(link: string): NFrame | null;
+
+    registerFrame(name: string, FrameClass: typeof NFrame): this;
+    unregisterFrame(name: string): boolean;
+    getFrameClass(name: string): typeof NFrame | null;
+
+    linkToParams(linkOrParams: string | Record<string, any>): Record<string, any>;
+    navigate(linkOrParams: string | NWindowNavigateParams): NFrame | null;
+    bringToFront(
+        frame: NFrame,
+        params?: Record<string, any>,
+        options?: { replace?: boolean; skipHistory?: boolean; isBack?: boolean }
+    ): this;
+    back(defaultLink?: string | null): boolean;
+    removeFrame(frame: NFrame, destroyFrame?: boolean): boolean;
+    getHistory(): string[];
+    clearHistory(): this;
+
+    onResume(): this;
+    onPause(): this;
+    onFocus(): this;
+    onBlur(): this;
+
+    on(event: string, callback: (data: any) => any): this;
+    off(event?: string, callback?: (data: any) => any): this;
+    destroy(): void;
 }

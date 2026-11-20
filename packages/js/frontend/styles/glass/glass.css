@@ -1,0 +1,45 @@
+/**
+ * @file glass.css
+ * @package @nlib/js-frontend
+ * @description Variables du style `glass` (effet verre dépoli translucide, thèmes `light` et `dark`).
+ */
+
+:root,
+[data-n-theme="light"] {
+    color-scheme: light;
+    --n-surface: rgba(255, 255, 255, 0.28);
+    --n-surface-muted: rgba(255, 255, 255, 0.18);
+    --n-surface-hover: rgba(255, 255, 255, 0.42);
+    --n-surface-active: rgba(255, 255, 255, 0.54);
+
+    --n-border-color: rgba(255, 255, 255, 0.42);
+    --n-border-strong: rgba(255, 255, 255, 0.65);
+
+    --n-surface-backdrop: blur(14px) saturate(160%);
+    --n-surface-shadow: 0 8px 32px rgba(15, 23, 42, 0.12);
+}
+
+[data-n-theme="dark"] {
+    color-scheme: dark;
+    --n-bg: #0b0f19;
+    --n-bg-subtle: #111827;
+    --n-surface: rgba(17, 24, 39, 0.5);
+    --n-surface-muted: rgba(17, 24, 39, 0.35);
+    --n-surface-hover: rgba(31, 41, 55, 0.68);
+    --n-surface-active: rgba(55, 65, 81, 0.78);
+
+    --n-text: #f9fafb;
+    --n-text-muted: #d1d5db;
+    --n-text-subtle: #9ca3af;
+    --n-text-inverse: #030712;
+
+    --n-border-color: rgba(255, 255, 255, 0.16);
+    --n-border-strong: rgba(255, 255, 255, 0.28);
+    --n-border-focus: #60a5fa;
+
+    --n-primary: #3b82f6;
+    --n-primary-hover: #2563eb;
+    --n-focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.35);
+    --n-surface-backdrop: blur(16px) saturate(180%);
+    --n-surface-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}

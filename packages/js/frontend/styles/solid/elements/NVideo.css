@@ -1,0 +1,9 @@
+/**
+ * @file NVideo.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `solid` pour `NVideo` (`.n-video`).
+ */
+
+:is([data-n-style="solid"], .n-style-solid) .n-video {
+    box-shadow: var(--n-shadow-md);
+}

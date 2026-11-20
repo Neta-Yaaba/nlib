@@ -1,0 +1,18 @@
+/**
+ * @file NVideo.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le composant `NVideo` (`.n-video`).
+ */
+
+.n-video {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--n-control-radius);
+    background-color: #000000;
+}
+
+.n-video:focus-visible {
+    outline: none;
+    box-shadow: var(--n-focus-ring);
+}

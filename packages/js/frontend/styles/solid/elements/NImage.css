@@ -1,0 +1,9 @@
+/**
+ * @file NImage.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `solid` pour `NImage` (`.n-image`).
+ */
+
+:is([data-n-style="solid"], .n-style-solid) .n-image {
+    border-radius: var(--n-radius-md);
+}

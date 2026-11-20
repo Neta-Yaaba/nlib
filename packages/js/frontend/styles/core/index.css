@@ -1,0 +1,11 @@
+/**
+ * @file core/index.css
+ * @package @nlib/js-frontend
+ * @description Point d'entrée des fondations CSS NLib (couche `nlib.core`).
+ */
+
+@layer nlib.core, nlib.base, nlib.style;
+
+@import './reset.css' layer(nlib.core);
+@import './variables.css' layer(nlib.core);
+@import './animations.css' layer(nlib.core);

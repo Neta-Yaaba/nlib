@@ -1,0 +1,43 @@
+/**
+ * @file NWindow.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le conteneur applicatif `NWindow` (`.n-window`).
+ */
+
+.n-window {
+    position: relative;
+    width: 100%;
+    min-height: 100%;
+}
+
+.n-window__pull {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    z-index: var(--n-z-toast);
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--n-radius-full);
+    background-color: var(--n-surface-elevated);
+    color: var(--n-text);
+    border: 1px solid var(--n-border);
+    box-shadow: var(--n-shadow-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--n-text-base);
+    pointer-events: none;
+    transition: transform var(--n-transition-fast), opacity var(--n-transition-fast);
+}
+
+.n-window__pull--ready {
+    color: var(--n-primary);
+    border-color: var(--n-primary);
+    transform: translate(-50%, 12px) rotate(180deg);
+}
+
+.n-window__pull--refreshing {
+    color: var(--n-primary);
+    border-color: var(--n-primary);
+    animation: n-spin 0.8s linear infinite;
+}

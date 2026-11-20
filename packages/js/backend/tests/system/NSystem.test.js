@@ -54,6 +54,16 @@ describe('NSystem (system/NSystem.js)', () => {
         assert.equal(json.cpuCores, sys.cpuCores);
 
         sys.watchNetwork(false);
+
+        assert.equal(typeof sys.getBrowserUrl(), 'string');
+        const prevTitle = typeof document !== 'undefined' ? document.title : '';
+        sys.setBrowserTitle('NLib Test Title');
+        if (typeof document !== 'undefined') {
+            assert.equal(document.title, 'NLib Test Title');
+            sys.setBrowserTitle(prevTitle);
+        }
+        assert.equal(typeof await sys.share({}), 'boolean');
+
         sys.destroy();
         assert.equal(sys.isDestroyed, true);
     });

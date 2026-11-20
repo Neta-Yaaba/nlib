@@ -1,0 +1,9 @@
+/**
+ * @file NImage.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `default` pour `NImage` (`.n-image`).
+ */
+
+.n-image {
+    border-radius: var(--n-radius-sm);
+}

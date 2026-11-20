@@ -1,0 +1,13 @@
+/**
+ * @file solid/index.css
+ * @package @nlib/js-frontend
+ * @description Point d'entrée du style visuel `solid` (hérite de `base/`).
+ */
+
+@import '../base/index.css';
+@import './solid.css';
+@import './elements/NImage.css';
+@import './elements/NVideo.css';
+@import './elements/NAudio.css';
+@import './elements/NButton.css';
+@import './elements/NInput.css';

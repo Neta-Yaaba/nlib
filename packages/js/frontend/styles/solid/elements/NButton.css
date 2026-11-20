@@ -1,0 +1,21 @@
+/**
+ * @file NButton.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `solid` pour `NButton` (`.n-button`).
+ */
+
+:is([data-n-style="solid"], .n-style-solid) .n-button {
+    color: var(--n-primary-contrast);
+    background-color: var(--n-primary);
+    border-color: transparent;
+    box-shadow: var(--n-shadow-sm);
+}
+
+:is([data-n-style="solid"], .n-style-solid) .n-button:hover:not(:disabled):not(.n-button--disabled):not(.n-button--loading) {
+    background-color: var(--n-primary-hover);
+    box-shadow: var(--n-shadow-md);
+}
+
+:is([data-n-style="solid"], .n-style-solid) .n-button:active:not(:disabled):not(.n-button--disabled):not(.n-button--loading) {
+    background-color: var(--n-primary-active);
+}

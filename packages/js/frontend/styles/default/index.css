@@ -1,0 +1,15 @@
+/**
+ * @file default/index.css
+ * @package @nlib/js-frontend
+ * @description Point d'entrée du style visuel `default` (couche `nlib.style`, hérite de `base/`).
+ */
+
+@layer nlib.core, nlib.base, nlib.style;
+
+@import '../base/index.css';
+@import './default.css' layer(nlib.style);
+@import './elements/NImage.css' layer(nlib.style);
+@import './elements/NVideo.css' layer(nlib.style);
+@import './elements/NAudio.css' layer(nlib.style);
+@import './elements/NButton.css' layer(nlib.style);
+@import './elements/NInput.css' layer(nlib.style);

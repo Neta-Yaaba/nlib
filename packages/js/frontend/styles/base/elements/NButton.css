@@ -1,0 +1,113 @@
+/**
+ * @file NButton.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour le composant `NButton` (`.n-button`).
+ */
+
+.n-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--n-space-2);
+    min-height: var(--n-control-height-md);
+    padding: var(--n-control-padding-y) var(--n-control-padding-x);
+    font-family: inherit;
+    font-size: var(--n-text-sm);
+    font-weight: var(--n-weight-medium);
+    line-height: 1.25;
+    text-align: center;
+    white-space: nowrap;
+    user-select: none;
+    color: var(--n-text);
+    background: var(--n-surface);
+    border: var(--n-border);
+    border-radius: var(--n-control-radius);
+    box-shadow: var(--n-shadow-xs);
+    backdrop-filter: var(--n-surface-backdrop);
+    -webkit-backdrop-filter: var(--n-surface-backdrop);
+    cursor: pointer;
+    transition:
+        background-color var(--n-duration-fast) var(--n-ease-default),
+        border-color var(--n-duration-fast) var(--n-ease-default),
+        color var(--n-duration-fast) var(--n-ease-default),
+        box-shadow var(--n-duration-fast) var(--n-ease-default),
+        transform var(--n-duration-fast) var(--n-ease-default);
+}
+
+.n-button:hover {
+    background: var(--n-surface-hover);
+    box-shadow: var(--n-shadow-sm);
+}
+
+.n-button:active {
+    background: var(--n-surface-active);
+    transform: translateY(1px);
+}
+
+.n-button:focus-visible {
+    outline: none;
+    box-shadow: var(--n-focus-ring);
+}
+
+/* Éléments internes */
+.n-button__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.125em;
+    height: 1.125em;
+    line-height: 1;
+}
+
+img.n-button__icon {
+    object-fit: contain;
+}
+
+.n-button__text {
+    display: inline-block;
+}
+
+.n-button__spinner {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: var(--n-radius-full);
+    animation: n-spin 0.75s linear infinite;
+}
+
+/* Positionnement de l'icône */
+.n-button--icon-left,
+.n-button--icon-right {
+    flex-direction: row;
+}
+
+.n-button--icon-top,
+.n-button--icon-bottom {
+    flex-direction: column;
+    padding-top: var(--n-space-2);
+    padding-bottom: var(--n-space-2);
+}
+
+.n-button--icon-only {
+    padding: 0;
+    width: var(--n-control-height-md);
+    min-width: var(--n-control-height-md);
+}
+
+/* États */
+.n-button--disabled,
+.n-button:disabled {
+    opacity: var(--n-disabled-opacity);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.n-button--loading {
+    cursor: wait;
+    pointer-events: none;
+}

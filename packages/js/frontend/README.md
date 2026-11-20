@@ -7,6 +7,7 @@ Moteur d'interface **100 % JavaScript** de NLib, basé sur `@nlib/js-backend` (`
 ```text
 frontend/
 ├── dom/
+│   ├── NWindow.js
 │   ├── elements/
 │   │   ├── NTag.js
 │   │   ├── NImage.js
@@ -16,6 +17,11 @@ frontend/
 │   │   ├── NButton.js
 │   │   └── NInput.js
 │   └── components/
+│       ├── frames/
+│       │   └── NFrame.js
+│       └── panels/
+│           ├── NToast.js
+│           └── NProgress.js
 ├── styles/
 ├── tests/
 ├── index.js
@@ -47,6 +53,18 @@ Toutes les classes CSS générées par les composants NLib suivent une conventio
 - **`NInput`** :
   - Racine : `n-input`
   - États : `n-input--disabled`, `n-input--readonly`, `n-input--invalid`
+- **`NWindow`** :
+  - Racine : `n-window`
+  - Enfants internes : `n-window__pull` (`n-window__pull--ready`, `n-window__pull--refreshing`)
+- **`NFrame`** :
+  - Racine : `n-frame`
+  - États / enfants : `n-frame--floating`, `n-frame__alert`, `n-frame__alert-icon`, `n-frame__alert-text`
+- **`NToast`** :
+  - Racine : `n-toast`
+  - Variantes / positions : `n-toast--info`, `n-toast--success`, `n-toast--warning`, `n-toast--error`, `n-toast--top`, `n-toast--bottom`
+- **`NProgress`** :
+  - Racine : `n-progress` (`n-progress--fixed`)
+  - Enfants internes : `n-progress__box`, `n-progress__text`, `n-progress__track`, `n-progress__bar` (`n-progress__bar--indeterminate`)
 
 ## Importation
 
@@ -58,7 +76,11 @@ import {
     NVideo,
     NAudio,
     NButton,
-    NInput
+    NInput,
+    NFrame,
+    NToast,
+    NProgress,
+    NWindow
 } from '@nlib/js-frontend';
 ```
 

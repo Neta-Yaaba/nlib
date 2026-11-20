@@ -1,0 +1,135 @@
+/**
+ * @file variables.css
+ * @package @nlib/js-frontend
+ * @description Variables CSS fondamentales et sémantiques partagées par tous les styles NLib.
+ */
+
+:root {
+    /* Typographie */
+    --n-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --n-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+    --n-text-xs: 0.75rem;
+    --n-text-sm: 0.875rem;
+    --n-text-md: 1rem;
+    --n-text-lg: 1.125rem;
+    --n-text-xl: 1.25rem;
+    --n-text-2xl: 1.5rem;
+
+    --n-weight-regular: 400;
+    --n-weight-medium: 500;
+    --n-weight-semibold: 600;
+    --n-weight-bold: 700;
+
+    --n-leading-tight: 1.25;
+    --n-leading-normal: 1.5;
+
+    /* Espacements */
+    --n-space-0: 0;
+    --n-space-1: 0.25rem;
+    --n-space-2: 0.5rem;
+    --n-space-3: 0.75rem;
+    --n-space-4: 1rem;
+    --n-space-5: 1.25rem;
+    --n-space-6: 1.5rem;
+    --n-space-8: 2rem;
+    --n-space-10: 2.5rem;
+    --n-space-12: 3rem;
+
+    /* Rayons de bordure */
+    --n-radius-none: 0;
+    --n-radius-xs: 0.25rem;
+    --n-radius-sm: 0.375rem;
+    --n-radius-md: 0.5rem;
+    --n-radius-lg: 0.75rem;
+    --n-radius-xl: 1rem;
+    --n-radius-full: 9999px;
+
+    /* Ombres */
+    --n-shadow-none: none;
+    --n-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --n-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --n-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+    --n-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+
+    /* Z-index */
+    --n-z-base: 0;
+    --n-z-dropdown: 100;
+    --n-z-sticky: 200;
+    --n-z-overlay: 300;
+    --n-z-modal: 400;
+    --n-z-popover: 500;
+    --n-z-toast: 600;
+    --n-z-tooltip: 700;
+
+    /* Transitions */
+    --n-duration-fast: 120ms;
+    --n-duration-normal: 200ms;
+    --n-duration-slow: 320ms;
+    --n-ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --n-ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+    /* Couleurs sémantiques par défaut */
+    --n-bg: #ffffff;
+    --n-bg-subtle: #f9fafb;
+    --n-surface: #ffffff;
+    --n-surface-muted: #f3f4f6;
+    --n-surface-hover: #f3f4f6;
+    --n-surface-active: #e5e7eb;
+
+    --n-text: #111827;
+    --n-text-muted: #4b5563;
+    --n-text-subtle: #9ca3af;
+    --n-text-inverse: #ffffff;
+
+    --n-border-color: #e5e7eb;
+    --n-border-strong: #d1d5db;
+    --n-border-focus: #2563eb;
+    --n-border-width: 1px;
+    --n-border: var(--n-border-width) solid var(--n-border-color);
+
+    --n-primary: #2563eb;
+    --n-primary-hover: #1d4ed8;
+    --n-primary-active: #1e40af;
+    --n-primary-contrast: #ffffff;
+    --n-primary-soft: rgba(37, 99, 235, 0.1);
+
+    --n-secondary: #4b5563;
+    --n-secondary-hover: #374151;
+    --n-secondary-contrast: #ffffff;
+    --n-secondary-soft: rgba(75, 85, 99, 0.1);
+
+    --n-success: #16a34a;
+    --n-success-hover: #15803d;
+    --n-success-contrast: #ffffff;
+    --n-success-soft: rgba(22, 163, 74, 0.12);
+
+    --n-warning: #f59e0b;
+    --n-warning-hover: #d97706;
+    --n-warning-contrast: #030712;
+    --n-warning-soft: rgba(245, 158, 11, 0.14);
+
+    --n-danger: #dc2626;
+    --n-danger-hover: #b91c1c;
+    --n-danger-contrast: #ffffff;
+    --n-danger-soft: rgba(220, 38, 38, 0.12);
+
+    --n-info: #0284c7;
+    --n-info-hover: #0369a1;
+    --n-info-contrast: #ffffff;
+    --n-info-soft: rgba(2, 132, 199, 0.12);
+
+    /* Contrôles interactifs */
+    --n-control-height-sm: 2rem;
+    --n-control-height-md: 2.5rem;
+    --n-control-height-lg: 3rem;
+    --n-control-padding-x: var(--n-space-4);
+    --n-control-padding-y: var(--n-space-2);
+    --n-control-radius: var(--n-radius-md);
+    --n-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.25);
+    --n-disabled-opacity: 0.55;
+
+    /* Effets de surface */
+    --n-surface-shadow: var(--n-shadow-sm);
+    --n-surface-backdrop: none;
+}

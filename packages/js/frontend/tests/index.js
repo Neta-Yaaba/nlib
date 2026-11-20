@@ -15,6 +15,12 @@ import './dom/elements/NAudio.test.js';
 import './dom/elements/NButton.test.js';
 import './dom/elements/NInput.test.js';
 
+// 2. dom/ & dom/components/
+import './dom/NWindow.test.js';
+import './dom/components/frames/NFrame.test.js';
+import './dom/components/panels/NToast.test.js';
+import './dom/components/panels/NProgress.test.js';
+
 export { runAllTests };
 
 // Exécution automatique hors navigateur (tests.html appelle runAllTests() directement)

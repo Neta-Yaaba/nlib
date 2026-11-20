@@ -356,4 +356,41 @@ describe('NTag (dom/elements/NTag.js)', () => {
 
         box.destroy();
     });
+
+    it('gère theme (data-n-theme) et styleName (data-n-style) localement et globalement', () => {
+        assert.deepEqual(NTag.THEMES, ['light', 'dark', 'auto', 'system']);
+        assert.equal(NTag.STYLES.includes('glass'), true);
+
+        const card = new NTag({ theme: 'dark', styleName: 'glass' });
+        assert.equal(card.getTheme(), 'dark');
+        assert.equal(card.getAttr('data-n-theme'), 'dark');
+        assert.equal(card.getStyleName(), 'glass');
+        assert.equal(card.getAttr('data-n-style'), 'glass');
+
+        card.setTheme('light').setStyleName('solid');
+        assert.equal(card.getTheme(), 'light');
+        assert.equal(card.getStyleName(), 'solid');
+
+        card.setTheme('system');
+        assert.equal(['light', 'dark'].includes(card.getTheme()), true);
+        card.setTheme('auto');
+        assert.equal(['light', 'dark'].includes(card.getTheme()), true);
+
+        card.setTheme(null).setStyleName(null);
+        assert.equal(card.getTheme(), null);
+        assert.equal(card.getStyleName(), null);
+
+        NTag.setGlobalTheme('dark').setGlobalStyle('outline');
+        assert.equal(NTag.getGlobalTheme(), 'dark');
+        assert.equal(NTag.getGlobalStyle(), 'outline');
+
+        NTag.setGlobalTheme('system');
+        assert.equal(['light', 'dark'].includes(NTag.getGlobalTheme()), true);
+
+        NTag.setGlobalTheme(null).setGlobalStyle(null);
+        assert.equal(NTag.getGlobalTheme(), null);
+        assert.equal(NTag.getGlobalStyle(), null);
+
+        card.destroy();
+    });
 });

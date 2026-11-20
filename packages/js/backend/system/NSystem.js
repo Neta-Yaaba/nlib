@@ -516,6 +516,185 @@ export class NSystem extends NObject {
         return '';
     }
 
+    /**
+     * Retourne l'URL courante du navigateur ou une chaîne vide hors navigateur.
+     *
+     * @returns {string} URL complète courante.
+     *
+     * @example <caption>Exemple 1 : Lire l'URL courante</caption>
+     * const url = NUtil.sys.getBrowserUrl();
+     *
+     * @example <caption>Exemple 2 : Vérifier un paramètre d'URL</caption>
+     * const hasToken = NUtil.sys.getBrowserUrl().includes('token=');
+     */
+    getBrowserUrl() {
+        return typeof window !== 'undefined' && window.location ? window.location.href : '';
+    }
+
+    /**
+     * Met à jour le titre de la fenêtre ou du document (et notifie l'OS natif en WebView).
+     *
+     * @param {string} title - Nouveau titre à appliquer.
+     * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
+     *
+     * @example <caption>Exemple 1 : Définir le titre applicatif</caption>
+     * NUtil.sys.setBrowserTitle('Tableau de bord');
+     *
+     * @example <caption>Exemple 2 : Effacer le titre</caption>
+     * NUtil.sys.setBrowserTitle('');
+     */
+    setBrowserTitle(title) {
+        const nextTitle = title ? String(title) : '';
+        if (typeof document !== 'undefined') {
+            document.title = nextTitle;
+        }
+        if (NUtil.env.isWebView) {
+            return this.invokeNative('setBrowserTitle', { title: nextTitle });
+        }
+    }
+
+    /**
+     * Remplace l'entrée courante de l'historique navigateur (ou notifie l'OS natif en WebView).
+     *
+     * @param {string} url - Nouvelle URL à appliquer.
+     * @param {*} [state=null] - État associé à l'entrée d'historique.
+     * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
+     *
+     * @example <caption>Exemple 1 : Remplacer l'URL courante</caption>
+     * NUtil.sys.setBrowserUrl('/profile?tab=info');
+     *
+     * @example <caption>Exemple 2 : Remplacer l'URL avec un état personnalisé</caption>
+     * NUtil.sys.setBrowserUrl('/items/42', { itemId: 42 });
+     */
+    setBrowserUrl(url, state = null) {
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+            window.history.replaceState(state, '', url);
+        }
+        if (NUtil.env.isWebView) {
+            return this.invokeNative('setBrowserUrl', { url, state });
+        }
+    }
+
+    /**
+     * Empile une nouvelle entrée dans l'historique navigateur (ou notifie l'OS natif en WebView).
+     *
+     * @param {string} url - URL à empiler.
+     * @param {*} [state=null] - État associé à l'entrée d'historique.
+     * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
+     *
+     * @example <caption>Exemple 1 : Empiler une nouvelle route</caption>
+     * NUtil.sys.pushBrowserUrl('/orders/108');
+     *
+     * @example <caption>Exemple 2 : Empiler une route avec état</caption>
+     * NUtil.sys.pushBrowserUrl('/search?q=nlib', { query: 'nlib' });
+     */
+    pushBrowserUrl(url, state = null) {
+        if (typeof window !== 'undefined' && window.history?.pushState) {
+            window.history.pushState(state, '', url);
+        }
+        if (NUtil.env.isWebView) {
+            return this.invokeNative('pushBrowserUrl', { url, state });
+        }
+    }
+
+    /**
+     * Effectue un retour navigateur (`window.history.back()`) ou demande à l'OS natif de fermer l'application/vue (`invokeNative('finishApp')`) en WebView.
+     *
+     * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
+     *
+     * @example <caption>Exemple 1 : Revenir à la page précédente du navigateur ou quitter en WebView</caption>
+     * NUtil.sys.browserBack();
+     *
+     * @example <caption>Exemple 2 : Repli lorsque l'historique interne de NWindow est vide</caption>
+     * if (!win.back()) {
+     *     NUtil.sys.browserBack();
+     * }
+     */
+    browserBack() {
+        if (NUtil.env.isWebView) {
+            return this.invokeNative('finishApp');
+        }
+        if (typeof window !== 'undefined' && window.history?.back) {
+            window.history.back();
+        }
+    }
+
+    /**
+     * Ouvre une URL dans le navigateur système (via `invokeNative` en WebView ou `window.open` en navigateur).
+     *
+     * @param {string} url - URL à ouvrir.
+     * @param {string} [target='_blank'] - Cible de navigation (`_blank`, `_self`, etc.).
+     * @returns {Promise<any>|Window|null} Réponse native, référence `Window` ou `null`.
+     *
+     * @example <caption>Exemple 1 : Ouvrir un lien externe</caption>
+     * NUtil.sys.openUrl('https://example.com');
+     *
+     * @example <caption>Exemple 2 : Ouvrir dans le même onglet</caption>
+     * NUtil.sys.openUrl('/docs', '_self');
+     */
+    openUrl(url, target = '_blank') {
+        if (NUtil.env.isWebView) {
+            return this.invokeNative('openUrl', { url, target });
+        }
+        if (typeof window !== 'undefined' && window.open) {
+            return window.open(url, target);
+        }
+        return null;
+    }
+
+    /**
+     * Charge une URL dans la vue courante (via `invokeNative` en WebView ou `window.location.assign` en navigateur).
+     *
+     * @param {string} url - URL de destination.
+     * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
+     *
+     * @example <caption>Exemple 1 : Rediriger vers la page de connexion</caption>
+     * NUtil.sys.loadUrl('/login');
+     *
+     * @example <caption>Exemple 2 : Rediriger vers une page externe</caption>
+     * NUtil.sys.loadUrl('https://example.com/auth');
+     */
+    loadUrl(url) {
+        if (NUtil.env.isWebView) {
+            return this.invokeNative('loadUrl', { url });
+        }
+        if (typeof window !== 'undefined' && window.location?.assign) {
+            window.location.assign(url);
+        }
+    }
+
+    /**
+     * Partage des données via l'OS natif (`invokeNative` en WebView), Web Share API, ou copie de repli dans le presse-papiers.
+     *
+     * @param {Object} [data={}] - Données de partage (`title`, `text`, `url`).
+     * @returns {Promise<boolean>} `true` si le partage ou la copie de repli a réussi.
+     *
+     * @example <caption>Exemple 1 : Partager une page</caption>
+     * await NUtil.sys.share({ title: 'NLib', url: 'https://example.com' });
+     *
+     * @example <caption>Exemple 2 : Partager un texte</caption>
+     * await NUtil.sys.share({ title: 'Note', text: 'Contenu partagé' });
+     */
+    async share(data = {}) {
+        if (NUtil.env.isWebView) {
+            const res = await this.invokeNative('share', data);
+            return Boolean(res && res.success !== false);
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+            try {
+                await navigator.share(data);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        const fallback = data.url || data.text || '';
+        if (!fallback) {
+            return false;
+        }
+        return this.copyToClipboard(fallback);
+    }
+
     // =========================================================================
     // Méthodes publiques — Surveillance Réseau & Communication Hôte OS Natif
     // =========================================================================

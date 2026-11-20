@@ -1,0 +1,14 @@
+/**
+ * @file NAudio.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `glass` pour `NAudio` (`.n-audio`).
+ */
+
+.n-audio {
+    border-radius: var(--n-radius-lg);
+    border: var(--n-border);
+    background: var(--n-surface);
+    backdrop-filter: var(--n-surface-backdrop);
+    -webkit-backdrop-filter: var(--n-surface-backdrop);
+    box-shadow: var(--n-surface-shadow);
+}

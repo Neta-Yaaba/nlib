@@ -1,0 +1,11 @@
+/**
+ * @file NImage.css
+ * @package @nlib/js-frontend
+ * @description Règles du style `glass` pour `NImage` (`.n-image`).
+ */
+
+.n-image {
+    border-radius: var(--n-radius-lg);
+    border: var(--n-border);
+    box-shadow: var(--n-surface-shadow);
+}
