@@ -7,9 +7,5 @@
 
 @layer nlib.core, nlib.base, nlib.style;
 
-/* Socle et structure partagée */
-@import './core/index.css';
-@import './base/index.css';
-
 /* Style par défaut */
 @import './default/index.css';
