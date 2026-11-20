@@ -1,12 +1,12 @@
-﻿import { describe, it, assert } from '../../../index.js';
+import { describe, it, assert } from '../../../index.js';
 import { NFrame, NTag } from '../../../../index.js';
 
 describe('NFrame (dom/components/frames/NFrame.js)', () => {
-    it('hérite de NTag, configure titre, lien, mode flottant et appelle init() + applyLanguage()', () => {
+    it('hérite de NTag, configure titre, lien, mode flottant et appelle _init() + applyLanguage()', async () => {
         const calls = [];
         class CustomFrame extends NFrame {
-            init() {
-                calls.push('init');
+            _init() {
+                calls.push('_init');
                 this.setTitle('Accueil');
             }
             applyLanguage() {
@@ -22,10 +22,12 @@ describe('NFrame (dom/components/frames/NFrame.js)', () => {
             pullToRefresh: true
         });
 
+        await Promise.resolve();
+
         assert.equal(frame instanceof NTag, true);
         assert.equal(frame.hasClass('n-frame'), true);
         assert.equal(frame.hasClass('n-frame--floating'), true);
-        assert.deepEqual(calls, ['init', 'applyLanguage']);
+        assert.deepEqual(calls, ['applyLanguage', '_init']);
         assert.equal(frame.getTitle(), 'Accueil');
         assert.equal(frame.getLink(), '/home');
         assert.equal(frame.isLink('/home'), true);

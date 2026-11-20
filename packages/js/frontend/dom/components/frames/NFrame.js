@@ -23,7 +23,7 @@ import { NImage } from '../../elements/NImage.js';
  *
  * @example <caption>Exemple 2 : Créer une sous-classe de page personnalisée</caption>
  * class ProfileFrame extends NFrame {
- *     init() {
+ *     _init() {
  *         this.setTitle('Profil');
  *         this.append(new NTag({ tagName: 'h1', text: 'Mon profil' }));
  *     }
@@ -160,30 +160,32 @@ export class NFrame extends NTag {
         if (pullToRefresh) {
             this.setPullToRefresh(true);
         }
-
-        this.init();
-        this.applyLanguage();
     }
 
     /**
-     * Point d'extension appelé à la fin du constructeur avant `applyLanguage()`.
+     * Point d'extension protégé hérité de `NObject`, appelé automatiquement en micro-tâche après la construction.
      * Destiné à être redéfini dans les sous-classes pour construire le contenu de la page.
      *
+     * @protected
      * @returns {void}
      *
-     * @example <caption>Exemple 1 : Redéfinir init() dans une sous-classe</caption>
+     * @example <caption>Exemple 1 : Redéfinir _init() dans une sous-classe</caption>
      * class DashboardFrame extends NFrame {
-     *     init() {
+     *     _init() {
      *         this.setTitle('Tableau de bord');
      *     }
      * }
      *
-     * @example <caption>Exemple 2 : Appel manuel de réinitialisation</caption>
-     * const frame = new NFrame();
-     * frame.init();
+     * @example <caption>Exemple 2 : Appeler super._init() lors d'un héritage</caption>
+     * class AdminDashboardFrame extends DashboardFrame {
+     *     _init() {
+     *         super._init();
+     *         this.addClass('admin-view');
+     *     }
+     * }
      */
-    init() {
-        // Point d'extension pour les sous-classes
+    _init() {
+        // Point d'extension protégé pour les sous-classes
     }
 
     // =========================================================================

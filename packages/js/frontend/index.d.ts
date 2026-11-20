@@ -379,7 +379,7 @@ export interface NFrameDescriptor<T extends NFrame = NFrame> {
 export class NFrame extends NTag {
     constructor(options?: NFrameOptions | string);
 
-    init(): void;
+    protected _init(): void;
     setTitle(title: string): this;
     getTitle(): string;
     setLink(link: string): this;
@@ -468,7 +468,7 @@ export declare class NWindow extends NTag {
 
     static instance(): NWindow | null;
 
-    init(): void;
+    protected _init(): void;
 
     getBaseUrl(): string;
     getFrames(): NFrame[];

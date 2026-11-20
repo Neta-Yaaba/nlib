@@ -1,4 +1,4 @@
-﻿import { describe, it, assert } from '../index.js';
+import { describe, it, assert } from '../index.js';
 import { NObject, NEvent, NUtil } from '../../index.js';
 
 describe('NObject (core/NObject.js)', () => {
@@ -97,5 +97,24 @@ describe('NObject (core/NObject.js)', () => {
         assert.equal(entity.hasListener('state:status', () => {}), false);
         assert.equal(entity.listenerCount(), 0);
         assert.deepEqual(entity.eventNames(), []);
+    });
+
+    it('appelle _init() automatiquement en micro-tâche sauf si détruit avant', async () => {
+        const calls = [];
+        class InitModel extends NObject {
+            _init() {
+                calls.push(this.getState('tag'));
+            }
+        }
+
+        const active = new InitModel({ state: { tag: 'ok' } });
+        const canceled = new InitModel({ state: { tag: 'canceled' } });
+        canceled.destroy();
+
+        assert.deepEqual(calls, []);
+        await Promise.resolve();
+        assert.deepEqual(calls, ['ok']);
+
+        active.destroy();
     });
 });

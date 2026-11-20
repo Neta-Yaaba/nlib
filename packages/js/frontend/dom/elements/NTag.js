@@ -301,6 +301,12 @@ export class NTag extends NObject {
         if (typeof opts.applyLanguage === 'function') {
             this.#applyLanguageFn = opts.applyLanguage;
         }
+        queueMicrotask(() => {
+            if (this.isDestroyed) {
+                return;
+            }
+            this.applyLanguage();
+        });
     }
 
     // =========================================================================

@@ -120,6 +120,13 @@ export class NObject {
                 });
             }
         }
+
+        queueMicrotask(() => {
+            if (this.#destroyed) {
+                return;
+            }
+            this._init();
+        });
     }
 
     // =========================================================================
@@ -366,6 +373,32 @@ export class NObject {
     // =========================================================================
     // Méthodes publiques — Cycle de vie (Lifecycle)
     // =========================================================================
+
+    /**
+     * Point d'extension protégé appelé automatiquement en micro-tâche après la construction de l'instance
+     * (lorsque l'objet n'a pas déjà été détruit via `destroy()`).
+     *
+     * @protected
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Redéfinir _init() dans une sous-classe</caption>
+     * class UserModel extends NObject {
+     *     _init() {
+     *         this.setState('ready', true);
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Appeler super._init() lors de l'héritage en cascade</caption>
+     * class AuditModel extends UserModel {
+     *     _init() {
+     *         super._init();
+     *         this.on('stateChange', () => console.log('Modifié'));
+     *     }
+     * }
+     */
+    _init() {
+        // Point d'extension protégé pour les sous-classes
+    }
 
     /**
      * Détruit proprement l'instance et libère toutes ses références en mémoire (`#state = null` et `#event = null`).

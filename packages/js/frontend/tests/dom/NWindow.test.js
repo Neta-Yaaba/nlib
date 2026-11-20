@@ -27,7 +27,7 @@ describe('NWindow (dom/NWindow.js)', () => {
         const lifecycle = [];
 
         class HomeFrame extends NFrame {
-            init() {
+            _init() {
                 this.setTitle('Accueil');
             }
             onActivate(params) {
@@ -41,7 +41,7 @@ describe('NWindow (dom/NWindow.js)', () => {
         }
 
         class ProfileFrame extends NFrame {
-            init() {
+            _init() {
                 this.setTitle('Profil');
             }
             onActivate(params) {
@@ -92,8 +92,8 @@ describe('NWindow (dom/NWindow.js)', () => {
 
         class BaseFrame extends NFrame {}
         class ModalFrame extends NFrame {
-            init() {
-                this.setFloating(true);
+            constructor(opts = {}) {
+                super({ ...opts, floating: true });
             }
         }
 

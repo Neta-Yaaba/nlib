@@ -64,6 +64,7 @@ export class NObject {
     eventNames(): string[];
     clearEvents(): this;
 
+    protected _init(): void;
     destroy(): void;
     hasState(key: string): boolean;
     getState<T = any>(key: string, defaultValue?: T): T;

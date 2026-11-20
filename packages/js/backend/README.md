@@ -121,6 +121,7 @@ Classe mère universelle de l'écosystème NLib (toutes les classes du package, 
 #### Méthodes
 | Méthode | Signature | Retour | Description |
 | :--- | :--- | :--- | :--- |
+| `_init` | `protected _init()` | `void` | Point d'extension protégé appelé automatiquement en micro-tâche après la construction (sauf si `destroy()` a été appelé). |
 | `destroy` | `destroy()` | `void` | Émet `'beforeDestroy'`, vide l'état et détache tous les écouteurs d'événements. |
 | `hasState` | `hasState(key)` | `boolean` | Vérifie si une clé existe dans l'état interne. |
 | `getState` | `getState(key, defaultValue = undefined)` | `any` | Récupère la valeur d'une clé d'état ou retourne `defaultValue`. |

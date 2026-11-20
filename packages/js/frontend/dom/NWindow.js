@@ -169,8 +169,6 @@ export class NWindow extends NTag {
             }
         }
 
-        this.init();
-
         const currentUrl = NUtil.sys.getBrowserUrl();
         const welcomeLink = this.getWelcomeLink();
         if (welcomeLink && currentUrl.includes(welcomeLink)) {
@@ -190,33 +188,37 @@ export class NWindow extends NTag {
 
         this.#bindBrowserEvents();
         this.#bindPullToRefresh();
-        if (this.getWelcomeLink()) {
-            this.navigate(this.getWelcomeLink());
-        }
-        else {
-            this.openInitialLink(this.getHomeLink());
-        }
-        this.applyLanguage();
     }
 
     /**
-     * Point d'extension appelé lors de l'initialisation de la fenêtre avant la navigation initiale.
-     * Destiné à être redéfini dans les sous-classes pour enregistrer les frames ou configurer l'application.
+     * Point d'extension protégé hérité de `NObject`, appelé automatiquement en micro-tâche après la construction.
+     * Déclenche la navigation initiale vers `getWelcomeLink()` ou `openInitialLink(getHomeLink())`.
      *
+     * @protected
      * @returns {void}
      *
-     * @example <caption>Exemple 1 : Enregistrer les frames dans une sous-classe</caption>
+     * @example <caption>Exemple 1 : Enregistrer les frames dans une sous-classe puis appeler super._init()</caption>
      * class AppWindow extends NWindow {
-     *     init() {
+     *     _init() {
      *         this.registerFrame('home', HomeFrame);
+     *         super._init();
      *     }
      * }
      *
-     * @example <caption>Exemple 2 : Appel manuel de réinitialisation</caption>
-     * win.init();
+     * @example <caption>Exemple 2 : Personnaliser le démarrage sans navigation automatique</caption>
+     * class CustomWindow extends NWindow {
+     *     _init() {
+     *         this.registerFrame('login', LoginFrame);
+     *         this.navigate('/login');
+     *     }
+     * }
      */
-    init() {
-        // Point d'extension pour les sous-classes
+    _init() {
+        if (this.getWelcomeLink()) {
+            this.navigate(this.getWelcomeLink());
+        } else {
+            this.openInitialLink(this.getHomeLink());
+        }
     }
 
     // =========================================================================
