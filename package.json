@@ -7,15 +7,13 @@
   "packageManager": "pnpm@9.15.0",
   "workspaces": [
     "packages/js/*",
-    "packages/server/node",
-    "website"
+    "packages/server/node"
   ],
   "scripts": {
     "test": "pnpm --filter @nlib/js-backend test",
     "test:all": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
-    "lint": "pnpm -r --if-present lint",
-    "docs": "pnpm --filter @nlib/website --if-present build"
+    "lint": "pnpm -r --if-present lint"
   },
   "repository": {
     "type": "git",

@@ -90,7 +90,6 @@ import {
 - Les styles structurels (`styles/base/`) utilisent des sélecteurs simples (`.n-*`) dans `@layer nlib.base`, et l'arborescence de `styles/base/` reflète exactement celle de `dom/`.
 - Les variantes de style (`styles/default/`, `styles/glass/`, `styles/solid/`, etc.) redéfinissent les variables `--n-*` de `styles/core/variables.css` et ciblent les composants avec `:where([data-n-style="..."] .n-*, .n-*[data-n-style="..."])` dans `@layer nlib.style` pour conserver une spécificité minimale et uniforme.
 - Dépend de `@nlib/js-backend` (`NObject`, `NEvent`, `NUtil`, `NLanguage`). Le backend n'importe jamais le frontend.
-- Les feuilles CSS du site de documentation restent dans `website/assets/css/` et ne font pas partie de ce package.
 
 ## Licence
 

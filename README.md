@@ -68,21 +68,13 @@ packages/
 
 ---
 
-## Site Web de Documentation Complète
-
-Le dossier [`website/`](./website) est dédié au site web documentant **chaque package, chaque classe, chaque méthode et chaque variable** de l'écosystème NLib.
-
----
-
 ## Décision d'architecture : emplacement du CSS
 
-Le DOM et le style de NLib vivent **dans `packages/js/frontend`** (`@nlib/js-frontend`) : `dom/` pour les balises créées en JS, `styles/` pour le **CSS objet** (objets JS appliqués au DOM). Il n'y a **pas** de package séparé `@nlib/ui` ou `js/ui`.
+Le DOM et le style de NLib vivent **dans `packages/js/frontend`** (`@nlib/js-frontend`) : `dom/` pour les balises créées en JS, `styles/` pour les feuilles CSS par couches (`@layer nlib.core, nlib.base, nlib.style`). Il n'y a **pas** de package séparé `@nlib/ui` ou `js/ui`.
 
 Raisons :
-- Le frontend est déjà défini comme « interface 100 % JS : balises DOM en JS, CSS objet, NWindow » : le style est indissociable des composants DOM.
-- Le CSS objet n'a aucune dépendance propre ; un package dédié ajouterait du versionnement et de la publication sans bénéfice.
+- Le frontend est déjà défini comme « interface 100 % JS : balises DOM en JS, NWindow » : le style est indissociable des composants DOM.
 - Le package `js/backend` reste strictement headless (aucun DOM, aucun style).
-- Les feuilles CSS du site de documentation restent isolées dans `website/assets/css/` et ne font pas partie de la bibliothèque.
 
 Si le volume du CSS grandit (thèmes, design tokens partagés), il pourra être extrait plus tard en `packages/js/ui` : le `pnpm-workspace.yaml` (`packages/js/*`) le prendra en compte automatiquement.
 
@@ -114,7 +106,6 @@ Workspace pnpm (`pnpm-workspace.yaml`) :
 | `@nlib/js-backend` | `packages/js/backend` | Fondation logique headless ([README](./packages/js/backend/README.md)) |
 | `@nlib/js-frontend` | `packages/js/frontend` | DOM et style en JS ([README](./packages/js/frontend/README.md)) |
 | `@nlib/server-node` | `packages/server/node` | Serveur Node |
-| `@nlib/website` | `website` | Site de documentation |
 
 ```js
 import { NUtil } from '@nlib/js-backend';
@@ -128,8 +119,8 @@ const res = await NUtil.db.idb.getAll('ntable'); // IndexedDB : { ok, data, erro
 ## Avancement
 
 - Fait : `packages/js/backend` — 12 modules complets (`core`, `log`, `config`, `environment`, `system`, `utils`, `database`, `filesystem`, `cache`, `requests` dont `NService`, `worker` dont `NServiceWorker`, `language` avec `NLanguage`), héritage universel `NObject`, typings TypeScript (`index.d.ts`) et suite de 30 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
-- Fait (socle DOM) : `packages/js/frontend` — 7 composants `dom/elements/` (`NTag`, `NImage`, `NMedia`, `NVideo`, `NAudio`, `NButton`, `NInput`), typings TypeScript (`index.d.ts`) et 7 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
-- À venir : `dom/components/`, `styles/`, `website/`, serveurs PHP et Node, conteneurs natifs.
+- Fait : `packages/js/frontend` — `NWindow`, 7 éléments `dom/elements/` (`NTag`, `NImage`, `NMedia`, `NVideo`, `NAudio`, `NButton`, `NInput`), `dom/components/frames/NFrame`, `dom/components/panels/` (`NToast`, `NProgress`), styles CSS (`core/`, `base/`, `default/`, `glass/`, `solid/`, etc.), typings TypeScript (`index.d.ts`) et 11 fichiers de tests unitaires (`tests.html` / `tests/index.js`).
+- À venir : autres composants `dom/components/`, serveurs PHP et Node, conteneurs natifs.
 
 ## Licence
 
