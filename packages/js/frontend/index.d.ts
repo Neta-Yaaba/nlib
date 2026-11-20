@@ -459,8 +459,6 @@ export interface NWindowNavigateParams extends Record<string, any> {
     frameName?: string;
     frameClass?: typeof NFrame;
     forceNew?: boolean;
-    replace?: boolean;
-    skipHistory?: boolean;
     isBack?: boolean;
     target?: string;
 }
@@ -470,13 +468,15 @@ export declare class NWindow extends NTag {
 
     static instance(): NWindow | null;
 
+    init(): void;
+
     getBaseUrl(): string;
     getFrames(): NFrame[];
     getCurrentFrame(): NFrame | null;
     getInitialLink(): string;
     openInitialLink(defaultLink?: string | null): NFrame | null;
-    getHomeLink(): string;
-    getWelcomeLink(): string;
+    getHomeLink(): string | null;
+    getWelcomeLink(): string | null;
     getFrame(link: string): NFrame | null;
 
     registerFrame(name: string, FrameClass: typeof NFrame): this;
@@ -485,15 +485,12 @@ export declare class NWindow extends NTag {
 
     linkToParams(linkOrParams: string | Record<string, any>): Record<string, any>;
     navigate(linkOrParams: string | NWindowNavigateParams): NFrame | null;
-    bringToFront(
-        frame: NFrame,
-        params?: Record<string, any>,
-        options?: { replace?: boolean; skipHistory?: boolean; isBack?: boolean }
-    ): this;
+    bringToFront(frame: NFrame, params?: NWindowNavigateParams): this;
     back(defaultLink?: string | null): boolean;
     removeFrame(frame: NFrame, destroyFrame?: boolean): boolean;
     getHistory(): string[];
     clearHistory(): this;
+    scrollTo(scrollX?: number | ScrollToOptions, scrollY?: number): this;
 
     onResume(): this;
     onPause(): this;

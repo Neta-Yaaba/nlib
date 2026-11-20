@@ -2385,8 +2385,8 @@ export class NTag extends NObject {
     // Méthodes statiques — Thème et Style globaux (`document.documentElement`)
     // =========================================================================
 
-    static #systemThemeMql = null;
-    static #systemThemeHandler = null;
+    static #globalSystemThemeMql = null;
+    static #globalSystemThemeHandler = null;
 
     /**
      * Détecte le mode du système ou du navigateur (`'dark'` ou `'light'`).
@@ -2458,7 +2458,7 @@ export class NTag extends NObject {
      * NTag.#detachMediaThemeListener(this.#systemThemeMql, this.#systemThemeHandler);
      *
      * @example <caption>Exemple 2 : Détacher un écouteur global</caption>
-     * NTag.#detachMediaThemeListener(NTag.#systemThemeMql, NTag.#systemThemeHandler);
+     * NTag.#detachMediaThemeListener(NTag.#globalSystemThemeMql, NTag.#globalSystemThemeHandler);
      */
     static #detachMediaThemeListener(mql, handler) {
         if (!mql || !handler) {
@@ -2476,15 +2476,15 @@ export class NTag extends NObject {
      * @private
      *
      * @example <caption>Exemple 1 : Arrêter l'écoute globale avant un thème fixe</caption>
-     * NTag.#stopSystemThemeListener();
+     * NTag.#stopGlobalSystemThemeListener();
      *
      * @example <caption>Exemple 2 : Réinitialiser le thème global</caption>
-     * NTag.#stopSystemThemeListener();
+     * NTag.#stopGlobalSystemThemeListener();
      */
-    static #stopSystemThemeListener() {
-        NTag.#detachMediaThemeListener(NTag.#systemThemeMql, NTag.#systemThemeHandler);
-        NTag.#systemThemeMql = null;
-        NTag.#systemThemeHandler = null;
+    static #stopGlobalSystemThemeListener() {
+        NTag.#detachMediaThemeListener(NTag.#globalSystemThemeMql, NTag.#globalSystemThemeHandler);
+        NTag.#globalSystemThemeMql = null;
+        NTag.#globalSystemThemeHandler = null;
     }
 
     /**
@@ -2507,7 +2507,7 @@ export class NTag extends NObject {
         }
         const root = document.documentElement;
         if (theme === null || theme === undefined || theme === '') {
-            NTag.#stopSystemThemeListener();
+            NTag.#stopGlobalSystemThemeListener();
             root.removeAttribute('data-n-theme');
             return NTag;
         }
@@ -2516,24 +2516,24 @@ export class NTag extends NObject {
         }
         const normalized = theme.trim().toLowerCase();
         if (!normalized) {
-            NTag.#stopSystemThemeListener();
+            NTag.#stopGlobalSystemThemeListener();
             root.removeAttribute('data-n-theme');
             return NTag;
         }
         if (normalized === 'auto' || normalized === 'system') {
-            NTag.#stopSystemThemeListener();
+            NTag.#stopGlobalSystemThemeListener();
             root.setAttribute('data-n-theme', NTag.#resolveSystemTheme());
             const sub = NTag.#attachMediaThemeListener((mode) => {
                 root.setAttribute('data-n-theme', mode);
             });
             if (sub) {
-                NTag.#systemThemeMql = sub.mql;
-                NTag.#systemThemeHandler = sub.handler;
+                NTag.#globalSystemThemeMql = sub.mql;
+                NTag.#globalSystemThemeHandler = sub.handler;
             }
             return NTag;
         }
         if (normalized === 'light' || normalized === 'dark') {
-            NTag.#stopSystemThemeListener();
+            NTag.#stopGlobalSystemThemeListener();
             root.setAttribute('data-n-theme', normalized);
         }
         return NTag;

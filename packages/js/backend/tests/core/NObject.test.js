@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NObject, NEvent, NUtil } from '../../index.js';
 
 describe('NObject (core/NObject.js)', () => {

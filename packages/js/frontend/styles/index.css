@@ -1,0 +1,15 @@
+/**
+ * @file styles/index.css
+ * @package @nlib/js-frontend
+ * @description Point d'entrée CSS essentiel de `@nlib/js-frontend` (`core`, `base` et `default`).
+ * Les autres variantes de style (`glass`, `solid`, `outline`, etc.) peuvent être importées à la demande.
+ */
+
+@layer nlib.core, nlib.base, nlib.style;
+
+/* Socle et structure partagée */
+@import './core/index.css';
+@import './base/index.css';
+
+/* Style par défaut */
+@import './default/index.css';

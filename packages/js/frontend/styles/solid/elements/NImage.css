@@ -4,6 +4,6 @@
  * @description Règles du style `solid` pour `NImage` (`.n-image`).
  */
 
-:is([data-n-style="solid"], .n-style-solid) .n-image {
+:where([data-n-style="solid"] .n-image, .n-image[data-n-style="solid"]) {
     border-radius: var(--n-radius-md);
 }

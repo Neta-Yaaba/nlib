@@ -1,5 +1,5 @@
-import { describe, it, assert } from '../../../../backend/tests/test-helper.js';
-import { NProgress, NTag } from '../../../index.js';
+import { describe, it, assert } from '../../../index.js';
+import { NProgress, NTag } from '../../../../index.js';
 
 describe('NProgress (dom/components/panels/NProgress.js)', () => {
     it('peut être monté dans un conteneur et utilisé en mode global statique', () => {

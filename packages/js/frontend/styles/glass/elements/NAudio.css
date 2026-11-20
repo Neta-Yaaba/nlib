@@ -4,7 +4,7 @@
  * @description Règles du style `glass` pour `NAudio` (`.n-audio`).
  */
 
-.n-audio {
+:where([data-n-style="glass"] .n-audio, .n-audio[data-n-style="glass"]) {
     border-radius: var(--n-radius-lg);
     border: var(--n-border);
     background: var(--n-surface);

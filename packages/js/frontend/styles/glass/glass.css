@@ -4,8 +4,9 @@
  * @description Variables du style `glass` (effet verre dépoli translucide, thèmes `light` et `dark`).
  */
 
-:root,
-[data-n-theme="light"] {
+[data-n-style="glass"],
+[data-n-theme="light"][data-n-style="glass"],
+[data-n-theme="light"] [data-n-style="glass"] {
     color-scheme: light;
     --n-surface: rgba(255, 255, 255, 0.28);
     --n-surface-muted: rgba(255, 255, 255, 0.18);
@@ -19,7 +20,8 @@
     --n-surface-shadow: 0 8px 32px rgba(15, 23, 42, 0.12);
 }
 
-[data-n-theme="dark"] {
+[data-n-theme="dark"][data-n-style="glass"],
+[data-n-theme="dark"] [data-n-style="glass"] {
     color-scheme: dark;
     --n-bg: #0b0f19;
     --n-bg-subtle: #111827;

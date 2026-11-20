@@ -4,18 +4,27 @@
  * @description Règles du style `solid` pour `NButton` (`.n-button`).
  */
 
-:is([data-n-style="solid"], .n-style-solid) .n-button {
+:where(
+    [data-n-style="solid"] .n-button,
+    .n-button[data-n-style="solid"]
+) {
     color: var(--n-primary-contrast);
     background-color: var(--n-primary);
     border-color: transparent;
     box-shadow: var(--n-shadow-sm);
 }
 
-:is([data-n-style="solid"], .n-style-solid) .n-button:hover:not(:disabled):not(.n-button--disabled):not(.n-button--loading) {
+:where(
+    [data-n-style="solid"] .n-button,
+    .n-button[data-n-style="solid"]
+):where(:hover:not(:disabled, .n-button--disabled, .n-button--loading)) {
     background-color: var(--n-primary-hover);
     box-shadow: var(--n-shadow-md);
 }
 
-:is([data-n-style="solid"], .n-style-solid) .n-button:active:not(:disabled):not(.n-button--disabled):not(.n-button--loading) {
+:where(
+    [data-n-style="solid"] .n-button,
+    .n-button[data-n-style="solid"]
+):where(:active:not(:disabled, .n-button--disabled, .n-button--loading)) {
     background-color: var(--n-primary-active);
 }

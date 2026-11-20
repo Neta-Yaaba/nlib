@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NUrl } from '../../index.js';
 
 describe('NUrl (utils/NUrl.js)', () => {

@@ -4,6 +4,6 @@
  * @description Règles du style `solid` pour `NAudio` (`.n-audio`).
  */
 
-:is([data-n-style="solid"], .n-style-solid) .n-audio {
+:where([data-n-style="solid"] .n-audio, .n-audio[data-n-style="solid"]) {
     background-color: var(--n-surface-muted);
 }

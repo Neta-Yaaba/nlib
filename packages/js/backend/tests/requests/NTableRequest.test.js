@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NTableRequest, NRequestManager, NDataSynchronizer } from '../../index.js';
 
 describe('NTableRequest (requests/NTableRequest.js)', () => {

@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NLanguage, NObject, NUtil } from '../../index.js';
 
 describe('NLanguage (language/NLanguage.js)', () => {

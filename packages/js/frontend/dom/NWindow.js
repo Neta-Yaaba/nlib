@@ -199,6 +199,26 @@ export class NWindow extends NTag {
         this.applyLanguage();
     }
 
+    /**
+     * Point d'extension appelé lors de l'initialisation de la fenêtre avant la navigation initiale.
+     * Destiné à être redéfini dans les sous-classes pour enregistrer les frames ou configurer l'application.
+     *
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Enregistrer les frames dans une sous-classe</caption>
+     * class AppWindow extends NWindow {
+     *     init() {
+     *         this.registerFrame('home', HomeFrame);
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Appel manuel de réinitialisation</caption>
+     * win.init();
+     */
+    init() {
+        // Point d'extension pour les sous-classes
+    }
+
     // =========================================================================
     // Accesseur statique
     // =========================================================================
@@ -310,12 +330,12 @@ export class NWindow extends NTag {
     }
 
     /**
-     * Retourne le lien de la page d'accueil principale (redéfinissable en sous-classe).
+     * Retourne le lien de la page d'accueil principale (redéfinissable en sous-classe, `null` par défaut).
      *
-     * @returns {string} Lien de la frame d'accueil.
+     * @returns {string|null} Lien de la frame d'accueil ou `null`.
      *
-     * @example <caption>Exemple 1 : Naviguer vers la page d'accueil</caption>
-     * win.navigate(win.getHomeLink());
+     * @example <caption>Exemple 1 : Naviguer vers la page d'accueil si définie</caption>
+     * if (win.getHomeLink()) { win.navigate(win.getHomeLink()); }
      *
      * @example <caption>Exemple 2 : Redéfinir getHomeLink dans une sous-classe</caption>
      * class AppWindow extends NWindow {
@@ -323,16 +343,16 @@ export class NWindow extends NTag {
      * }
      */
     getHomeLink() {
-        return '/home';
+        return null;
     }
 
     /**
-     * Retourne le lien de la page de bienvenue / démarrage (redéfinissable en sous-classe).
+     * Retourne le lien de la page de bienvenue / démarrage (redéfinissable en sous-classe, `null` par défaut).
      *
-     * @returns {string} Lien de la frame de bienvenue.
+     * @returns {string|null} Lien de la frame de bienvenue ou `null`.
      *
-     * @example <caption>Exemple 1 : Naviguer vers l'écran de bienvenue</caption>
-     * win.navigate(win.getWelcomeLink());
+     * @example <caption>Exemple 1 : Vérifier si un écran de bienvenue est configuré</caption>
+     * if (win.getWelcomeLink()) { win.navigate(win.getWelcomeLink()); }
      *
      * @example <caption>Exemple 2 : Redéfinir getWelcomeLink dans une sous-classe</caption>
      * class AppWindow extends NWindow {
@@ -340,7 +360,7 @@ export class NWindow extends NTag {
      * }
      */
     getWelcomeLink() {
-        return '/welcome';
+        return null;
     }
 
     /**
@@ -459,14 +479,14 @@ export class NWindow extends NTag {
     /**
      * Navigue vers un lien ou un objet de paramètres de frame, crée ou réutilise la frame et l'amène au premier plan.
      *
-     * @param {string|object} linkOrParams - Lien cible ou objet de paramètres (`link`, `frameName`, `frameClass`, `forceNew`, `replace`, `skipHistory`, `isBack`, `target`, etc.).
+     * @param {string|object} linkOrParams - Lien cible ou objet de paramètres (`link`, `frameName`, `frameClass`, `forceNew`, `isBack`, `target`, etc.).
      * @returns {import('./components/frames/NFrame.js').NFrame|null} Frame activée ou `null` si introuvable/refusée/externe.
      *
      * @example <caption>Exemple 1 : Naviguer vers une route enregistrée</caption>
      * win.navigate('/home');
      *
-     * @example <caption>Exemple 2 : Naviguer avec remplacement d'historique</caption>
-     * win.navigate({ link: '/login', replace: true });
+     * @example <caption>Exemple 2 : Naviguer en remplaçant la barre d'adresse via isBack</caption>
+     * win.navigate({ link: '/login', isBack: true });
      */
     navigate(linkOrParams) {
         const rawLink = typeof linkOrParams === 'string'
@@ -524,17 +544,16 @@ export class NWindow extends NTag {
      * Place une frame au premier plan, gère la superposition flottante, l'activation et l'historique.
      *
      * @param {import('./components/frames/NFrame.js').NFrame} frame - Frame à activer.
-     * @param {object} [params={}] - Paramètres de navigation transmis à `onActivate`.
-     * @param {object} [options={}] - Options d'activation (`replace`, `skipHistory`, `isBack`).
+     * @param {object} [params={}] - Paramètres et options d'activation (`isBack`, etc.) transmis à `onActivate`.
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Activer une frame existante</caption>
      * win.bringToFront(existingFrame, { tab: 'details' });
      *
      * @example <caption>Exemple 2 : Activer une frame lors d'un retour arrière</caption>
-     * win.bringToFront(previousFrame, previousParams, { isBack: true, skipHistory: true });
+     * win.bringToFront(previousFrame, { ...previousParams, isBack: true });
      */
-    bringToFront(frame, params = {}, options = {}) {
+    bringToFront(frame, params = {}) {
         if (!frame) {
             return this;
         }
@@ -543,9 +562,6 @@ export class NWindow extends NTag {
         const isFloating = frame.isFloating();
 
         if (previousFrame && previousFrame !== frame) {
-            if (!isFloating && typeof previousFrame.saveScrollPosition === 'function') {
-                previousFrame.saveScrollPosition();
-            }
             if (typeof previousFrame.onDeactivate === 'function') {
                 previousFrame.onDeactivate(params);
             }
@@ -566,13 +582,7 @@ export class NWindow extends NTag {
 
         this.#currentFrame = frame;
 
-        const isBack = options.isBack ?? params.isBack;
-        const skipHistory = options.skipHistory ?? params.skipHistory;
-        const replace = options.replace ?? params.replace;
-
-        if (isBack && typeof frame.restoreScrollPosition === 'function') {
-            frame.restoreScrollPosition();
-        }
+        const isBack = Boolean(params.isBack);
 
         if (typeof frame.onActivate === 'function') {
             frame.onActivate(params);
@@ -584,14 +594,16 @@ export class NWindow extends NTag {
 
         const resolvedLink = String(params.link || frame.getLink() || '/');
 
-        if (!skipHistory) {
-            if (replace && this.#history.length > 0) {
+        if (isBack) {
+            NUtil.sys.setBrowserUrl(resolvedLink, { link: resolvedLink });
+            if (this.#history.length > 0) {
                 this.#history[this.#history.length - 1] = resolvedLink;
-                NUtil.sys.setBrowserUrl(resolvedLink, { link: resolvedLink });
             } else {
                 this.#history.push(resolvedLink);
-                NUtil.sys.pushBrowserUrl(resolvedLink, { link: resolvedLink });
             }
+        } else {
+            this.#history.push(resolvedLink);
+            NUtil.sys.pushBrowserUrl(resolvedLink, { link: resolvedLink });
         }
 
         this.emit('frame:change', {
@@ -618,7 +630,7 @@ export class NWindow extends NTag {
     back(defaultLink = null) {
         const current = this.#currentFrame;
         if (!current) {
-            const b = defaultLink ? this.navigate({ link: defaultLink, replace: true }) !== null : false;
+            const b = defaultLink ? this.navigate({ link: defaultLink, isBack: true }) !== null : false;
             if (!b) {
                 this.util.sys.browserBack();
             }
@@ -641,10 +653,10 @@ export class NWindow extends NTag {
             }
             const targetFrame = this.getFrame(targetLink);
             if (targetFrame) {
-                this.bringToFront(targetFrame, this.linkToParams(targetLink), { isBack: true, skipHistory: true });
+                this.bringToFront(targetFrame, { ...this.linkToParams(targetLink), isBack: true });
                 return true;
             }
-            return this.navigate({ link: targetLink, isBack: true, skipHistory: true }) !== null;
+            return this.navigate({ link: targetLink, isBack: true }) !== null;
         };
 
         if (this.#history.length > 1) {
@@ -655,7 +667,7 @@ export class NWindow extends NTag {
         }
 
         if (defaultLink) {
-            const b = this.navigate({ link: defaultLink, replace: true }) !== null;
+            const b = this.navigate({ link: defaultLink, isBack: true }) !== null;
             if (!b) {
                 this.util.sys.browserBack();
             }
@@ -724,10 +736,40 @@ export class NWindow extends NTag {
      * win.clearHistory();
      *
      * @example <caption>Exemple 2 : Vider l'historique puis naviguer</caption>
-     * win.clearHistory().navigate({ link: '/login', replace: true });
+     * win.clearHistory().navigate({ link: '/login', isBack: true });
      */
     clearHistory() {
         this.#history = [];
+        return this;
+    }
+
+    /**
+     * Fait défiler la fenêtre (ou le document) aux coordonnées ou options indiquées.
+     *
+     * @param {number|ScrollToOptions} [scrollX=0] - Coordonnée horizontale cible ou objet d'options `ScrollToOptions`.
+     * @param {number} [scrollY=0] - Coordonnée verticale cible (lorsque `scrollX` est numérique).
+     * @returns {this} L'instance courante pour chaînage.
+     *
+     * @example <caption>Exemple 1 : Remonter en haut de la fenêtre</caption>
+     * win.scrollTo(0, 0);
+     *
+     * @example <caption>Exemple 2 : Défiler en douceur avec options</caption>
+     * win.scrollTo({ top: 300, behavior: 'smooth' });
+     */
+    scrollTo(scrollX = 0, scrollY = 0) {
+        const scrollOptions = scrollX && typeof scrollX === 'object'
+            ? { left: Number(scrollX.left ?? scrollX.x) || 0, top: Number(scrollX.top ?? scrollX.y) || 0, behavior: scrollX.behavior }
+            : { left: Number(scrollX) || 0, top: Number(scrollY) || 0 };
+
+        const target = (typeof window !== 'undefined' && typeof window.scrollTo === 'function')
+            ? window
+            : (typeof document !== 'undefined' && typeof document.documentElement?.scrollTo === 'function' ? document.documentElement : null);
+
+        if (target) {
+            this.requestAnimationFrame(() => {
+                target.scrollTo(scrollOptions);
+            });
+        }
         return this;
     }
 
@@ -964,7 +1006,8 @@ export class NWindow extends NTag {
         }
 
         const segments = path.split('/').filter(Boolean);
-        const homeSegment = this.getHomeLink().replace(/^\/+/, '').split('/')[0] || 'home';
+        const homeLink = this.getHomeLink();
+        const homeSegment = homeLink ? homeLink.replace(/^\/+/, '').split('/')[0] : 'index';
         const frameName = segments[0] || homeSegment;
         const link = rawQuery ? `${path}?${rawQuery}` : path;
 
@@ -992,7 +1035,11 @@ export class NWindow extends NTag {
         };
         const onFocus = () => this.onFocus();
         const onBlur = () => this.onBlur();
-        const onBeforeUnload = () => this.destroy();
+        const onPageHide = (event) => {
+            if (!event?.persisted) {
+                this.destroy();
+            }
+        };
         const onVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 this.onResume();
@@ -1004,14 +1051,14 @@ export class NWindow extends NTag {
         window.addEventListener('popstate', onPopState);
         window.addEventListener('focus', onFocus);
         window.addEventListener('blur', onBlur);
-        window.addEventListener('beforeunload', onBeforeUnload);
+        window.addEventListener('pagehide', onPageHide);
         document.addEventListener('visibilitychange', onVisibilityChange);
 
         this.#cleanups.push(
             () => window.removeEventListener('popstate', onPopState),
             () => window.removeEventListener('focus', onFocus),
             () => window.removeEventListener('blur', onBlur),
-            () => window.removeEventListener('beforeunload', onBeforeUnload),
+            () => window.removeEventListener('pagehide', onPageHide),
             () => document.removeEventListener('visibilitychange', onVisibilityChange)
         );
     }

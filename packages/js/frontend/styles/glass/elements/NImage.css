@@ -4,7 +4,7 @@
  * @description Règles du style `glass` pour `NImage` (`.n-image`).
  */
 
-.n-image {
+:where([data-n-style="glass"] .n-image, .n-image[data-n-style="glass"]) {
     border-radius: var(--n-radius-lg);
     border: var(--n-border);
     box-shadow: var(--n-surface-shadow);

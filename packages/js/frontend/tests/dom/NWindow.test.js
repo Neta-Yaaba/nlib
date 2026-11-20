@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../../../backend/tests/test-helper.js';
+import { describe, it, assert } from '../index.js';
 import { NWindow, NFrame, NTag } from '../../index.js';
 
 describe('NWindow (dom/NWindow.js)', () => {
@@ -14,8 +14,8 @@ describe('NWindow (dom/NWindow.js)', () => {
         assert.equal(NWindow.instance(), win1);
         assert.equal(win1.getWindow(), win1);
         assert.equal(win1.getBaseUrl(), 'https://app.example.com');
-        assert.equal(win1.getHomeLink(), '/home');
-        assert.equal(win1.getWelcomeLink(), '/welcome');
+        assert.equal(win1.getHomeLink(), null);
+        assert.equal(win1.getWelcomeLink(), null);
         assert.equal(typeof win1.getInitialLink(), 'string');
 
         win1.destroy();
@@ -143,10 +143,13 @@ describe('NWindow (dom/NWindow.js)', () => {
 
         let resizeCount = 0;
         const onResize = () => { resizeCount += 1; };
-        win.on('resize', onResize);
+        assert.equal(win.on('resize', onResize), win);
         window.dispatchEvent(new Event('resize'));
         assert.equal(resizeCount >= 1, true);
         win.off('resize', onResize);
+
+        assert.equal(win.scrollTo(0, 0), win);
+        assert.equal(win.scrollTo({ top: 100, behavior: 'auto' }), win);
 
         win.destroy();
     });

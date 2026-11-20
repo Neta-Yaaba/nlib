@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../../../../backend/tests/test-helper.js';
+﻿import { describe, it, assert } from '../../index.js';
 import { NInput, NTag } from '../../../index.js';
 
 describe('NInput (dom/elements/NInput.js)', () => {

@@ -11,9 +11,9 @@
     z-index: var(--n-z-toast);
     padding: var(--n-space-3) var(--n-space-5);
     border-radius: var(--n-radius-md);
-    background-color: var(--n-surface-elevated);
+    background-color: var(--n-surface);
     color: var(--n-text);
-    border: 1px solid var(--n-border);
+    border: var(--n-border);
     box-shadow: var(--n-shadow-lg);
     font-size: var(--n-text-sm);
     max-width: min(90vw, 28rem);

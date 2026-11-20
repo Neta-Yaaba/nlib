@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NPassword } from '../../index.js';
 
 describe('NPassword (utils/NPassword.js)', () => {

@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NNetwork, NUtil } from '../../index.js';
 
 describe('NNetwork (requests/NNetwork.js)', () => {

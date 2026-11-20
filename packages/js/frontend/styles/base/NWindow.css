@@ -18,16 +18,17 @@
     width: 2.25rem;
     height: 2.25rem;
     border-radius: var(--n-radius-full);
-    background-color: var(--n-surface-elevated);
+    background-color: var(--n-surface);
     color: var(--n-text);
-    border: 1px solid var(--n-border);
+    border: var(--n-border);
     box-shadow: var(--n-shadow-md);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--n-text-base);
+    font-size: var(--n-text-md);
     pointer-events: none;
-    transition: transform var(--n-transition-fast), opacity var(--n-transition-fast);
+    transition: transform var(--n-duration-fast) var(--n-ease-default),
+                opacity var(--n-duration-fast) var(--n-ease-default);
 }
 
 .n-window__pull--ready {

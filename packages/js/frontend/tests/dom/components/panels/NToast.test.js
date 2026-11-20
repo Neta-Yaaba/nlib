@@ -1,5 +1,5 @@
-import { describe, it, assert } from '../../../../backend/tests/test-helper.js';
-import { NToast, NTag } from '../../../index.js';
+import { describe, it, assert } from '../../../index.js';
+import { NToast, NTag } from '../../../../index.js';
 
 describe('NToast (dom/components/panels/NToast.js)', () => {
     it('hérite de NTag, crée une instance statique avec show() et masque avec hide()', () => {
@@ -9,7 +9,7 @@ describe('NToast (dom/components/panels/NToast.js)', () => {
         assert.equal(toast.hasClass('n-toast'), true);
         assert.equal(toast.hasClass('n-toast--success'), true);
         assert.equal(toast.hasClass('n-toast--top'), true);
-        assert.equal(toast.getText(), 'Sauvegardé');
+        assert.equal(toast.text, 'Sauvegardé');
         assert.equal(toast.isVisible(), true);
 
         NToast.hide();

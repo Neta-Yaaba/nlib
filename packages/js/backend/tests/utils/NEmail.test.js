@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../test-helper.js';
+﻿import { describe, it, assert } from '../index.js';
 import { NEmail } from '../../index.js';
 
 describe('NEmail (utils/NEmail.js)', () => {

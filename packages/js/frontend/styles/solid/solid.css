@@ -5,21 +5,21 @@
  */
 
 [data-n-style="solid"],
-.n-style-solid {
+[data-n-theme="light"][data-n-style="solid"],
+[data-n-theme="light"] [data-n-style="solid"] {
+    color-scheme: light;
     --n-surface: var(--n-primary);
     --n-surface-hover: var(--n-primary-hover);
     --n-surface-active: var(--n-primary-active);
     --n-surface-muted: #e5e7eb;
-    --n-text-on-accent: var(--n-primary-contrast);
     --n-border-color: transparent;
     --n-border-strong: transparent;
     --n-surface-shadow: var(--n-shadow-sm);
 }
 
-[data-n-theme="dark"] [data-n-style="solid"],
-[data-n-theme="dark"].n-style-solid,
-.n-theme-dark [data-n-style="solid"],
-.n-theme-dark.n-style-solid {
+[data-n-theme="dark"][data-n-style="solid"],
+[data-n-theme="dark"] [data-n-style="solid"] {
+    color-scheme: dark;
     --n-bg: #0b0f19;
     --n-bg-subtle: #111827;
     --n-surface-muted: #1f2937;

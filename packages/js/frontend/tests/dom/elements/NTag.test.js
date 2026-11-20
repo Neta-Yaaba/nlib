@@ -1,4 +1,4 @@
-import { describe, it, assert } from '../../../../backend/tests/test-helper.js';
+﻿import { describe, it, assert } from '../../index.js';
 import { NTag } from '../../../index.js';
 import { NObject } from '../../../../backend/index.js';
 

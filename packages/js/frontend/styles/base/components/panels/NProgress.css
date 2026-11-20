@@ -11,7 +11,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--n-backdrop);
+    background-color: rgba(0, 0, 0, 0.45);
     pointer-events: auto;
     user-select: none;
 }
@@ -25,7 +25,7 @@
     padding: var(--n-space-5);
     border-radius: var(--n-radius-lg);
     background-color: var(--n-surface);
-    border: 1px solid var(--n-border);
+    border: var(--n-border);
     box-shadow: var(--n-shadow-lg);
     display: flex;
     flex-direction: column;
@@ -51,5 +51,5 @@
     width: 0%;
     border-radius: var(--n-radius-full);
     background-color: var(--n-primary);
-    transition: width var(--n-transition-normal);
+    transition: width var(--n-duration-normal) var(--n-ease-default);
 }
