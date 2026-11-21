@@ -16,9 +16,9 @@ describe('NFrame (dom/components/frames/NFrame.js)', () => {
         }
 
         const frame = new CustomFrame({
-            link: '/home',
-            backLink: '/start',
-            floating: true,
+            url: 'https://app.example.com/home',
+            backUrl: 'https://app.example.com/start',
+            overlay: true,
             pullToRefresh: true
         });
 
@@ -26,37 +26,40 @@ describe('NFrame (dom/components/frames/NFrame.js)', () => {
 
         assert.equal(frame instanceof NTag, true);
         assert.equal(frame.hasClass('n-frame'), true);
-        assert.equal(frame.hasClass('n-frame--floating'), true);
-        assert.deepEqual(calls, ['applyLanguage', '_init']);
+        assert.equal(frame.hasClass('n-frame--overlay'), true);
+        assert.deepEqual(calls, ['_init', 'applyLanguage']);
         assert.equal(frame.getTitle(), 'Accueil');
-        assert.equal(frame.getLink(), '/home');
-        assert.equal(frame.isLink('/home'), true);
-        assert.equal(frame.isLink('/other'), false);
-        assert.equal(frame.getBackLink(), '/start');
+        assert.equal(frame.getUrl(), 'https://app.example.com/home');
+        assert.equal(frame.matchesUrl('https://app.example.com/home'), true);
+        assert.equal(frame.matchesUrl('https://app.example.com/other'), false);
+        assert.equal(frame.getBackUrl(), 'https://app.example.com/start');
         assert.equal(frame.canGoBack(), true);
-        assert.equal(frame.isFloating(), true);
+        assert.equal(frame.isOverlay(), true);
         assert.equal(frame.isPullToRefresh(), true);
 
-        frame.setFloating(false);
-        assert.equal(frame.hasClass('n-frame--floating'), false);
+        frame.setOverlay(false);
+        assert.equal(frame.hasClass('n-frame--overlay'), false);
 
         frame.destroy();
         assert.equal(frame.isDestroyed, true);
     });
 
     it('gère les zones d\'alerte, les événements de cycle de vie et la fabrique statique', () => {
-        const mockWindow = {
-            getCurrentFrame: () => null
-        };
-        const created = NFrame.createFrame(mockWindow, { title: 'Liste', link: '/list' });
-        assert.equal(created.window, mockWindow);
-        assert.equal(created.isNew, true);
-        assert.equal(created.frame instanceof NFrame, true);
-        assert.equal(created.frame.getWindow(), document.body?._nwindow ?? null);
+        const frame = NFrame.create({ title: 'Liste', url: 'https://app.example.com/list' });
+        assert.equal(frame instanceof NFrame, true);
+        assert.equal(frame.getWindow(), document.body?._nwindow ?? null);
 
-        const frame = created.frame;
-        assert.equal(NFrame.validateLink(mockWindow, {}), true);
-        assert.equal(NFrame.isFloating(mockWindow, {}), false);
+        class ModalTestFrame extends NFrame {
+            static overlay = true;
+            static route = '/users/:id';
+        }
+        class DocsTestFrame extends NFrame {
+            static route = /^\/docs\/(.+)$/;
+        }
+        assert.deepEqual(NFrame.canActivate({}), { status: 'allow' });
+        assert.deepEqual(ModalTestFrame.matchUrl('https://app.example.com/users/42'), { id: '42' });
+        assert.equal(ModalTestFrame.matchUrl('https://app.example.com/posts/42'), false);
+        assert.deepEqual(DocsTestFrame.matchUrl('https://app.example.com/docs/guide/intro'), { 0: 'guide/intro' });
 
         assert.equal(frame.verifyAlert([]), true);
         assert.equal(frame.verifyAlert([{ id: 1 }]), false);

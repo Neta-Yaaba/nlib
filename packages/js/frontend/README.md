@@ -58,7 +58,7 @@ Toutes les classes CSS générées par les composants NLib suivent une conventio
   - Enfants internes : `n-window__pull` (`n-window__pull--ready`, `n-window__pull--refreshing`)
 - **`NFrame`** :
   - Racine : `n-frame`
-  - États / enfants : `n-frame--floating`, `n-frame__alert`, `n-frame__alert-icon`, `n-frame__alert-text`
+  - États / enfants : `n-frame--overlay`, `n-frame__alert`, `n-frame__alert-icon`, `n-frame__alert-text`
 - **`NToast`** :
   - Racine : `n-toast`
   - Variantes / positions : `n-toast--info`, `n-toast--success`, `n-toast--warning`, `n-toast--error`, `n-toast--top`, `n-toast--bottom`

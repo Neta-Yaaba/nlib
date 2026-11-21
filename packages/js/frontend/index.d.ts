@@ -354,10 +354,17 @@ export class NInput extends NTag {
 
 export interface NFrameOptions extends NTagOptions {
     title?: string;
-    link?: string;
-    backLink?: string;
-    floating?: boolean;
+    url?: string;
+    backUrl?: string;
+    overlay?: boolean;
     pullToRefresh?: boolean;
+}
+
+export interface NFrameGuardResult {
+    status: 'allow' | 'deny' | 'redirect';
+    url?: string;
+    params?: Record<string, any>;
+    reason?: string;
 }
 
 export interface NFrameScrollParams {
@@ -367,29 +374,26 @@ export interface NFrameScrollParams {
     scrollToTag?: NTag;
 }
 
-export interface NFrameDescriptor<T extends NFrame = NFrame> {
-    window: any;
-    isNew: boolean;
-    frame: T;
-}
-
 /**
  * Classe de base des vues et pages applicatives (`dom/components/frames/NFrame.js`).
  */
 export class NFrame extends NTag {
+    static overlay: boolean;
+    static route: string | RegExp | null;
+
     constructor(options?: NFrameOptions | string);
 
     protected _init(): void;
     setTitle(title: string): this;
     getTitle(): string;
-    setLink(link: string): this;
-    getLink(): string;
-    isLink(link: string): boolean;
-    setBackLink(link: string): this;
-    getBackLink(): string;
+    setUrl(url: string): this;
+    getUrl(): string;
+    matchesUrl(url: string): boolean;
+    setBackUrl(url: string): this;
+    getBackUrl(): string;
     canGoBack(): boolean;
-    setFloating(floating?: boolean): this;
-    isFloating(): boolean;
+    setOverlay(overlay?: boolean): this;
+    isOverlay(): boolean;
     setPullToRefresh(enabled?: boolean): this;
     isPullToRefresh(): boolean;
     onPullToRefresh(): this;
@@ -408,9 +412,9 @@ export class NFrame extends NTag {
     onBlur(): this;
     destroy(): void;
 
-    static validateLink(windowInstance: any, params?: Record<string, any>): boolean;
-    static isFloating(windowInstance: any, params?: Record<string, any>): boolean;
-    static createFrame<T extends NFrame = NFrame>(windowInstance: any, params?: NFrameOptions): NFrameDescriptor<T>;
+    static matchUrl(url: string, params?: Record<string, any>): boolean | Record<string, any>;
+    static canActivate(params?: Record<string, any>): NFrameGuardResult | boolean;
+    static create<T extends NFrame = NFrame>(params?: NFrameOptions): T | null;
 }
 
 export interface NToastOptions extends NTagOptions {
@@ -447,16 +451,17 @@ export declare class NProgress extends NTag {
     destroy(): void;
 }
 
+export type NWindowFrameEntry = typeof NFrame | [typeof NFrame, boolean?] | { FrameClass?: typeof NFrame; frame?: typeof NFrame; overlay?: boolean };
+
 export interface NWindowOptions extends NTagOptions {
     config?: Record<string, any>;
-    frames?: Record<string, typeof NFrame>;
+    frames?: Array<NWindowFrameEntry> | Record<string, NWindowFrameEntry>;
 }
 
 export interface NWindowNavigateParams extends Record<string, any> {
     link?: string;
     path?: string;
     query?: Record<string, string>;
-    frameName?: string;
     frameClass?: typeof NFrame;
     forceNew?: boolean;
     isBack?: boolean;
@@ -473,15 +478,17 @@ export declare class NWindow extends NTag {
     getBaseUrl(): string;
     getFrames(): NFrame[];
     getCurrentFrame(): NFrame | null;
-    getInitialLink(): string;
+    setInitialUrl(url: string): this;
+    getInitialUrl(): string;
     openInitialLink(defaultLink?: string | null): NFrame | null;
-    getHomeLink(): string | null;
-    getWelcomeLink(): string | null;
+    getHomeUrl(): string | null;
+    getWelcomeUrl(): string | null;
     getFrame(link: string): NFrame | null;
 
-    registerFrame(name: string, FrameClass: typeof NFrame): this;
-    unregisterFrame(name: string): boolean;
-    getFrameClass(name: string): typeof NFrame | null;
+    registerFrame(FrameClass: typeof NFrame, overlay?: boolean): this;
+    unregisterFrame(FrameClass: typeof NFrame): boolean;
+    getFrameClasses(): Array<typeof NFrame>;
+    resolveFrame(urlOrParams: string | Record<string, any>): { FrameClass: typeof NFrame; params: Record<string, any>; overlay: boolean } | null;
 
     linkToParams(linkOrParams: string | Record<string, any>): Record<string, any>;
     navigate(linkOrParams: string | NWindowNavigateParams): NFrame | null;

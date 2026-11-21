@@ -14,10 +14,10 @@ import { NImage } from '../../elements/NImage.js';
  * @extends NTag
  * @description Représente une page ou vue conteneur gérée par `NWindow`.
  *
- * @example <caption>Exemple 1 : Créer une page simple avec titre et lien</caption>
+ * @example <caption>Exemple 1 : Créer une page simple avec titre et URL</caption>
  * const page = new NFrame({
  *     title: 'Accueil',
- *     link: '/home',
+ *     url: 'https://app.example.com/home',
  *     text: 'Bienvenue'
  * });
  *
@@ -32,6 +32,19 @@ import { NImage } from '../../elements/NImage.js';
  */
 export class NFrame extends NTag {
 
+    /**
+     * Indique si les instances créées par cette classe s'affichent par défaut en mode flottant.
+     * @type {boolean}
+     */
+    static overlay = false;
+
+    /**
+     * Pattern de route associe a la classe de frame (`string` comme `'/users/:id'`, `RegExp`, ou `null`).
+     *
+     * @type {string|RegExp|null}
+     */
+    static route = null;
+
     // =========================================================================
     // Propriétés privées
     // =========================================================================
@@ -44,25 +57,25 @@ export class NFrame extends NTag {
     #title = '';
 
     /**
-     * Lien ou route associée à la frame.
+     * URL associée à la frame.
      * @type {string}
      * @private
      */
-    #link = '';
+    #url = '';
 
     /**
-     * Lien de retour utilisé lors d'une navigation arrière.
+     * URL de retour utilisée lors d'une navigation arrière.
      * @type {string}
      * @private
      */
-    #backLink = '';
+    #backUrl = '';
 
     /**
      * Indique si la frame s'affiche en mode flottant (superposé).
      * @type {boolean}
      * @private
      */
-    #floating = false;
+    #overlay = false;
 
     /**
      * Indique si le geste pull-to-refresh est activé sur cette frame.
@@ -117,13 +130,13 @@ export class NFrame extends NTag {
      * @param {Object|string} [options={}] - Options de configuration ou nom de balise HTML.
      * @param {string} [options.tagName='div'] - Nom de la balise HTML racine.
      * @param {string} [options.title=''] - Titre de la frame.
-     * @param {string} [options.link=''] - Lien ou route associée.
-     * @param {string} [options.backLink=''] - Lien de retour arrière.
-     * @param {boolean} [options.floating=false] - Active le mode flottant.
+     * @param {string} [options.url=''] - URL associée à la frame.
+     * @param {string} [options.backUrl=''] - URL de retour arrière.
+     * @param {boolean} [options.overlay=false] - Active le mode superposition (`overlay`).
      * @param {boolean} [options.pullToRefresh=false] - Active le pull-to-refresh.
      *
      * @example <caption>Exemple 1 : Instanciation avec options</caption>
-     * const frame = new NFrame({ title: 'Paramètres', link: '/settings', floating: true });
+     * const frame = new NFrame({ title: 'Paramètres', url: 'https://app.example.com/settings', overlay: true });
      *
      * @example <caption>Exemple 2 : Instanciation rapide par nom de balise</caption>
      * const section = new NFrame('section');
@@ -135,9 +148,9 @@ export class NFrame extends NTag {
 
         const {
             title = '',
-            link = '',
-            backLink = '',
-            floating = false,
+            url = '',
+            backUrl = '',
+            overlay = Boolean(new.target.overlay),
             pullToRefresh = false,
             ...tagOpts
         } = opts;
@@ -149,14 +162,14 @@ export class NFrame extends NTag {
         if (title) {
             this.setTitle(title);
         }
-        if (link) {
-            this.setLink(link);
+        if (url) {
+            this.setUrl(url);
         }
-        if (backLink) {
-            this.setBackLink(backLink);
+        if (backUrl) {
+            this.setBackUrl(backUrl);
         }
 
-        this.setFloating(Boolean(floating));
+        this.setOverlay(Boolean(overlay));
         if (pullToRefresh) {
             this.setPullToRefresh(true);
         }
@@ -201,8 +214,8 @@ export class NFrame extends NTag {
      * @example <caption>Exemple 1 : Définir le titre</caption>
      * frame.setTitle('Utilisateurs');
      *
-     * @example <caption>Exemple 2 : Chaîner avec setLink</caption>
-     * frame.setTitle('Utilisateurs').setLink('/users');
+     * @example <caption>Exemple 2 : Chaîner avec setUrl</caption>
+     * frame.setTitle('Utilisateurs').setUrl('https://app.example.com/users');
      */
     setTitle(title) {
         if (this.isDestroyed) {
@@ -235,90 +248,95 @@ export class NFrame extends NTag {
     }
 
     /**
-     * Définit le lien ou la route associée à cette frame.
+     * Définit l'URL associée à cette frame.
      *
-     * @param {string} link - Lien ou chemin de route.
+     * @param {string} url - URL associée à la frame.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Définir une route</caption>
-     * frame.setLink('/products/42');
+     * @example <caption>Exemple 1 : Définir une URL</caption>
+     * frame.setUrl('https://app.example.com/products/42');
      *
-     * @example <caption>Exemple 2 : Réinitialiser le lien</caption>
-     * frame.setLink('');
+     * @example <caption>Exemple 2 : Réinitialiser l'URL</caption>
+     * frame.setUrl('');
      */
-    setLink(link) {
+    setUrl(url) {
         if (!this.isDestroyed) {
-            this.#link = (link === null || link === undefined) ? '' : String(link);
+            this.#url = (url === null || url === undefined) ? '' : String(url);
         }
         return this;
     }
 
     /**
-     * Retourne le lien associé à cette frame.
+     * Retourne l'URL associée à cette frame.
      *
-     * @returns {string} Lien ou chaîne vide.
+     * @returns {string} URL ou chaîne vide.
      *
-     * @example <caption>Exemple 1 : Lire le lien</caption>
-     * const f = new NFrame({ link: '/home' });
-     * console.log(f.getLink()); // '/home'
+     * @example <caption>Exemple 1 : Lire l'URL</caption>
+     * const f = new NFrame({ url: 'https://app.example.com/home' });
+     * console.log(f.getUrl()); // 'https://app.example.com/home'
      *
-     * @example <caption>Exemple 2 : Lien par défaut</caption>
-     * console.log(new NFrame().getLink()); // ''
+     * @example <caption>Exemple 2 : URL par défaut</caption>
+     * console.log(new NFrame().getUrl()); // ''
      */
-    getLink() {
-        return this.#link;
+    getUrl() {
+        return this.#url;
     }
 
     /**
-     * Vérifie si le lien fourni correspond exactement au lien de la frame.
+     * Vérifie si l'URL fournie correspond à cette frame (égalité exacte par défaut, redéfinissable en sous-classe
+     * pour associer plusieurs URLs ou sous-routes à une même instance).
      *
-     * @param {string} link - Lien à comparer.
-     * @returns {boolean} `true` si les liens sont identiques.
+     * @param {string} url - URL à comparer.
+     * @returns {boolean} `true` si la frame correspond à cette URL.
      *
-     * @example <caption>Exemple 1 : Correspondance exacte</caption>
-     * const f = new NFrame({ link: '/home' });
-     * console.log(f.isLink('/home')); // true
+     * @example <caption>Exemple 1 : Comparaison exacte par défaut</caption>
+     * const f = new NFrame({ url: 'https://app.example.com/home' });
+     * console.log(f.matchesUrl('https://app.example.com/home')); // true
      *
-     * @example <caption>Exemple 2 : Lien différent</caption>
-     * console.log(f.isLink('/about')); // false
+     * @example <caption>Exemple 2 : Redéfinir matchesUrl pour partager une frame sur plusieurs URLs</caption>
+     * class UserFrame extends NFrame {
+     *     matchesUrl(url) {
+     *         return url.startsWith('https://app.example.com/users/1');
+     *     }
+     * }
      */
-    isLink(link) {
-        return this.#link === String(link ?? '');
+    matchesUrl(url) {
+        return this.#url === String(url ?? '');
     }
 
     /**
-     * Définit le lien de retour utilisé lors d'une navigation arrière.
+     * Définit l'URL de retour utilisée lors d'une navigation arrière.
      *
-     * @param {string} link - Lien de retour.
+     * @param {string} url - URL de retour.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Définir un lien de retour</caption>
-     * frame.setBackLink('/dashboard');
+     * @example <caption>Exemple 1 : Définir une URL de retour</caption>
+     * frame.setBackUrl('https://app.example.com/dashboard');
      *
      * @example <caption>Exemple 2 : Réinitialiser</caption>
-     * frame.setBackLink('');
+     * frame.setBackUrl('');
      */
-    setBackLink(link) {
+    setBackUrl(url) {
         if (!this.isDestroyed) {
-            this.#backLink = (link === null || link === undefined) ? '' : String(link);
+            this.#backUrl = (url === null || url === undefined) ? '' : String(url);
         }
         return this;
     }
 
     /**
-     * Retourne le lien de retour associé à la frame.
+     * Retourne l'URL de retour associée à la frame.
      *
-     * @returns {string} Lien de retour ou `''`.
+     * @returns {string} URL de retour ou `''`.
      *
-     * @example <caption>Exemple 1 : Lire le lien de retour</caption>
-     * const f = new NFrame({ backLink: '/home' });
-     * console.log(f.getBackLink()); // '/home'
+     * @example <caption>Exemple 1 : Lire l'URL de retour</caption>
+     * const f = new NFrame({ backUrl: 'https://app.example.com/home' });
+     * console.log(f.getBackUrl()); // 'https://app.example.com/home'
      *
      * @example <caption>Exemple 2 : Valeur par défaut</caption>
-     * console.log(new NFrame().getBackLink()); // ''
+     * console.log(new NFrame().getBackUrl()); // ''
      */
-    getBackLink() {
-        return this.#backLink;
+    getBackUrl() {
+        return this.#backUrl;
     }
 
     /**
@@ -343,41 +361,41 @@ export class NFrame extends NTag {
     // =========================================================================
 
     /**
-     * Active ou désactive le mode flottant de la frame via la classe CSS `.n-frame--floating`.
+     * Active ou désactive le mode superposition (`overlay`) de la frame via la classe CSS `.n-frame--overlay`.
      *
-     * @param {boolean} [floating=true] - `true` pour afficher la frame en superposition.
+     * @param {boolean} [overlay=true] - `true` pour afficher la frame en superposition.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Passer en mode flottant</caption>
-     * frame.setFloating(true);
-     * console.log(frame.isFloating()); // true
+     * @example <caption>Exemple 1 : Passer en mode overlay</caption>
+     * frame.setOverlay(true);
+     * console.log(frame.isOverlay()); // true
      *
      * @example <caption>Exemple 2 : Revenir en mode normal</caption>
-     * frame.setFloating(false);
+     * frame.setOverlay(false);
      */
-    setFloating(floating = true) {
+    setOverlay(overlay = true) {
         if (this.isDestroyed) {
             return this;
         }
-        this.#floating = Boolean(floating);
-        this.toggleClass('n-frame--floating', this.#floating);
+        this.#overlay = Boolean(overlay);
+        this.toggleClass('n-frame--overlay', this.#overlay);
         return this;
     }
 
     /**
-     * Indique si la frame est en mode flottant.
+     * Indique si la frame est en mode superposition (`overlay`).
      *
-     * @returns {boolean} `true` si la frame est flottante.
+     * @returns {boolean} `true` si la frame est en mode overlay.
      *
      * @example <caption>Exemple 1 : Mode normal par défaut</caption>
-     * console.log(new NFrame().isFloating()); // false
+     * console.log(new NFrame().isOverlay()); // false
      *
      * @example <caption>Exemple 2 : Après activation</caption>
-     * const modal = new NFrame({ floating: true });
-     * console.log(modal.isFloating()); // true
+     * const modal = new NFrame({ overlay: true });
+     * console.log(modal.isOverlay()); // true
      */
-    isFloating() {
-        return this.#floating;
+    isOverlay() {
+        return this.#overlay;
     }
 
     /**
@@ -586,7 +604,7 @@ export class NFrame extends NTag {
         const el = this.element;
         if (typeof scrollX === 'number' && Number.isFinite(scrollX)) {
             this.#scrollX = scrollX;
-        } else if (this.#floating && el) {
+        } else if (this.#overlay && el) {
             this.#scrollX = el.scrollLeft || 0;
         } else if (typeof document !== 'undefined' && document.documentElement) {
             this.#scrollX = document.documentElement.scrollLeft || 0;
@@ -594,7 +612,7 @@ export class NFrame extends NTag {
 
         if (typeof scrollY === 'number' && Number.isFinite(scrollY)) {
             this.#scrollY = scrollY;
-        } else if (this.#floating && el) {
+        } else if (this.#overlay && el) {
             this.#scrollY = el.scrollTop || 0;
         } else if (typeof document !== 'undefined' && document.documentElement) {
             this.#scrollY = document.documentElement.scrollTop || 0;
@@ -630,7 +648,7 @@ export class NFrame extends NTag {
     }
 
     /**
-     * Fait défiler la frame (ou le document si non flottante) aux coordonnées indiquées.
+     * Fait défiler la frame (ou le document si non overlay) aux coordonnées indiquées.
      *
      * @param {number} [scrollX=0] - Coordonnée horizontale cible.
      * @param {number} [scrollY=0] - Coordonnée verticale cible.
@@ -645,7 +663,7 @@ export class NFrame extends NTag {
     scrollTo(scrollX = 0, scrollY = 0) {
         const x = Number(scrollX) || 0;
         const y = Number(scrollY) || 0;
-        const target = this.#floating ? this.element : (typeof document !== 'undefined' ? document.documentElement : null);
+        const target = this.#overlay ? this.element : (typeof document !== 'undefined' ? document.documentElement : null);
         if (target && typeof target.scrollTo === 'function') {
             this.requestAnimationFrame(() => {
                 target.scrollTo({ left: x, top: y });
@@ -791,66 +809,132 @@ export class NFrame extends NTag {
     // =========================================================================
 
     /**
-     * Valide si un lien est autorisé pour cette classe de frame.
+     * Vérifie si une URL correspond à la route déclarée sur la classe de frame et extrait les paramètres dynamiques.
+     * Prend en charge `static route` sous forme de `RegExp` ou de motif textuel (`/users/:id`, `/docs/*`).
+     * Retourne un objet contenant les paramètres extraits en cas de correspondance, ou `false` sinon.
      *
-     * @param {any} windowInstance - Instance `NWindow` appelante.
-     * @param {Object} [params={}] - Paramètres de navigation.
-     * @returns {boolean} `true` si la navigation est autorisée.
+     * @param {string} url - URL complète ou chemin à évaluer.
+     * @param {Object} [params={}] - Paramètres de navigation déjà analysés (ex. `{ path, query }`).
+     * @returns {Object|boolean} Objet de paramètres extraits si la route correspond, sinon `false`.
      *
-     * @example <caption>Exemple 1 : Validation par défaut</caption>
-     * console.log(NFrame.validateLink(appWindow, { link: '/home' })); // true
-     *
-     * @example <caption>Exemple 2 : Surcharge dans une page protégée</caption>
-     * class AdminFrame extends NFrame {
-     *     static validateLink(windowInstance) { return Boolean(windowInstance); }
+     * @example <caption>Exemple 1 : Route paramétrée</caption>
+     * class UserFrame extends NFrame {
+     *     static route = '/users/:id';
      * }
+     * const match = UserFrame.matchUrl('https://app.example.com/users/42');
+     * // match => { id: '42' }
+     *
+     * @example <caption>Exemple 2 : Route par expression régulière</caption>
+     * class DocsFrame extends NFrame {
+     *     static route = /^\/docs\/(.+)$/;
+     * }
+     * const match = DocsFrame.matchUrl('https://app.example.com/docs/guide/intro');
+     * // match => { 0: 'guide/intro' }
      */
-    static validateLink(windowInstance, params = {}) {
-        return true;
-    }
+    static matchUrl(url, params = {}) {
+        const route = this.route;
+        if (!route) return false;
 
-    /**
-     * Indique si la frame créée par cette classe doit être affichée en mode flottant.
-     *
-     * @param {any} windowInstance - Instance `NWindow` appelante.
-     * @param {Object} [params={}] - Paramètres de navigation.
-     * @returns {boolean} `true` si la frame est flottante.
-     *
-     * @example <caption>Exemple 1 : Vérification par défaut</caption>
-     * console.log(NFrame.isFloating(appWindow)); // false
-     *
-     * @example <caption>Exemple 2 : Sous-classe modale flottante</caption>
-     * class ModalFrame extends NFrame {
-     *     static isFloating() { return true; }
-     * }
-     */
-    static isFloating(windowInstance, params = {}) {
+        let path = (params && typeof params.path === 'string' && params.path) ? params.path : '';
+        if (!path) {
+            const raw = String(url || '').trim();
+            if (!raw) return false;
+            try {
+                path = new URL(raw, 'http://localhost').pathname || '/';
+            } catch {
+                path = raw.split('?')[0].split('#')[0] || '/';
+            }
+        }
+        if (!path.startsWith('/')) path = `/${path}`;
+
+        if (route instanceof RegExp) {
+            const m = route.exec(path);
+            if (!m) return false;
+            const extracted = {};
+            if (m.groups) {
+                Object.assign(extracted, m.groups);
+            }
+            for (let i = 1; i < m.length; i++) {
+                extracted[i - 1] = m[i];
+            }
+            return extracted;
+        }
+
+        if (typeof route === 'string') {
+            const normRoute = route === '/' ? '/' : route.replace(/\/+$/, '');
+            const normPath = path === '/' ? '/' : path.replace(/\/+$/, '');
+            const routeSegs = normRoute.split('/').filter(Boolean);
+            const pathSegs = normPath.split('/').filter(Boolean);
+
+            const extracted = {};
+            for (let i = 0; i < routeSegs.length; i++) {
+                const seg = routeSegs[i];
+                if (seg === '*') {
+                    extracted['*'] = pathSegs.slice(i).join('/');
+                    return extracted;
+                }
+                if (i >= pathSegs.length) return false;
+                if (seg.startsWith(':')) {
+                    const key = seg.slice(1);
+                    try {
+                        extracted[key] = decodeURIComponent(pathSegs[i]);
+                    } catch {
+                        extracted[key] = pathSegs[i];
+                    }
+                } else if (seg !== pathSegs[i]) {
+                    return false;
+                }
+            }
+            return routeSegs.length === pathSegs.length ? extracted : false;
+        }
+
         return false;
     }
 
     /**
-     * Fabrique statique créant une nouvelle instance de frame associée à `windowInstance`.
+     * Garde d'accès statique indiquant si cette frame peut être activée pour les paramètres donnés.
+     * Retourne un objet décrivant la décision (`{ status: 'allow' }`, `{ status: 'deny', reason? }` ou `{ status: 'redirect', url, params? }`).
      *
-     * @param {any} windowInstance - Instance `NWindow` parente.
-     * @param {Object} [params={}] - Options transmises au constructeur.
-     * @returns {{ window: any, isNew: boolean, frame: NFrame }} Descripteur de frame créée.
+     * @param {Object} [params={}] - Paramètres de navigation résolus.
+     * @returns {{ status: 'allow' | 'deny' | 'redirect', url?: string, params?: Object, reason?: string }} Décision de garde.
+     *
+     * @example <caption>Exemple 1 : Autorisation par défaut</caption>
+     * console.log(NFrame.canActivate({ url: 'https://app.example.com/home' }));
+     * // { status: 'allow' }
+     *
+     * @example <caption>Exemple 2 : Refus ou redirection dans une sous-classe</caption>
+     * class AdminFrame extends NFrame {
+     *     static canActivate(params) {
+     *         if (!params.isAuthenticated) {
+     *             return { status: 'redirect', url: 'https://app.example.com/login' };
+     *         }
+     *         return params.isAdmin ? { status: 'allow' } : { status: 'deny', reason: 'forbidden' };
+     *     }
+     * }
+     */
+    static canActivate(params = {}) {
+        return { status: 'allow' };
+    }
+
+    /**
+     * Fabrique statique créant une nouvelle instance de frame à partir de `params`.
+     *
+     * @param {Object} [params={}] - Options et paramètres transmis au constructeur.
+     * @returns {NFrame|null} Instance créée ou `null` si annulée.
      *
      * @example <caption>Exemple 1 : Création via la fabrique statique</caption>
-     * const res = NFrame.createFrame(appWindow, { title: 'Accueil' });
-     * console.log(res.isNew, res.frame instanceof NFrame); // true true
+     * const frame = NFrame.create({ title: 'Accueil' });
+     * console.log(frame instanceof NFrame); // true
      *
      * @example <caption>Exemple 2 : Création d'une sous-classe</caption>
      * class HomeFrame extends NFrame {}
-     * const res = HomeFrame.createFrame(appWindow);
-     * console.log(res.frame instanceof HomeFrame); // true
+     * const home = HomeFrame.create({ title: 'Accueil' });
+     * console.log(home instanceof HomeFrame); // true
      */
-    static createFrame(windowInstance, params = {}) {
+    static create(params = {}) {
         const opts = (params && typeof params === 'object') ? params : {};
-        return {
-            window: windowInstance ?? null,
-            isNew: true,
-            frame: new this({ ...opts, window: windowInstance ?? null })
-        };
+        opts.isNew = true;
+        return new this(opts);
     }
 }
 

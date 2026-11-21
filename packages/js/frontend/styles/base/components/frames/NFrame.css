@@ -13,7 +13,7 @@
     color: var(--n-text);
 }
 
-.n-frame--floating {
+.n-frame--overlay {
     position: fixed;
     inset: 0;
     z-index: var(--n-z-modal);

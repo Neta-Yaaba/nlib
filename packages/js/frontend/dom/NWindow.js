@@ -19,8 +19,8 @@ import { NTag } from './elements/NTag.js';
  *     theme: 'auto',
  *     styleName: 'glass'
  * });
- * app.registerFrame('home', HomeFrame);
- * app.navigate('/home');
+ * app.registerFrame(HomeFrame);
+ * app.navigate(`${app.getBaseUrl()}/home`);
  *
  * @example <caption>Exemple 2 : Récupérer l'instance unique et revenir en arrière</caption>
  * const win = NWindow.instance();
@@ -35,14 +35,14 @@ export class NWindow extends NTag {
     // =========================================================================
 
     /**
-     * Lien initial résolu à l'ouverture de la fenêtre.
+     * URL initiale résolue à l'ouverture de la fenêtre.
      * @type {string}
      */
-    #initialLink = '';
+    #initialUrl = '';
 
     /**
-     * Registre des classes de frames indexées par nom de route.
-     * @type {Map<string, Function>}
+     * Registre des classes de frames enregistrées pour le routage (ordre d'insertion) et leurs options (`overlay`).
+     * @type {Map<Function, { overlay: boolean }>}
      */
     #frameRegistry = new Map();
 
@@ -68,7 +68,7 @@ export class NWindow extends NTag {
      * Compteur de z-index pour les frames flottantes superposées.
      * @type {number}
      */
-    #floatingZIndex = 1000;
+    #overlayZIndex = 1000;
 
     /**
      * Liste des fonctions de détachement des écouteurs DOM/navigateur.
@@ -116,7 +116,7 @@ export class NWindow extends NTag {
      * @param {string} [options.styleName] - Style visuel appliqué à la fenêtre (`default`, `glass`).
      * @param {Object<string, string>} [options.style] - Styles CSS inline appliqués à la balise racine.
      * @param {object} [options.config] - Paires clé/valeur injectées dans `NUtil.config` (ex. `{ baseUrl }`).
-     * @param {Object<string, Function>} [options.frames] - Dictionnaire initial `{ nomRoute: ClasseNFrame }` enregistré au démarrage.
+     * @param {Array<Function|Array|object>|Object<string, Function|Array|object>} [options.frames] - Liste ou dictionnaire initial des frames (`FrameClass`, `[FrameClass, overlay]` ou `{ FrameClass, overlay }`) enregistrées au démarrage.
      * @param {object} [options.state] - État initial transmis à `NTag` / `NObject`.
      *
      * @example <caption>Exemple 1 : Création standard</caption>
@@ -142,7 +142,7 @@ export class NWindow extends NTag {
             attrs: opts.attrs,
             style: opts.style && typeof opts.style === 'object' ? opts.style : undefined,
             theme: opts.theme,
-            styleName: opts.styleName || (typeof opts.style === 'string' ? opts.style : undefined),
+            styleName: opts.styleName || undefined,
             state: opts.state
         });
 
@@ -163,36 +163,54 @@ export class NWindow extends NTag {
             }
         }
 
-        if (opts.frames && typeof opts.frames === 'object') {
-            for (const [name, FrameClass] of Object.entries(opts.frames)) {
-                this.registerFrame(name, FrameClass);
+        const frameEntries = Array.isArray(opts.frames)
+            ? opts.frames
+            : (opts.frames && typeof opts.frames === 'object' ? Object.values(opts.frames) : []);
+
+        for (const entry of frameEntries) {
+            if (typeof entry === 'function') {
+                this.registerFrame(entry);
+            } else if (Array.isArray(entry)) {
+                this.registerFrame(entry[0], entry[1]);
+            } else if (entry && typeof entry === 'object') {
+                this.registerFrame(entry.FrameClass || entry.frame, entry.overlay);
             }
         }
 
         const currentUrl = NUtil.sys.getBrowserUrl();
-        const welcomeLink = this.getWelcomeLink();
+        const welcomeLink = this.getWelcomeUrl();
         if (welcomeLink && currentUrl.includes(welcomeLink)) {
-            this.#initialLink = this.getHomeLink();
+            this.setInitialUrl(this.getHomeUrl() || '');
         } else {
-            this.#initialLink = currentUrl;
+            this.setInitialUrl(currentUrl);
         }
 
-        const initialParams = this.linkToParams(this.#initialLink);
+        const initialParams = this.linkToParams(this.#initialUrl);
         if (initialParams) {
             initialParams.isFirst = true;
-            const FrameClass = this.getFrameClass(initialParams.frameName);
-            if (FrameClass && typeof FrameClass.isFloating === 'function' && FrameClass.isFloating(this, initialParams)) {
-                this.#initialLink = '';
+            const resolved = this.resolveFrame(initialParams);
+            if (resolved?.overlay) {
+                this.setInitialUrl('');
             }
         }
 
         this.#bindBrowserEvents();
         this.#bindPullToRefresh();
+        queueMicrotask(() => {
+            if (this.isDestroyed) {
+                return;
+            }
+            if (this.getWelcomeUrl()) {
+                this.navigate(this.getWelcomeUrl());
+            } else {
+                this.openInitialLink(this.getHomeUrl());
+            }
+        });
     }
 
     /**
      * Point d'extension protégé hérité de `NObject`, appelé automatiquement en micro-tâche après la construction.
-     * Déclenche la navigation initiale vers `getWelcomeLink()` ou `openInitialLink(getHomeLink())`.
+     * Déclenche la navigation initiale vers `getWelcomeUrl()` ou `openInitialLink(getHomeUrl())`.
      *
      * @protected
      * @returns {void}
@@ -200,7 +218,7 @@ export class NWindow extends NTag {
      * @example <caption>Exemple 1 : Enregistrer les frames dans une sous-classe puis appeler super._init()</caption>
      * class AppWindow extends NWindow {
      *     _init() {
-     *         this.registerFrame('home', HomeFrame);
+     *         this.registerFrame(HomeFrame);
      *         super._init();
      *     }
      * }
@@ -208,17 +226,13 @@ export class NWindow extends NTag {
      * @example <caption>Exemple 2 : Personnaliser le démarrage sans navigation automatique</caption>
      * class CustomWindow extends NWindow {
      *     _init() {
-     *         this.registerFrame('login', LoginFrame);
-     *         this.navigate('/login');
+     *         this.registerFrame(LoginFrame);
+     *         this.navigate(`${this.getBaseUrl()}/login`);
      *     }
      * }
      */
     _init() {
-        if (this.getWelcomeLink()) {
-            this.navigate(this.getWelcomeLink());
-        } else {
-            this.openInitialLink(this.getHomeLink());
-        }
+
     }
 
     // =========================================================================
@@ -234,7 +248,8 @@ export class NWindow extends NTag {
      * const win = NWindow.instance();
      *
      * @example <caption>Exemple 2 : Naviguer depuis n'importe quel module</caption>
-     * NWindow.instance()?.navigate('/settings');
+     * const win = NWindow.instance();
+     * win?.navigate(`${win.getBaseUrl()}/settings`);
      */
     static instance() {
         if (typeof document === 'undefined') {
@@ -294,40 +309,57 @@ export class NWindow extends NTag {
     }
 
     /**
-     * Retourne le lien initial résolu lors de la création de la fenêtre.
+     * Définit l'URL initiale utilisée au démarrage de la fenêtre.
      *
-     * @returns {string} Lien initial ou chaîne vide.
+     * @param {string} url - URL initiale.
+     * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Lire le lien initial détecté</caption>
-     * const startLink = win.getInitialLink();
+     * @example <caption>Exemple 1 : Définir l'URL initiale</caption>
+     * win.setInitialUrl(`${win.getBaseUrl()}/dashboard`);
      *
-     * @example <caption>Exemple 2 : Naviguer vers le lien initial ou l'accueil</caption>
-     * win.navigate(win.getInitialLink() || win.getHomeLink());
+     * @example <caption>Exemple 2 : Réinitialiser l'URL initiale</caption>
+     * win.setInitialUrl('');
      */
-    getInitialLink() {
-        return this.#initialLink;
+    setInitialUrl(url) {
+        this.#initialUrl = typeof url === 'string' ? url.trim() : '';
+        return this;
     }
 
     /**
-     * Exécute la navigation initiale vers `#initialLink`, ou bascule vers `defaultLink` (ou `getHomeLink()`).
+     * Retourne l'URL initiale résolue lors de la création de la fenêtre.
      *
-     * @param {string|null} [defaultLink=null] - Lien de repli utilisé si `#initialLink` est vide ou échoue.
+     * @returns {string} URL initiale ou chaîne vide.
+     *
+     * @example <caption>Exemple 1 : Lire l'URL initiale détectée</caption>
+     * const startUrl = win.getInitialUrl();
+     *
+     * @example <caption>Exemple 2 : Naviguer vers l'URL initiale ou l'accueil</caption>
+     * win.navigate(win.getInitialUrl() || win.getHomeUrl());
+     */
+    getInitialUrl() {
+        return this.#initialUrl;
+    }
+
+    /**
+     * Exécute la navigation initiale vers `#initialUrl`, ou bascule vers `defaultLink` (ou `getHomeUrl()`).
+     *
+     * @param {string|null} [defaultLink=null] - Lien de repli utilisé si `#initialUrl` est vide ou échoue.
      * @returns {import('./components/frames/NFrame.js').NFrame|null} Frame activée ou `null`.
      *
-     * @example <caption>Exemple 1 : Démarrer la navigation avec repli sur getHomeLink()</caption>
+     * @example <caption>Exemple 1 : Démarrer la navigation avec repli sur getHomeUrl()</caption>
      * win.openInitialLink();
      *
      * @example <caption>Exemple 2 : Démarrer avec un lien de repli personnalisé</caption>
-     * win.openInitialLink('/welcome');
+     * win.openInitialLink(`${win.getBaseUrl()}/welcome`);
      */
     openInitialLink(defaultLink = null) {
-        if (this.#initialLink) {
-            const frame = this.navigate(this.#initialLink);
+        if (this.#initialUrl) {
+            const frame = this.navigate(this.#initialUrl);
             if (frame) {
                 return frame;
             }
         }
-        const fallback = defaultLink || this.getHomeLink();
+        const fallback = defaultLink;
         return fallback ? this.navigate(fallback) : null;
     }
 
@@ -337,14 +369,14 @@ export class NWindow extends NTag {
      * @returns {string|null} Lien de la frame d'accueil ou `null`.
      *
      * @example <caption>Exemple 1 : Naviguer vers la page d'accueil si définie</caption>
-     * if (win.getHomeLink()) { win.navigate(win.getHomeLink()); }
+     * if (win.getHomeUrl()) { win.navigate(win.getHomeUrl()); }
      *
-     * @example <caption>Exemple 2 : Redéfinir getHomeLink dans une sous-classe</caption>
+     * @example <caption>Exemple 2 : Redéfinir getHomeUrl dans une sous-classe</caption>
      * class AppWindow extends NWindow {
-     *     getHomeLink() { return '/dashboard'; }
+     *     getHomeUrl() { return `${this.getBaseUrl()}/dashboard`; }
      * }
      */
-    getHomeLink() {
+    getHomeUrl() {
         return null;
     }
 
@@ -354,14 +386,14 @@ export class NWindow extends NTag {
      * @returns {string|null} Lien de la frame de bienvenue ou `null`.
      *
      * @example <caption>Exemple 1 : Vérifier si un écran de bienvenue est configuré</caption>
-     * if (win.getWelcomeLink()) { win.navigate(win.getWelcomeLink()); }
+     * if (win.getWelcomeUrl()) { win.navigate(win.getWelcomeUrl()); }
      *
-     * @example <caption>Exemple 2 : Redéfinir getWelcomeLink dans une sous-classe</caption>
+     * @example <caption>Exemple 2 : Redéfinir getWelcomeUrl dans une sous-classe</caption>
      * class AppWindow extends NWindow {
-     *     getWelcomeLink() { return '/onboarding'; }
+     *     getWelcomeUrl() { return `${this.getBaseUrl()}/onboarding`; }
      * }
      */
-    getWelcomeLink() {
+    getWelcomeUrl() {
         return null;
     }
 
@@ -372,16 +404,16 @@ export class NWindow extends NTag {
      * @returns {import('./components/frames/NFrame.js').NFrame|null} Frame correspondante ou `null`.
      *
      * @example <caption>Exemple 1 : Retrouver une frame déjà montée</caption>
-     * const profile = win.getFrame('/profile');
+     * const profile = win.getFrame(`${win.getBaseUrl()}/profile`);
      *
      * @example <caption>Exemple 2 : Vérifier si une route est déjà ouverte</caption>
-     * const isOpen = win.getFrame('/settings') !== null;
+     * const isOpen = win.getFrame(`${win.getBaseUrl()}/settings`) !== null;
      */
     getFrame(link) {
         if (!link) {
             return null;
         }
-        return this.#frames.find((frame) => frame.isLink(link) || frame.getLink() === link) || null;
+        return this.#frames.find((frame) => frame.matchesUrl(link) || frame.getUrl() === link) || null;
     }
 
     // =========================================================================
@@ -389,22 +421,24 @@ export class NWindow extends NTag {
     // =========================================================================
 
     /**
-     * Enregistre une classe `NFrame` dans le registre de routage sous un nom donné.
+     * Enregistre une classe `NFrame` dans le registre de routage.
+     * La classe déclare sa route via `static route` et/ou `static matchUrl(url, params)`.
      *
-     * @param {string} name - Nom de route ou identifiant de frame.
      * @param {Function} FrameClass - Classe héritant de `NFrame`.
+     * @param {boolean} [overlay] - Indique si la frame doit s'ouvrir en mode superposition (`overlay`). Par défaut `Boolean(FrameClass.overlay)`.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Enregistrer une page d'accueil</caption>
-     * win.registerFrame('home', HomeFrame);
+     * @example <caption>Exemple 1 : Enregistrer une page standard et une frame overlay</caption>
+     * win.registerFrame(HomeFrame)
+     *    .registerFrame(ModalFrame, true);
      *
-     * @example <caption>Exemple 2 : Enchaîner plusieurs enregistrements</caption>
-     * win.registerFrame('home', HomeFrame)
-     *    .registerFrame('settings', SettingsFrame);
+     * @example <caption>Exemple 2 : Forcer le mode non-overlay</caption>
+     * win.registerFrame(SettingsFrame, false);
      */
-    registerFrame(name, FrameClass) {
-        if (typeof name === 'string' && name.trim() && typeof FrameClass === 'function') {
-            this.#frameRegistry.set(name.trim(), FrameClass);
+    registerFrame(FrameClass, overlay = undefined) {
+        if (typeof FrameClass === 'function') {
+            const isOverlay = overlay !== undefined ? Boolean(overlay) : Boolean(FrameClass.overlay);
+            this.#frameRegistry.set(FrameClass, { overlay: isOverlay });
         }
         return this;
     }
@@ -412,33 +446,61 @@ export class NWindow extends NTag {
     /**
      * Supprime une classe de frame du registre de routage.
      *
-     * @param {string} name - Nom de route à retirer.
-     * @returns {boolean} `true` si la route existait et a été supprimée.
+     * @param {Function} FrameClass - Classe `NFrame` à retirer.
+     * @returns {boolean} `true` si la classe était enregistrée et a été supprimée.
      *
-     * @example <caption>Exemple 1 : Retirer une route temporaire</caption>
-     * win.unregisterFrame('onboarding');
+     * @example <caption>Exemple 1 : Retirer une frame temporaire</caption>
+     * win.unregisterFrame(OnboardingFrame);
      *
      * @example <caption>Exemple 2 : Vérifier la suppression</caption>
-     * const removed = win.unregisterFrame('legacy');
+     * const removed = win.unregisterFrame(LegacyFrame);
      */
-    unregisterFrame(name) {
-        return this.#frameRegistry.delete(name);
+    unregisterFrame(FrameClass) {
+        return this.#frameRegistry.delete(FrameClass);
     }
 
     /**
-     * Retourne la classe de frame associée à un nom de route.
+     * Retourne la liste des classes de frames enregistrées dans l'ordre d'inscription.
      *
-     * @param {string} name - Nom de route.
-     * @returns {Function|null} Classe `NFrame` ou `null`.
+     * @returns {Array<Function>} Tableau des classes `NFrame` enregistrées.
      *
-     * @example <caption>Exemple 1 : Récupérer la classe enregistrée</caption>
-     * const HomeClass = win.getFrameClass('home');
+     * @example <caption>Exemple 1 : Lister les frames enregistrées</caption>
+     * const classes = win.getFrameClasses();
      *
-     * @example <caption>Exemple 2 : Vérifier l'existence d'une route</caption>
-     * const exists = win.getFrameClass('admin') !== null;
+     * @example <caption>Exemple 2 : Vérifier si une classe est enregistrée</caption>
+     * const hasHome = win.getFrameClasses().includes(HomeFrame);
      */
-    getFrameClass(name) {
-        return this.#frameRegistry.get(name) || null;
+    getFrameClasses() {
+        return Array.from(this.#frameRegistry.keys());
+    }
+
+    /**
+     * Résout la classe `NFrame`, les paramètres de route et l'option `overlay` correspondant à une URL ou un objet de navigation.
+     * Parcourt les classes enregistrées dans l'ordre et appelle `FrameClass.matchUrl(params.link, params)`.
+     *
+     * @param {string|object} urlOrParams - URL complète ou objet de paramètres normalisés.
+     * @returns {{ FrameClass: Function, params: object, overlay: boolean }|null} Correspondance trouvée ou `null`.
+     *
+     * @example <caption>Exemple 1 : Résoudre une URL complète</caption>
+     * const match = win.resolveFrame(`${win.getBaseUrl()}/users/42`);
+     *
+     * @example <caption>Exemple 2 : Résoudre depuis un objet de paramètres</caption>
+     * const match = win.resolveFrame(win.linkToParams(`${win.getBaseUrl()}/settings`));
+     */
+    resolveFrame(urlOrParams) {
+        const params = (urlOrParams && typeof urlOrParams === 'object' && urlOrParams.link)
+            ? urlOrParams
+            : this.linkToParams(urlOrParams);
+
+        for (const [FrameClass, meta] of this.#frameRegistry) {
+            if (typeof FrameClass.matchUrl !== 'function') continue;
+            const matched = FrameClass.matchUrl(params.link, params);
+            if (matched !== false && matched !== null && matched !== undefined) {
+                const routeParams = (matched && typeof matched === 'object') ? matched : {};
+                return { FrameClass, params: routeParams, overlay: meta.overlay };
+            }
+        }
+        return null;
     }
 
     // =========================================================================
@@ -448,26 +510,25 @@ export class NWindow extends NTag {
     /**
      * Convertit un lien textuel ou un objet de paramètres en objet de navigation normalisé.
      *
-     * @param {string|object} linkOrParams - Lien (`/home?tab=1`) ou objet de paramètres.
-     * @returns {object} Paramètres normalisés `{ link, path, query, frameName, ... }`.
+     * @param {string|object} linkOrParams - URL ou objet de paramètres de navigation.
+     * @returns {object} Paramètres normalisés `{ link, path, query, ... }`.
      *
      * @example <caption>Exemple 1 : Analyser une chaîne de lien avec query string</caption>
-     * const params = win.linkToParams('/users?page=2&sort=name');
+     * const params = win.linkToParams(`${win.getBaseUrl()}/users?page=2&sort=name`);
      *
      * @example <caption>Exemple 2 : Normaliser un objet de paramètres</caption>
-     * const params = win.linkToParams({ frameName: 'profile', id: 12 });
+     * const params = win.linkToParams({ link: `${win.getBaseUrl()}/profile`, id: 12 });
      */
     linkToParams(linkOrParams) {
         if (linkOrParams && typeof linkOrParams === 'object') {
-            const rawLink = linkOrParams.link || (linkOrParams.frameName ? `/${linkOrParams.frameName}` : '/');
+            const rawLink = linkOrParams.link || linkOrParams.path || '/';
             const parsed = this.#parseLinkString(rawLink);
             return {
                 ...parsed.query,
                 ...linkOrParams,
-                link: linkOrParams.link || parsed.link,
+                link: parsed.link,
                 path: linkOrParams.path || parsed.path,
-                query: { ...parsed.query, ...(linkOrParams.query || {}) },
-                frameName: linkOrParams.frameName || parsed.frameName
+                query: { ...parsed.query, ...(linkOrParams.query || {}) }
             };
         }
 
@@ -481,14 +542,14 @@ export class NWindow extends NTag {
     /**
      * Navigue vers un lien ou un objet de paramètres de frame, crée ou réutilise la frame et l'amène au premier plan.
      *
-     * @param {string|object} linkOrParams - Lien cible ou objet de paramètres (`link`, `frameName`, `frameClass`, `forceNew`, `isBack`, `target`, etc.).
+     * @param {string|object} linkOrParams - Lien cible ou objet de paramètres (`link`, `frameClass`, `forceNew`, `isBack`, `target`, etc.).
      * @returns {import('./components/frames/NFrame.js').NFrame|null} Frame activée ou `null` si introuvable/refusée/externe.
      *
      * @example <caption>Exemple 1 : Naviguer vers une route enregistrée</caption>
-     * win.navigate('/home');
+     * win.navigate(`${win.getBaseUrl()}/home`);
      *
      * @example <caption>Exemple 2 : Naviguer en remplaçant la barre d'adresse via isBack</caption>
-     * win.navigate({ link: '/login', isBack: true });
+     * win.navigate({ link: `${win.getBaseUrl()}/login`, isBack: true });
      */
     navigate(linkOrParams) {
         const rawLink = typeof linkOrParams === 'string'
@@ -502,24 +563,61 @@ export class NWindow extends NTag {
             return null;
         }
 
-        const params = this.linkToParams(linkOrParams);
-        const FrameClass = params.frameClass || this.getFrameClass(params.frameName);
+        const baseParams = this.linkToParams(linkOrParams);
+        let FrameClass = baseParams.frameClass || null;
+        let params = baseParams;
+        let registeredOverlay;
+
+        if (!FrameClass) {
+            const resolved = this.resolveFrame(baseParams);
+            if (resolved) {
+                FrameClass = resolved.FrameClass;
+                params = { ...baseParams, ...resolved.params };
+                registeredOverlay = resolved.overlay;
+            }
+        } else {
+            registeredOverlay = this.#frameRegistry.get(FrameClass)?.overlay;
+        }
 
         if (!FrameClass) {
             this.emit('navigation:not-found', { params });
             return null;
         }
 
-        if (typeof FrameClass.validateLink === 'function' && !FrameClass.validateLink(this, params)) {
-            this.emit('navigation:denied', { params, FrameClass });
-            return null;
+        const isOverlay = params.overlay !== undefined
+            ? Boolean(params.overlay)
+            : (registeredOverlay !== undefined ? registeredOverlay : Boolean(FrameClass.overlay));
+        params = { ...params, overlay: isOverlay };
+
+        if (typeof FrameClass.canActivate === 'function') {
+            const rawGuard = FrameClass.canActivate(params);
+            const guard = (rawGuard && typeof rawGuard === 'object')
+                ? rawGuard
+                : { status: rawGuard ? 'allow' : 'deny' };
+
+            if (guard.status === 'redirect' && guard.url) {
+                const redirectCount = Number(params._redirectCount || 0);
+                if (redirectCount >= 5) {
+                    this.emit('navigation:denied', { params, FrameClass, reason: 'too-many-redirects', guard });
+                    return null;
+                }
+                this.emit('navigation:redirect', { params, FrameClass, url: guard.url, guard });
+                const nextTarget = (guard.params && typeof guard.params === 'object')
+                    ? { ...guard.params, link: guard.url, _redirectCount: redirectCount + 1 }
+                    : { link: guard.url, _redirectCount: redirectCount + 1 };
+                return this.navigate(nextTarget);
+            }
+
+            if (guard.status !== 'allow') {
+                this.emit('navigation:denied', { params, FrameClass, reason: guard.reason, guard });
+                return null;
+            }
         }
 
         let frame = !params.forceNew ? this.getFrame(params.link) : null;
         if (!frame) {
-            if (typeof FrameClass.createFrame === 'function') {
-                const descriptor = FrameClass.createFrame(this, params);
-                frame = descriptor?.frame || null;
+            if (typeof FrameClass.create === 'function') {
+                frame = FrameClass.create(params);
             } else {
                 frame = new FrameClass(params);
             }
@@ -529,8 +627,8 @@ export class NWindow extends NTag {
             return null;
         }
 
-        if (!frame.getLink()) {
-            frame.setLink(params.link);
+        if (!frame.getUrl()) {
+            frame.setUrl(params.link);
         }
 
         if (!this.#frames.includes(frame)) {
@@ -561,7 +659,7 @@ export class NWindow extends NTag {
         }
 
         const previousFrame = this.#currentFrame;
-        const isFloating = frame.isFloating();
+        const isOverlay = frame.isOverlay();
 
         if (previousFrame && previousFrame !== frame) {
             if (typeof previousFrame.onDeactivate === 'function') {
@@ -569,7 +667,7 @@ export class NWindow extends NTag {
             }
         }
 
-        if (!isFloating) {
+        if (!isOverlay) {
             for (const item of this.#frames) {
                 if (item !== frame) {
                     item.hide();
@@ -577,8 +675,8 @@ export class NWindow extends NTag {
             }
             frame.show();
         } else {
-            this.#floatingZIndex += 1;
-            frame.setStyle('z-index', String(this.#floatingZIndex));
+            this.#overlayZIndex += 1;
+            frame.setStyle('z-index', String(this.#overlayZIndex));
             frame.show();
         }
 
@@ -594,7 +692,7 @@ export class NWindow extends NTag {
             NUtil.sys.setBrowserTitle(frame.getTitle());
         }
 
-        const resolvedLink = String(params.link || frame.getLink() || '/');
+        const resolvedLink = this.#parseLinkString(String(params.link || frame.getUrl() || '/')).link;
 
         if (isBack) {
             NUtil.sys.setBrowserUrl(resolvedLink, { link: resolvedLink });
@@ -627,7 +725,7 @@ export class NWindow extends NTag {
      * win.back();
      *
      * @example <caption>Exemple 2 : Revenir avec un lien de repli vers l'accueil</caption>
-     * win.back('/home');
+     * win.back(`${win.getBaseUrl()}/home`);
      */
     back(defaultLink = null) {
         const current = this.#currentFrame;
@@ -642,10 +740,10 @@ export class NWindow extends NTag {
             return false;
         }
         if (!defaultLink) {
-            defaultLink = current.getBackLink();
+            defaultLink = current.getBackUrl();
         }
-        if (!defaultLink && !this.util.str.equals(current.getLink(), this.getHomeLink())) {
-            defaultLink = this.getHomeLink();
+        if (!defaultLink && !this.util.str.equals(current.getUrl(), this.getHomeUrl())) {
+            defaultLink = this.getHomeUrl();
         }
 
         const activateHistoryTop = () => {
@@ -738,7 +836,7 @@ export class NWindow extends NTag {
      * win.clearHistory();
      *
      * @example <caption>Exemple 2 : Vider l'historique puis naviguer</caption>
-     * win.clearHistory().navigate({ link: '/login', isBack: true });
+     * win.clearHistory().navigate({ link: `${win.getBaseUrl()}/login`, isBack: true });
      */
     clearHistory() {
         this.#history = [];
@@ -975,25 +1073,25 @@ export class NWindow extends NTag {
     // =========================================================================
 
     /**
-     * Analyse une chaîne de lien en chemin, paramètres query et nom de frame.
+     * Analyse une chaîne de lien en URL complète normalisée, chemin relatif et paramètres query.
      *
-     * @param {string} rawLink - Chaîne de lien brute.
-     * @returns {{link: string, path: string, query: object, frameName: string}} Résultat normalisé.
+     * @param {string} rawLink - Chaîne de lien brute (relative ou URL complète).
+     * @returns {{link: string, path: string, query: object}} Résultat normalisé avec `link` en URL complète.
      *
-     * @example <caption>Exemple 1 : Lien relatif avec paramètres query</caption>
-     * this.#parseLinkString('/users/42?tab=posts');
-     * // { link: '/users/42?tab=posts', path: '/users/42', query: { tab: 'posts' }, frameName: 'users' }
+     * @example <caption>Exemple 1 : URL complète avec paramètres query</caption>
+     * this.#parseLinkString('https://app.example.com/users/42?tab=posts');
+     * // { link: 'https://app.example.com/users/42?tab=posts', path: '/users/42', query: { tab: 'posts' } }
      *
      * @example <caption>Exemple 2 : URL complète incluant baseUrl</caption>
      * this.#parseLinkString('https://app.example.com/settings?section=theme');
-     * // { link: '/settings?section=theme', path: '/settings', query: { section: 'theme' }, frameName: 'settings' }
+     * // { link: 'https://app.example.com/settings?section=theme', path: '/settings', query: { section: 'theme' } }
      */
     #parseLinkString(rawLink) {
         const cleaned = rawLink && rawLink.trim() ? rawLink.trim() : '/';
         const [rawPath, rawQuery = ''] = cleaned.split('?');
         let path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
 
-        const baseUrl = this.getBaseUrl();
+        const baseUrl = (this.getBaseUrl() || '').replace(/\/+$/, '');
         if (baseUrl && cleaned.startsWith(baseUrl)) {
             const relative = cleaned.slice(baseUrl.length).split('?')[0];
             path = relative.startsWith('/') ? relative : `/${relative}`;
@@ -1007,13 +1105,10 @@ export class NWindow extends NTag {
             }
         }
 
-        const segments = path.split('/').filter(Boolean);
-        const homeLink = this.getHomeLink();
-        const homeSegment = homeLink ? homeLink.replace(/^\/+/, '').split('/')[0] : 'index';
-        const frameName = segments[0] || homeSegment;
-        const link = rawQuery ? `${path}?${rawQuery}` : path;
+        const relativeLink = rawQuery ? `${path}?${rawQuery}` : path;
+        const link = baseUrl ? `${baseUrl}${relativeLink}` : relativeLink;
 
-        return { link, path, query, frameName };
+        return { link, path, query };
     }
 
     /**

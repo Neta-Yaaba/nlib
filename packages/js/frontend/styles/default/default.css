@@ -4,15 +4,17 @@
  * @description Variables du style `default` (thème `light` par défaut et thème `dark` via `data-n-theme="dark"`).
  */
 
-:root,
-[data-n-theme="light"] {
+[data-n-style="default"],
+[data-n-theme="light"][data-n-style="default"],
+[data-n-theme="light"] [data-n-style="default"] {
     color-scheme: light;
     --n-border-color: #d1d5db;
     --n-border-strong: #9ca3af;
     --n-surface-shadow: var(--n-shadow-xs);
 }
 
-[data-n-theme="dark"] {
+[data-n-theme="dark"][data-n-style="default"],
+[data-n-theme="dark"] [data-n-style="default"] {
     color-scheme: dark;
     --n-bg: #0b0f19;
     --n-bg-subtle: #111827;

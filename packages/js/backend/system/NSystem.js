@@ -568,7 +568,11 @@ export class NSystem extends NObject {
      */
     setBrowserUrl(url, state = null) {
         if (typeof window !== 'undefined' && window.history?.replaceState) {
-            window.history.replaceState(state, '', url);
+            try {
+                window.history.replaceState(state, '', url);
+            } catch {
+                // Ignore cross-origin SecurityError
+            }
         }
         if (NUtil.env.isWebView) {
             return this.invokeNative('setBrowserUrl', { url, state });
@@ -590,7 +594,11 @@ export class NSystem extends NObject {
      */
     pushBrowserUrl(url, state = null) {
         if (typeof window !== 'undefined' && window.history?.pushState) {
-            window.history.pushState(state, '', url);
+            try {
+                window.history.pushState(state, '', url);
+            } catch {
+                // Ignore cross-origin SecurityError
+            }
         }
         if (NUtil.env.isWebView) {
             return this.invokeNative('pushBrowserUrl', { url, state });

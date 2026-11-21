@@ -14,10 +14,13 @@ describe('NWindow (dom/NWindow.js)', () => {
         assert.equal(NWindow.instance(), win1);
         assert.equal(win1.getWindow(), win1);
         assert.equal(win1.getBaseUrl(), 'https://app.example.com');
-        assert.equal(win1.getHomeLink(), null);
-        assert.equal(win1.getWelcomeLink(), null);
-        assert.equal(typeof win1.getInitialLink(), 'string');
+        assert.equal(win1.getHomeUrl(), null);
+        assert.equal(win1.getWelcomeUrl(), null);
+        assert.equal(typeof win1.getInitialUrl(), 'string');
+        assert.equal(win1.setInitialUrl('https://app.example.com/start'), win1);
+        assert.equal(win1.getInitialUrl(), 'https://app.example.com/start');
 
+        win1.util.config.remove('baseUrl');
         win1.destroy();
         assert.equal(NWindow.instance(), null);
     });
@@ -27,6 +30,7 @@ describe('NWindow (dom/NWindow.js)', () => {
         const lifecycle = [];
 
         class HomeFrame extends NFrame {
+            static route = '/home';
             _init() {
                 this.setTitle('Accueil');
             }
@@ -41,6 +45,7 @@ describe('NWindow (dom/NWindow.js)', () => {
         }
 
         class ProfileFrame extends NFrame {
+            static route = '/users/:id';
             _init() {
                 this.setTitle('Profil');
             }
@@ -50,21 +55,27 @@ describe('NWindow (dom/NWindow.js)', () => {
             }
         }
 
-        win.registerFrame('home', HomeFrame)
-            .registerFrame('profile', ProfileFrame);
+        win.registerFrame(HomeFrame)
+            .registerFrame(ProfileFrame);
 
-        const parsed = win.linkToParams('/profile?id=42');
-        assert.equal(parsed.frameName, 'profile');
-        assert.equal(parsed.id, '42');
+        const base = win.getBaseUrl();
+        const parsed = win.linkToParams(`${base}/users/42?tab=info`);
+        assert.equal(parsed.path, '/users/42');
+        assert.equal(parsed.tab, 'info');
+        assert.equal(parsed.link, `${base}/users/42?tab=info`);
 
-        const home = win.navigate('/home?tab=feed');
+        const resolved = win.resolveFrame(`${base}/users/42`);
+        assert.equal(resolved.FrameClass, ProfileFrame);
+        assert.deepEqual(resolved.params, { id: '42' });
+
+        const home = win.navigate(`${base}/home?tab=feed`);
         assert.equal(win.getCurrentFrame(), home);
         assert.equal(home.getWindow(), win);
-        assert.deepEqual(win.getHistory(), ['/home?tab=feed']);
+        assert.deepEqual(win.getHistory(), [`${base}/home?tab=feed`]);
 
-        const profile = win.navigate('/profile?id=42');
+        const profile = win.navigate(`${base}/users/42`);
         assert.equal(win.getCurrentFrame(), profile);
-        assert.deepEqual(win.getHistory(), ['/home?tab=feed', '/profile?id=42']);
+        assert.deepEqual(win.getHistory(), [`${base}/home?tab=feed`, `${base}/users/42`]);
         assert.equal(home.isVisible(), false);
         assert.equal(profile.isVisible(), true);
 
@@ -72,7 +83,7 @@ describe('NWindow (dom/NWindow.js)', () => {
         assert.equal(win.getCurrentFrame(), home);
         assert.equal(home.isVisible(), true);
         assert.equal(profile.isVisible(), false);
-        assert.deepEqual(win.getHistory(), ['/home?tab=feed']);
+        assert.deepEqual(win.getHistory(), [`${base}/home?tab=feed`]);
 
         assert.deepEqual(lifecycle, [
             'home:activate:feed',
@@ -90,15 +101,15 @@ describe('NWindow (dom/NWindow.js)', () => {
     it('gère les frames flottantes avec z-index croissant sans masquer la frame de fond', () => {
         const win = new NWindow();
 
-        class BaseFrame extends NFrame {}
+        class BaseFrame extends NFrame {
+            static route = '/base';
+        }
         class ModalFrame extends NFrame {
-            constructor(opts = {}) {
-                super({ ...opts, floating: true });
-            }
+            static route = '/modal';
         }
 
-        win.registerFrame('base', BaseFrame)
-            .registerFrame('modal', ModalFrame);
+        win.registerFrame(BaseFrame, false)
+            .registerFrame(ModalFrame, true);
 
         const base = win.navigate('/base');
         const modal = win.navigate('/modal');
@@ -119,13 +130,14 @@ describe('NWindow (dom/NWindow.js)', () => {
         const events = [];
 
         class LifeFrame extends NFrame {
+            static route = '/life';
             onResume() { events.push('frame:resume'); return super.onResume(); }
             onPause() { events.push('frame:pause'); return super.onPause(); }
             onFocus() { events.push('frame:focus'); return super.onFocus(); }
             onBlur() { events.push('frame:blur'); return super.onBlur(); }
         }
 
-        win.registerFrame('life', LifeFrame);
+        win.registerFrame(LifeFrame);
         win.navigate('/life');
 
         win.on('resume', () => events.push('win:resume'));
@@ -150,6 +162,44 @@ describe('NWindow (dom/NWindow.js)', () => {
 
         assert.equal(win.scrollTo(0, 0), win);
         assert.equal(win.scrollTo({ top: 100, behavior: 'auto' }), win);
+
+        win.destroy();
+    });
+
+    it('gère les décisions canActivate (allow, deny, redirect)', () => {
+        const win = new NWindow();
+        const events = [];
+
+        class LoginFrame extends NFrame {
+            static route = '/login';
+        }
+        class SecretFrame extends NFrame {
+            static route = '/secret';
+            static canActivate(params) {
+                if (!params.isAuthenticated) {
+                    return { status: 'redirect', url: '/login' };
+                }
+                return params.isAdmin
+                    ? { status: 'allow' }
+                    : { status: 'deny', reason: 'forbidden' };
+            }
+        }
+
+        win.registerFrame(LoginFrame).registerFrame(SecretFrame);
+        win.on('navigation:redirect', (e) => events.push(`redirect:${e.url}`));
+        win.on('navigation:denied', (e) => events.push(`denied:${e.reason}`));
+
+        const redirected = win.navigate('/secret');
+        assert.equal(redirected instanceof LoginFrame, true);
+        assert.equal(win.getCurrentFrame(), redirected);
+
+        const denied = win.navigate({ link: '/secret', isAuthenticated: true, isAdmin: false });
+        assert.equal(denied, null);
+
+        const allowed = win.navigate({ link: '/secret', isAuthenticated: true, isAdmin: true });
+        assert.equal(allowed instanceof SecretFrame, true);
+
+        assert.deepEqual(events, ['redirect:/login', 'denied:forbidden']);
 
         win.destroy();
     });
