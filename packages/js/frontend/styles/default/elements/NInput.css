@@ -1,9 +1,0 @@
-/**
- * @file NInput.css
- * @package @nlib/js-frontend
- * @description Règles du style `default` pour `NInput` (`.n-input`).
- */
-
-.n-input:focus {
-    background-color: var(--n-surface);
-}

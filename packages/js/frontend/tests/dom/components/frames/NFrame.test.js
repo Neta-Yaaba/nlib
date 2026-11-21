@@ -49,17 +49,7 @@ describe('NFrame (dom/components/frames/NFrame.js)', () => {
         assert.equal(frame instanceof NFrame, true);
         assert.equal(frame.getWindow(), document.body?._nwindow ?? null);
 
-        class ModalTestFrame extends NFrame {
-            static overlay = true;
-            static route = '/users/:id';
-        }
-        class DocsTestFrame extends NFrame {
-            static route = /^\/docs\/(.+)$/;
-        }
         assert.deepEqual(NFrame.canActivate({}), { status: 'allow' });
-        assert.deepEqual(ModalTestFrame.matchUrl('https://app.example.com/users/42'), { id: '42' });
-        assert.equal(ModalTestFrame.matchUrl('https://app.example.com/posts/42'), false);
-        assert.deepEqual(DocsTestFrame.matchUrl('https://app.example.com/docs/guide/intro'), { 0: 'guide/intro' });
 
         assert.equal(frame.verifyAlert([]), true);
         assert.equal(frame.verifyAlert([{ id: 1 }]), false);

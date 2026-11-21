@@ -281,48 +281,25 @@ export class NButton extends NTag {
     destroy(): void;
 }
 
-export interface NInputOptions extends NTagOptions {
-    type?: string;
+export interface NCheckBoxOptions extends NTagOptions {
     name?: string;
     value?: string | number;
-    placeholder?: string;
     checked?: boolean;
     indeterminate?: boolean;
     disabled?: boolean;
-    readonly?: boolean;
     required?: boolean;
-    autocomplete?: string;
     autofocus?: boolean;
-    min?: string | number;
-    max?: string | number;
-    step?: string | number;
-    minLength?: number;
-    maxLength?: number;
-    pattern?: string | RegExp;
-    accept?: string | string[];
-    multiple?: boolean;
 }
 
-/**
- * Composant champ de saisie universel (`<input>`) héritant de `NTag` (`dom/elements/NInput.js`).
- */
-export class NInput extends NTag {
-    constructor(options?: NInputOptions | string);
-
-    type: string;
+export class NCheckBox extends NTag {
+    constructor(options?: NCheckBoxOptions);
     name: string;
     value: string;
     checked: boolean;
-    placeholder: string;
-    text: string;
-
-    setType(type: string): this;
-    setText(text: string | number | null | undefined): this;
+    indeterminate: boolean;
     setName(name: string | null | undefined): this;
-    setValue(value: string | number | null | undefined): this;
+    setValue(value: any): this;
     getValue(): string;
-    getValueAsNumber(): number | null;
-    setPlaceholder(placeholder: string | null | undefined): this;
     setChecked(checked?: boolean): this;
     isChecked(): boolean;
     toggleChecked(): this;
@@ -330,21 +307,244 @@ export class NInput extends NTag {
     isIndeterminate(): boolean;
     setDisabled(disabled?: boolean): this;
     isDisabled(): boolean;
+    setRequired(required?: boolean): this;
+    isRequired(): boolean;
+    isValid(): boolean;
+    reportValidity(): boolean;
+    setCustomValidity(message?: string): this;
+    getValidationMessage(): string;
+    clear(): this;
+}
+
+export interface NRadioBoxOptions extends NTagOptions {
+    name?: string;
+    value?: string | number;
+    checked?: boolean;
+    disabled?: boolean;
+    required?: boolean;
+    autofocus?: boolean;
+}
+
+export class NRadioBox extends NTag {
+    constructor(options?: NRadioBoxOptions);
+    name: string;
+    value: string;
+    checked: boolean;
+    setName(name: string | null | undefined): this;
+    setValue(value: any): this;
+    getValue(): string;
+    setChecked(checked?: boolean): this;
+    isChecked(): boolean;
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
+    setRequired(required?: boolean): this;
+    isRequired(): boolean;
+    isValid(): boolean;
+    reportValidity(): boolean;
+    setCustomValidity(message?: string): this;
+    getValidationMessage(): string;
+    clear(): this;
+}
+
+export interface NTextareaOptions extends NTagOptions {
+    name?: string;
+    value?: string;
+    placeholder?: string;
+    rows?: number;
+    cols?: number;
+    wrap?: 'soft' | 'hard' | 'off';
+    minLength?: number;
+    maxLength?: number;
+    autocomplete?: string;
+    autofocus?: boolean;
+    disabled?: boolean;
+    readonly?: boolean;
+    required?: boolean;
+}
+
+export class NTextarea extends NTag {
+    constructor(options?: NTextareaOptions);
+    name: string;
+    value: string;
+    placeholder: string;
+    rows: number;
+    cols: number;
+    setName(name: string | null | undefined): this;
+    setValue(value: any): this;
+    getValue(): string;
+    setPlaceholder(placeholder: string | null | undefined): this;
+    setRows(rows: number | null | undefined): this;
+    setCols(cols: number | null | undefined): this;
+    setWrap(wrap: 'soft' | 'hard' | 'off' | null | undefined): this;
+    setMinLength(length: number | null | undefined): this;
+    setMaxLength(length: number | null | undefined): this;
+    setAutocomplete(value: string | null | undefined): this;
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
     setReadOnly(readonly?: boolean): this;
     isReadOnly(): boolean;
     setRequired(required?: boolean): this;
     isRequired(): boolean;
-    setAutocomplete(value: string | null | undefined): this;
-    setMin(min: string | number | null | undefined): this;
-    setMax(max: string | number | null | undefined): this;
-    setStep(step: string | number | null | undefined): this;
+    select(): this;
+    isValid(): boolean;
+    reportValidity(): boolean;
+    setCustomValidity(message?: string): this;
+    getValidationMessage(): string;
+    clear(): this;
+}
+
+export interface NEditTextOptions extends NTagOptions {
+    type?: 'text' | 'email' | 'password' | 'search' | 'tel' | 'url';
+    name?: string;
+    value?: string;
+    placeholder?: string;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+    autocomplete?: string;
+    autofocus?: boolean;
+    disabled?: boolean;
+    readonly?: boolean;
+    required?: boolean;
+}
+
+export class NEditText extends NTag {
+    constructor(options?: NEditTextOptions);
+    type: string;
+    name: string;
+    value: string;
+    placeholder: string;
+    setType(type: string): this;
+    setName(name: string | null | undefined): this;
+    setValue(value: any): this;
+    getValue(): string;
+    setPlaceholder(placeholder: string | null | undefined): this;
     setMinLength(length: number | null | undefined): this;
     setMaxLength(length: number | null | undefined): this;
-    setPattern(pattern: string | RegExp | null | undefined): this;
-    setAccept(accept: string | string[] | null | undefined): this;
+    setPattern(pattern: string | null | undefined): this;
+    setAutocomplete(value: string | null | undefined): this;
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
+    setReadOnly(readonly?: boolean): this;
+    isReadOnly(): boolean;
+    setRequired(required?: boolean): this;
+    isRequired(): boolean;
+    select(): this;
+    isValid(): boolean;
+    reportValidity(): boolean;
+    setCustomValidity(message?: string): this;
+    getValidationMessage(): string;
+    clear(): this;
+}
+
+export interface NEditNumberOptions extends NTagOptions {
+    type?: 'number' | 'range';
+    name?: string;
+    value?: number | string;
+    placeholder?: string;
+    min?: number | string;
+    max?: number | string;
+    step?: number | string;
+    autocomplete?: string;
+    autofocus?: boolean;
+    disabled?: boolean;
+    readonly?: boolean;
+    required?: boolean;
+}
+
+export class NEditNumber extends NTag {
+    constructor(options?: NEditNumberOptions);
+    type: string;
+    name: string;
+    value: string;
+    placeholder: string;
+    setType(type: string): this;
+    setName(name: string | null | undefined): this;
+    setValue(value: any): this;
+    getValue(): string;
+    getValueAsNumber(): number | null;
+    setPlaceholder(placeholder: string | null | undefined): this;
+    setMin(min: number | string | null | undefined): this;
+    setMax(max: number | string | null | undefined): this;
+    setStep(step: number | string | null | undefined): this;
+    setAutocomplete(value: string | null | undefined): this;
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
+    setReadOnly(readonly?: boolean): this;
+    isReadOnly(): boolean;
+    setRequired(required?: boolean): this;
+    isRequired(): boolean;
+    select(): this;
+    isValid(): boolean;
+    reportValidity(): boolean;
+    setCustomValidity(message?: string): this;
+    getValidationMessage(): string;
+    clear(): this;
+}
+
+export interface NFilePickerOptions extends NTagOptions {
+    name?: string;
+    accept?: string;
+    multiple?: boolean;
+    disabled?: boolean;
+    required?: boolean;
+    autofocus?: boolean;
+}
+
+export class NFilePicker extends NTag {
+    constructor(options?: NFilePickerOptions);
+    name: string;
+    setName(name: string | null | undefined): this;
+    setAccept(accept: string | null | undefined): this;
     setMultiple(multiple?: boolean): this;
     getFiles(): File[];
-    select(): this;
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
+    setRequired(required?: boolean): this;
+    isRequired(): boolean;
+    isValid(): boolean;
+    reportValidity(): boolean;
+    setCustomValidity(message?: string): this;
+    getValidationMessage(): string;
+    clear(): this;
+}
+
+export interface NSelectOptionItem {
+    value: string;
+    label?: string;
+    disabled?: boolean;
+    selected?: boolean;
+}
+
+export interface NSelectOptions extends NTagOptions {
+    name?: string;
+    options?: Array<string | NSelectOptionItem>;
+    value?: string;
+    multiple?: boolean;
+    size?: number;
+    disabled?: boolean;
+    required?: boolean;
+    autofocus?: boolean;
+}
+
+export class NSelect extends NTag {
+    constructor(options?: NSelectOptions);
+    name: string;
+    value: string;
+    setName(name: string | null | undefined): this;
+    setValue(value: any): this;
+    getValue(): string;
+    setMultiple(multiple?: boolean): this;
+    setSize(size: number | null | undefined): this;
+    addOption(value: string, label?: string, opts?: { disabled?: boolean; selected?: boolean }): this;
+    removeOption(value: string): this;
+    clearOptions(): this;
+    getSelectedOptions(): HTMLOptionElement[];
+    getSelectedValues(): string[];
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
+    setRequired(required?: boolean): this;
+    isRequired(): boolean;
     isValid(): boolean;
     reportValidity(): boolean;
     setCustomValidity(message?: string): this;
@@ -379,7 +579,6 @@ export interface NFrameScrollParams {
  */
 export class NFrame extends NTag {
     static overlay: boolean;
-    static route: string | RegExp | null;
 
     constructor(options?: NFrameOptions | string);
 
@@ -412,7 +611,6 @@ export class NFrame extends NTag {
     onBlur(): this;
     destroy(): void;
 
-    static matchUrl(url: string, params?: Record<string, any>): boolean | Record<string, any>;
     static canActivate(params?: Record<string, any>): NFrameGuardResult | boolean;
     static create<T extends NFrame = NFrame>(params?: NFrameOptions): T | null;
 }
@@ -451,11 +649,20 @@ export declare class NProgress extends NTag {
     destroy(): void;
 }
 
-export type NWindowFrameEntry = typeof NFrame | [typeof NFrame, boolean?] | { FrameClass?: typeof NFrame; frame?: typeof NFrame; overlay?: boolean };
+export interface NWindowRegisterOptions {
+    overlay?: boolean;
+    includes?: boolean;
+}
+
+export type NWindowRoutePattern = string;
+export type NWindowRoutes = NWindowRoutePattern | Array<NWindowRoutePattern>;
+export type NWindowFrameEntry =
+    | [NWindowRoutes, typeof NFrame, (boolean | NWindowRegisterOptions)?]
+    | { routes?: NWindowRoutes; route?: NWindowRoutes; url?: NWindowRoutes; FrameClass?: typeof NFrame; frame?: typeof NFrame; overlay?: boolean; includes?: boolean };
 
 export interface NWindowOptions extends NTagOptions {
     config?: Record<string, any>;
-    frames?: Array<NWindowFrameEntry> | Record<string, NWindowFrameEntry>;
+    frames?: Array<NWindowFrameEntry> | Record<string, typeof NFrame | [typeof NFrame, (boolean | NWindowRegisterOptions)?] | { FrameClass?: typeof NFrame; frame?: typeof NFrame; routes?: NWindowRoutes; route?: NWindowRoutes; overlay?: boolean; includes?: boolean }>;
 }
 
 export interface NWindowNavigateParams extends Record<string, any> {
@@ -485,8 +692,8 @@ export declare class NWindow extends NTag {
     getWelcomeUrl(): string | null;
     getFrame(link: string): NFrame | null;
 
-    registerFrame(FrameClass: typeof NFrame, overlay?: boolean): this;
-    unregisterFrame(FrameClass: typeof NFrame): boolean;
+    registerFrame(routes: NWindowRoutes, FrameClass: typeof NFrame, options?: boolean | NWindowRegisterOptions): this;
+    unregisterFrame(frameClassOrRoute: typeof NFrame | NWindowRoutePattern): boolean;
     getFrameClasses(): Array<typeof NFrame>;
     resolveFrame(urlOrParams: string | Record<string, any>): { FrameClass: typeof NFrame; params: Record<string, any>; overlay: boolean } | null;
 

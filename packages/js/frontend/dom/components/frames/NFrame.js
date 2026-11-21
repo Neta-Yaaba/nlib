@@ -38,13 +38,6 @@ export class NFrame extends NTag {
      */
     static overlay = false;
 
-    /**
-     * Pattern de route associe a la classe de frame (`string` comme `'/users/:id'`, `RegExp`, ou `null`).
-     *
-     * @type {string|RegExp|null}
-     */
-    static route = null;
-
     // =========================================================================
     // Propriétés privées
     // =========================================================================
@@ -807,89 +800,6 @@ export class NFrame extends NTag {
     // =========================================================================
     // Méthodes statiques (Contrat avec NWindow)
     // =========================================================================
-
-    /**
-     * Vérifie si une URL correspond à la route déclarée sur la classe de frame et extrait les paramètres dynamiques.
-     * Prend en charge `static route` sous forme de `RegExp` ou de motif textuel (`/users/:id`, `/docs/*`).
-     * Retourne un objet contenant les paramètres extraits en cas de correspondance, ou `false` sinon.
-     *
-     * @param {string} url - URL complète ou chemin à évaluer.
-     * @param {Object} [params={}] - Paramètres de navigation déjà analysés (ex. `{ path, query }`).
-     * @returns {Object|boolean} Objet de paramètres extraits si la route correspond, sinon `false`.
-     *
-     * @example <caption>Exemple 1 : Route paramétrée</caption>
-     * class UserFrame extends NFrame {
-     *     static route = '/users/:id';
-     * }
-     * const match = UserFrame.matchUrl('https://app.example.com/users/42');
-     * // match => { id: '42' }
-     *
-     * @example <caption>Exemple 2 : Route par expression régulière</caption>
-     * class DocsFrame extends NFrame {
-     *     static route = /^\/docs\/(.+)$/;
-     * }
-     * const match = DocsFrame.matchUrl('https://app.example.com/docs/guide/intro');
-     * // match => { 0: 'guide/intro' }
-     */
-    static matchUrl(url, params = {}) {
-        const route = this.route;
-        if (!route) return false;
-
-        let path = (params && typeof params.path === 'string' && params.path) ? params.path : '';
-        if (!path) {
-            const raw = String(url || '').trim();
-            if (!raw) return false;
-            try {
-                path = new URL(raw, 'http://localhost').pathname || '/';
-            } catch {
-                path = raw.split('?')[0].split('#')[0] || '/';
-            }
-        }
-        if (!path.startsWith('/')) path = `/${path}`;
-
-        if (route instanceof RegExp) {
-            const m = route.exec(path);
-            if (!m) return false;
-            const extracted = {};
-            if (m.groups) {
-                Object.assign(extracted, m.groups);
-            }
-            for (let i = 1; i < m.length; i++) {
-                extracted[i - 1] = m[i];
-            }
-            return extracted;
-        }
-
-        if (typeof route === 'string') {
-            const normRoute = route === '/' ? '/' : route.replace(/\/+$/, '');
-            const normPath = path === '/' ? '/' : path.replace(/\/+$/, '');
-            const routeSegs = normRoute.split('/').filter(Boolean);
-            const pathSegs = normPath.split('/').filter(Boolean);
-
-            const extracted = {};
-            for (let i = 0; i < routeSegs.length; i++) {
-                const seg = routeSegs[i];
-                if (seg === '*') {
-                    extracted['*'] = pathSegs.slice(i).join('/');
-                    return extracted;
-                }
-                if (i >= pathSegs.length) return false;
-                if (seg.startsWith(':')) {
-                    const key = seg.slice(1);
-                    try {
-                        extracted[key] = decodeURIComponent(pathSegs[i]);
-                    } catch {
-                        extracted[key] = pathSegs[i];
-                    }
-                } else if (seg !== pathSegs[i]) {
-                    return false;
-                }
-            }
-            return routeSegs.length === pathSegs.length ? extracted : false;
-        }
-
-        return false;
-    }
 
     /**
      * Garde d'accès statique indiquant si cette frame peut être activée pour les paramètres donnés.

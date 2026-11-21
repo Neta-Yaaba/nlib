@@ -19,8 +19,8 @@ import { NTag } from './elements/NTag.js';
  *     theme: 'auto',
  *     styleName: 'glass'
  * });
- * app.registerFrame(HomeFrame);
- * app.navigate(`${app.getBaseUrl()}/home`);
+ * app.registerFrame('https://app.example.com/home', HomeFrame);
+ * app.navigate('https://app.example.com/home');
  *
  * @example <caption>Exemple 2 : Récupérer l'instance unique et revenir en arrière</caption>
  * const win = NWindow.instance();
@@ -41,8 +41,8 @@ export class NWindow extends NTag {
     #initialUrl = '';
 
     /**
-     * Registre des classes de frames enregistrées pour le routage (ordre d'insertion) et leurs options (`overlay`).
-     * @type {Map<Function, { overlay: boolean }>}
+     * Registre des classes de frames enregistrées pour le routage (ordre d'insertion) avec leurs URLs et options.
+     * @type {Map<Function, { routes: string[], overlay: boolean, includes: boolean }>}
      */
     #frameRegistry = new Map();
 
@@ -116,7 +116,7 @@ export class NWindow extends NTag {
      * @param {string} [options.styleName] - Style visuel appliqué à la fenêtre (`default`, `glass`).
      * @param {Object<string, string>} [options.style] - Styles CSS inline appliqués à la balise racine.
      * @param {object} [options.config] - Paires clé/valeur injectées dans `NUtil.config` (ex. `{ baseUrl }`).
-     * @param {Array<Function|Array|object>|Object<string, Function|Array|object>} [options.frames] - Liste ou dictionnaire initial des frames (`FrameClass`, `[FrameClass, overlay]` ou `{ FrameClass, overlay }`) enregistrées au démarrage.
+     * @param {Array<Array|object>|Object<string, Function|Array|object>} [options.frames] - Dictionnaire `{ route: FrameClass }` ou tableau d'entrées `[routes, FrameClass, overlay?]` enregistrées au démarrage.
      * @param {object} [options.state] - État initial transmis à `NTag` / `NObject`.
      *
      * @example <caption>Exemple 1 : Création standard</caption>
@@ -163,17 +163,23 @@ export class NWindow extends NTag {
             }
         }
 
-        const frameEntries = Array.isArray(opts.frames)
-            ? opts.frames
-            : (opts.frames && typeof opts.frames === 'object' ? Object.values(opts.frames) : []);
-
-        for (const entry of frameEntries) {
-            if (typeof entry === 'function') {
-                this.registerFrame(entry);
-            } else if (Array.isArray(entry)) {
-                this.registerFrame(entry[0], entry[1]);
-            } else if (entry && typeof entry === 'object') {
-                this.registerFrame(entry.FrameClass || entry.frame, entry.overlay);
+        if (Array.isArray(opts.frames)) {
+            for (const entry of opts.frames) {
+                if (Array.isArray(entry)) {
+                    this.registerFrame(entry[0], entry[1], entry[2]);
+                } else if (entry && typeof entry === 'object') {
+                    this.registerFrame(entry.routes ?? entry.route ?? entry.url, entry.FrameClass || entry.frame, entry);
+                }
+            }
+        } else if (opts.frames && typeof opts.frames === 'object') {
+            for (const [route, entry] of Object.entries(opts.frames)) {
+                if (typeof entry === 'function') {
+                    this.registerFrame(route, entry);
+                } else if (Array.isArray(entry)) {
+                    this.registerFrame(route, entry[0], entry[1]);
+                } else if (entry && typeof entry === 'object') {
+                    this.registerFrame(entry.routes ?? entry.route ?? route, entry.FrameClass || entry.frame, entry);
+                }
             }
         }
 
@@ -218,7 +224,7 @@ export class NWindow extends NTag {
      * @example <caption>Exemple 1 : Enregistrer les frames dans une sous-classe puis appeler super._init()</caption>
      * class AppWindow extends NWindow {
      *     _init() {
-     *         this.registerFrame(HomeFrame);
+     *         this.registerFrame('https://app.example.com/home', HomeFrame);
      *         super._init();
      *     }
      * }
@@ -226,8 +232,8 @@ export class NWindow extends NTag {
      * @example <caption>Exemple 2 : Personnaliser le démarrage sans navigation automatique</caption>
      * class CustomWindow extends NWindow {
      *     _init() {
-     *         this.registerFrame(LoginFrame);
-     *         this.navigate(`${this.getBaseUrl()}/login`);
+     *         this.registerFrame('https://app.example.com/login', LoginFrame);
+     *         this.navigate('https://app.example.com/login');
      *     }
      * }
      */
@@ -249,7 +255,7 @@ export class NWindow extends NTag {
      *
      * @example <caption>Exemple 2 : Naviguer depuis n'importe quel module</caption>
      * const win = NWindow.instance();
-     * win?.navigate(`${win.getBaseUrl()}/settings`);
+     * win?.navigate('https://app.example.com/settings');
      */
     static instance() {
         if (typeof document === 'undefined') {
@@ -271,7 +277,7 @@ export class NWindow extends NTag {
      * const base = win.getBaseUrl();
      *
      * @example <caption>Exemple 2 : Construire une URL d'API relative</caption>
-     * const endpoint = `${win.getBaseUrl()}/api/users`;
+     * const endpoint = 'https://app.example.com/api/users';
      */
     getBaseUrl() {
         const fallback = typeof window !== 'undefined' && window.location ? window.location.origin : '';
@@ -315,7 +321,7 @@ export class NWindow extends NTag {
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Définir l'URL initiale</caption>
-     * win.setInitialUrl(`${win.getBaseUrl()}/dashboard`);
+     * win.setInitialUrl('https://app.example.com/dashboard');
      *
      * @example <caption>Exemple 2 : Réinitialiser l'URL initiale</caption>
      * win.setInitialUrl('');
@@ -350,7 +356,7 @@ export class NWindow extends NTag {
      * win.openInitialLink();
      *
      * @example <caption>Exemple 2 : Démarrer avec un lien de repli personnalisé</caption>
-     * win.openInitialLink(`${win.getBaseUrl()}/welcome`);
+     * win.openInitialLink('https://app.example.com/welcome');
      */
     openInitialLink(defaultLink = null) {
         if (this.#initialUrl) {
@@ -373,7 +379,7 @@ export class NWindow extends NTag {
      *
      * @example <caption>Exemple 2 : Redéfinir getHomeUrl dans une sous-classe</caption>
      * class AppWindow extends NWindow {
-     *     getHomeUrl() { return `${this.getBaseUrl()}/dashboard`; }
+     *     getHomeUrl() { return 'https://app.example.com/dashboard'; }
      * }
      */
     getHomeUrl() {
@@ -390,7 +396,7 @@ export class NWindow extends NTag {
      *
      * @example <caption>Exemple 2 : Redéfinir getWelcomeUrl dans une sous-classe</caption>
      * class AppWindow extends NWindow {
-     *     getWelcomeUrl() { return `${this.getBaseUrl()}/onboarding`; }
+     *     getWelcomeUrl() { return 'https://app.example.com/onboarding'; }
      * }
      */
     getWelcomeUrl() {
@@ -404,10 +410,10 @@ export class NWindow extends NTag {
      * @returns {import('./components/frames/NFrame.js').NFrame|null} Frame correspondante ou `null`.
      *
      * @example <caption>Exemple 1 : Retrouver une frame déjà montée</caption>
-     * const profile = win.getFrame(`${win.getBaseUrl()}/profile`);
+     * const profile = win.getFrame('https://app.example.com/profile');
      *
      * @example <caption>Exemple 2 : Vérifier si une route est déjà ouverte</caption>
-     * const isOpen = win.getFrame(`${win.getBaseUrl()}/settings`) !== null;
+     * const isOpen = win.getFrame('https://app.example.com/settings') !== null;
      */
     getFrame(link) {
         if (!link) {
@@ -421,42 +427,75 @@ export class NWindow extends NTag {
     // =========================================================================
 
     /**
-     * Enregistre une classe `NFrame` dans le registre de routage.
-     * La classe déclare sa route via `static route` et/ou `static matchUrl(url, params)`.
+     * Enregistre une classe `NFrame` dans le registre de routage avec une ou plusieurs URLs.
      *
+     * @param {string|string[]} routes - URL exacte, tableau d'URLs exactes, ou préfixe/partie d'URL avec `options.includes`.
      * @param {Function} FrameClass - Classe héritant de `NFrame`.
-     * @param {boolean} [overlay] - Indique si la frame doit s'ouvrir en mode superposition (`overlay`). Par défaut `Boolean(FrameClass.overlay)`.
+     * @param {boolean|{overlay?: boolean, includes?: boolean}} [options={}] - Options (`overlay`, `includes`) ou booléen `overlay`.
      * @returns {this} L'instance courante pour chaînage.
      *
-     * @example <caption>Exemple 1 : Enregistrer une page standard et une frame overlay</caption>
-     * win.registerFrame(HomeFrame)
-     *    .registerFrame(ModalFrame, true);
+     * @example <caption>Exemple 1 : URLs exactes</caption>
+     * win.registerFrame(['https://app.example.com/home', 'https://app.example.com/accueil'], HomeFrame)
+     *    .registerFrame('https://app.example.com/modal', ModalFrame, { overlay: true });
      *
-     * @example <caption>Exemple 2 : Forcer le mode non-overlay</caption>
-     * win.registerFrame(SettingsFrame, false);
+     * @example <caption>Exemple 2 : Correspondance par inclusion (includes)</caption>
+     * win.registerFrame('https://app.example.com/produit/', ProductFrame, { includes: true });
      */
-    registerFrame(FrameClass, overlay = undefined) {
-        if (typeof FrameClass === 'function') {
-            const isOverlay = overlay !== undefined ? Boolean(overlay) : Boolean(FrameClass.overlay);
-            this.#frameRegistry.set(FrameClass, { overlay: isOverlay });
+    registerFrame(routes, FrameClass, options = {}) {
+        if (typeof FrameClass !== 'function') {
+            return this;
         }
+        const routeList = (Array.isArray(routes) ? routes : [routes])
+            .filter((r) => typeof r === 'string' && r.trim())
+            .map((r) => r.trim());
+
+        if (routeList.length === 0) {
+            return this;
+        }
+
+        const opts = typeof options === 'boolean'
+            ? { overlay: options }
+            : (options && typeof options === 'object' ? options : {});
+        const isOverlay = opts.overlay !== undefined ? Boolean(opts.overlay) : Boolean(FrameClass.overlay);
+
+        this.#frameRegistry.set(FrameClass, {
+            routes: routeList,
+            overlay: isOverlay,
+            includes: Boolean(opts.includes)
+        });
         return this;
     }
 
     /**
-     * Supprime une classe de frame du registre de routage.
+     * Supprime une classe de frame ou une URL du registre de routage.
      *
-     * @param {Function} FrameClass - Classe `NFrame` à retirer.
-     * @returns {boolean} `true` si la classe était enregistrée et a été supprimée.
+     * @param {Function|string} frameClassOrRoute - Classe `NFrame` ou URL/fragment à retirer.
+     * @returns {boolean} `true` si au moins une entrée a été supprimée.
      *
-     * @example <caption>Exemple 1 : Retirer une frame temporaire</caption>
+     * @example <caption>Exemple 1 : Retirer par classe de frame</caption>
      * win.unregisterFrame(OnboardingFrame);
      *
-     * @example <caption>Exemple 2 : Vérifier la suppression</caption>
-     * const removed = win.unregisterFrame(LegacyFrame);
+     * @example <caption>Exemple 2 : Retirer par URL enregistrée</caption>
+     * const removed = win.unregisterFrame('https://app.example.com/legacy');
      */
-    unregisterFrame(FrameClass) {
-        return this.#frameRegistry.delete(FrameClass);
+    unregisterFrame(frameClassOrRoute) {
+        if (typeof frameClassOrRoute === 'function') {
+            return this.#frameRegistry.delete(frameClassOrRoute);
+        }
+
+        let removed = false;
+        for (const [FrameClass, meta] of this.#frameRegistry) {
+            const nextRoutes = meta.routes.filter((r) => r !== frameClassOrRoute);
+            if (nextRoutes.length !== meta.routes.length) {
+                removed = true;
+                if (nextRoutes.length === 0) {
+                    this.#frameRegistry.delete(FrameClass);
+                } else {
+                    meta.routes = nextRoutes;
+                }
+            }
+        }
+        return removed;
     }
 
     /**
@@ -475,29 +514,30 @@ export class NWindow extends NTag {
     }
 
     /**
-     * Résout la classe `NFrame`, les paramètres de route et l'option `overlay` correspondant à une URL ou un objet de navigation.
-     * Parcourt les classes enregistrées dans l'ordre et appelle `FrameClass.matchUrl(params.link, params)`.
+     * Résout la classe `NFrame` et l'option `overlay` correspondant à une URL ou un objet de navigation.
+     * Compare les URLs complètes avec exactitude et les fragments par inclusion (`includes`).
      *
      * @param {string|object} urlOrParams - URL complète ou objet de paramètres normalisés.
      * @returns {{ FrameClass: Function, params: object, overlay: boolean }|null} Correspondance trouvée ou `null`.
      *
      * @example <caption>Exemple 1 : Résoudre une URL complète</caption>
-     * const match = win.resolveFrame(`${win.getBaseUrl()}/users/42`);
+     * const match = win.resolveFrame('https://app.example.com/users/42');
      *
      * @example <caption>Exemple 2 : Résoudre depuis un objet de paramètres</caption>
-     * const match = win.resolveFrame(win.linkToParams(`${win.getBaseUrl()}/settings`));
+     * const match = win.resolveFrame(win.linkToParams('https://app.example.com/settings'));
      */
     resolveFrame(urlOrParams) {
         const params = (urlOrParams && typeof urlOrParams === 'object' && urlOrParams.link)
             ? urlOrParams
             : this.linkToParams(urlOrParams);
+        const link = String(params.link || '');
 
         for (const [FrameClass, meta] of this.#frameRegistry) {
-            if (typeof FrameClass.matchUrl !== 'function') continue;
-            const matched = FrameClass.matchUrl(params.link, params);
-            if (matched !== false && matched !== null && matched !== undefined) {
-                const routeParams = (matched && typeof matched === 'object') ? matched : {};
-                return { FrameClass, params: routeParams, overlay: meta.overlay };
+            for (const pattern of meta.routes) {
+                const matched = meta.includes ? link.includes(pattern) : link === pattern;
+                if (matched) {
+                    return { FrameClass, params: {}, overlay: meta.overlay };
+                }
             }
         }
         return null;
@@ -514,10 +554,10 @@ export class NWindow extends NTag {
      * @returns {object} Paramètres normalisés `{ link, path, query, ... }`.
      *
      * @example <caption>Exemple 1 : Analyser une chaîne de lien avec query string</caption>
-     * const params = win.linkToParams(`${win.getBaseUrl()}/users?page=2&sort=name`);
+     * const params = win.linkToParams('https://app.example.com/users?page=2&sort=name');
      *
      * @example <caption>Exemple 2 : Normaliser un objet de paramètres</caption>
-     * const params = win.linkToParams({ link: `${win.getBaseUrl()}/profile`, id: 12 });
+     * const params = win.linkToParams({ link: 'https://app.example.com/profile', id: 12 });
      */
     linkToParams(linkOrParams) {
         if (linkOrParams && typeof linkOrParams === 'object') {
@@ -546,10 +586,10 @@ export class NWindow extends NTag {
      * @returns {import('./components/frames/NFrame.js').NFrame|null} Frame activée ou `null` si introuvable/refusée/externe.
      *
      * @example <caption>Exemple 1 : Naviguer vers une route enregistrée</caption>
-     * win.navigate(`${win.getBaseUrl()}/home`);
+     * win.navigate('https://app.example.com/home');
      *
      * @example <caption>Exemple 2 : Naviguer en remplaçant la barre d'adresse via isBack</caption>
-     * win.navigate({ link: `${win.getBaseUrl()}/login`, isBack: true });
+     * win.navigate({ link: 'https://app.example.com/login', isBack: true });
      */
     navigate(linkOrParams) {
         const rawLink = typeof linkOrParams === 'string'
@@ -725,7 +765,7 @@ export class NWindow extends NTag {
      * win.back();
      *
      * @example <caption>Exemple 2 : Revenir avec un lien de repli vers l'accueil</caption>
-     * win.back(`${win.getBaseUrl()}/home`);
+     * win.back('https://app.example.com/home');
      */
     back(defaultLink = null) {
         const current = this.#currentFrame;
@@ -836,7 +876,7 @@ export class NWindow extends NTag {
      * win.clearHistory();
      *
      * @example <caption>Exemple 2 : Vider l'historique puis naviguer</caption>
-     * win.clearHistory().navigate({ link: `${win.getBaseUrl()}/login`, isBack: true });
+     * win.clearHistory().navigate({ link: 'https://app.example.com/login', isBack: true });
      */
     clearHistory() {
         this.#history = [];

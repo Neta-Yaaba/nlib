@@ -133,7 +133,13 @@ import './dom/elements/NMedia.test.js';
 import './dom/elements/NVideo.test.js';
 import './dom/elements/NAudio.test.js';
 import './dom/elements/NButton.test.js';
-import './dom/elements/NInput.test.js';
+import './dom/elements/NCheckBox.test.js';
+import './dom/elements/NRadioBox.test.js';
+import './dom/elements/NTextarea.test.js';
+import './dom/elements/NEditText.test.js';
+import './dom/elements/NEditNumber.test.js';
+import './dom/elements/NFilePicker.test.js';
+import './dom/elements/NSelect.test.js';
 
 // 2. dom/ & dom/components/
 import './dom/NWindow.test.js';

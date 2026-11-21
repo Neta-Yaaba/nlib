@@ -1,0 +1,26 @@
+/**
+ * @file NRadioBox.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour `NRadioBox` (`.n-radiobox`).
+ */
+
+.n-radiobox {
+    display: inline-block;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin: 0;
+    vertical-align: middle;
+    accent-color: var(--n-primary);
+    cursor: pointer;
+    transition: box-shadow var(--n-duration-fast) var(--n-ease-default);
+}
+
+.n-radiobox:focus {
+    outline: none;
+    box-shadow: var(--n-focus-ring);
+}
+
+.n-radiobox:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
