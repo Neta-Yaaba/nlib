@@ -137,40 +137,39 @@ import './log/NLog.test.js';
 import './config/NConfig.test.js';
 
 // 4. environment/
-import './environment/NEnvironment.test.js';
+import './environment/NEnv.test.js';
 
 // 5. system/
-import './system/NSystem.test.js';
+import './system/NSys.test.js';
 
 // 6. utils/
 import './utils/NUtil.test.js';
-import './utils/NCryptography.test.js';
-import './utils/NString.test.js';
-import './utils/NNumber.test.js';
-import './utils/NDateTime.test.js';
+import './utils/NCrypto.test.js';
+import './utils/NStr.test.js';
+import './utils/NNum.test.js';
+import './utils/NDate.test.js';
 import './utils/NAmount.test.js';
 import './utils/NEmail.test.js';
-import './utils/NPhoneNumber.test.js';
+import './utils/NPhone.test.js';
 import './utils/NUrl.test.js';
 import './utils/NJson.test.js';
-import './utils/NPassword.test.js';
-import './utils/NArray.test.js';
+import './utils/NPass.test.js';
+import './utils/NArr.test.js';
 
 // 7. database/
-import './database/NDatabase.test.js';
 import './database/NSql.test.js';
 import './database/NIndexedDB.test.js';
 import './database/NStorage.test.js';
 
 // 8. filesystem/
 import './filesystem/NFile.test.js';
-import './filesystem/NDirectory.test.js';
+import './filesystem/NDir.test.js';
 
 // 9. cache/
 import './cache/NCache.test.js';
 
 // 10. requests/
-import './requests/NNetwork.test.js';
+import './requests/NNet.test.js';
 import './requests/NTableRequest.test.js';
 import './requests/NRequestManager.test.js';
 import './requests/NService.test.js';
@@ -178,11 +177,11 @@ import './requests/NDataSynchronizer.test.js';
 
 // 11. worker/
 import './worker/NWorker.test.js';
-import './worker/NWorkerManager.test.js';
+import './worker/NWorkMgr.test.js';
 import './worker/NServiceWorker.test.js';
 
 // 12. language/
-import './language/NLanguage.test.js';
+import './language/NLang.test.js';
 
 // Exécution automatique hors navigateur (tests.html appelle runAllTests() directement)
 if (typeof document === 'undefined') {

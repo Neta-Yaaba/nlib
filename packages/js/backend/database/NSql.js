@@ -3,11 +3,11 @@
  * @package @nlib/js-backend
  * @description Moteur de base de données relationnelle SQLite universel et multiplateforme pour NLib.
  * Gère une base SQLite locale en mémoire ou persistante via `sql.js` (WebAssembly)
- * ou délègue automatiquement les requêtes au pont natif de l'application (`NUtil.env.isWebView` / `invokeNative`)
+ * ou délègue automatiquement les requêtes au pont natif de l'application (`NEnv.isWebView` / `invokeNative`)
  * lorsqu'exécuté dans un conteneur natif ou une WebView.
  *
  * Principes techniques :
- * - Capture et journalisation des erreurs via `NUtil.log` avec retours normalisés.
+ * - Capture et journalisation des erreurs via `NLog` avec retours normalisés.
  * - Gestion mémoire étanche : libération systématique des statements préparés (`stmt.free()`) dans des blocs `try ... finally`.
  * - Verrouillage anti-concurrence : chargement du module WebAssembly et initialisation protégés contre les appels simultanés.
  * - Normalisation lexicale des paramètres : analyseur SQL contextuel (ignore chaînes, commentaires et identifiants).
@@ -16,9 +16,10 @@
  * - Multiplateforme : fonctionne de façon transparente en navigateur, Web Worker, WebView native et Node.js.
  */
 
-import { NEvent } from '../core/NEvent.js';
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NLog } from '../log/NLog.js';
+import { NSys } from '../system/NSys.js';
 
 /**
  * Structure de réponse standardisée pour les opérations NSql.
@@ -82,6 +83,13 @@ export class NSql extends NObject {
      */
     static #moduleLoadingPromise = null;
 
+    /**
+     * Instance statique partagée de `NSql`.
+     * @type {NSql|null}
+     * @private
+     */
+    static #instance = null;
+
     // =========================================================================
     // Propriétés d'instance privées
     // =========================================================================
@@ -129,12 +137,32 @@ export class NSql extends NObject {
     #transactionDepth = 0;
 
     /**
-     * Instance interne de `NEvent` pour la détection et notification des changements dans la base.
-     * Allocation paresseuse : reste à null tant que `this.event` n'est pas accédé.
-     * @type {NEvent|null}
+     * Contexte applicatif associé à la base SQL.
+     * @type {string}
      * @private
      */
-    #event = null;
+    #context = 'default';
+
+    /**
+     * Indique si la sauvegarde automatique de la base SQLite dans IndexedDB est activée.
+     * @type {boolean}
+     * @private
+     */
+    #autoSave = true;
+
+    /**
+     * Délai de temporisation (debounce en ms) avant l'exécution de la sauvegarde automatique.
+     * @type {number}
+     * @private
+     */
+    #autoSaveDelay = 500;
+
+    /**
+     * Descripteur de timer actif pour la sauvegarde automatique (`NUtil.setTimeout`).
+     * @type {Object|null}
+     * @private
+     */
+    #autoSaveTimer = null;
 
     // =========================================================================
     // Constructeur
@@ -146,13 +174,16 @@ export class NSql extends NObject {
      * @constructor
      * @param {Object} [options={}] - Options de configuration de la base.
      * @param {string} [options.name='main'] - Nom logique de la base.
+     * @param {string} [options.context='default'] - Contexte applicatif associé.
      * @param {string|Function} [options.wasmPath] - URL ou locateFile vers `sql-wasm.wasm`.
+     * @param {boolean} [options.autoSave=true] - Active ou désactive la sauvegarde automatique dans IndexedDB.
+     * @param {number} [options.autoSaveDelay=500] - Délai de temporisation (debounce en ms) avant sauvegarde automatique.
      *
      * @example <caption>Exemple 1 : Instanciation standard</caption>
      * const sql = new NSql();
      *
-     * @example <caption>Exemple 2 : Instanciation avec chemin WASM personnalisé</caption>
-     * const sql = new NSql({ name: 'pos', wasmPath: '/assets/wasm/sql-wasm.wasm' });
+     * @example <caption>Exemple 2 : Instanciation avec chemin WASM et auto-sauvegarde</caption>
+     * const sql = new NSql({ name: 'pos', wasmPath: '/assets/wasm/sql-wasm.wasm', autoSaveDelay: 300 });
      */
     constructor(options = {}) {
         super(options);
@@ -160,10 +191,46 @@ export class NSql extends NObject {
             if (typeof options.name === 'string' && options.name.trim()) {
                 this.#name = options.name.trim();
             }
+            if (typeof options.context === 'string' && options.context.trim()) {
+                this.#context = options.context.trim();
+            }
             if (options.wasmPath) {
                 this.#wasmPath = options.wasmPath;
             }
+            if (typeof options.autoSave === 'boolean') {
+                this.#autoSave = options.autoSave;
+            }
+            if (typeof options.autoSaveDelay === 'number' && Number.isFinite(options.autoSaveDelay) && options.autoSaveDelay >= 0) {
+                this.#autoSaveDelay = Math.floor(options.autoSaveDelay);
+            }
         }
+    }
+
+    // =========================================================================
+    // Instance statique partagée
+    // =========================================================================
+
+    /**
+     * Retourne l'instance statique partagée de `NSql`, en l'initialisant avec `options` lors du premier appel.
+     *
+     * @param {Object} [options={}] - Options transmises au constructeur lors de la première initialisation.
+     * @param {string} [options.name='main'] - Nom logique de la base.
+     * @param {string|Function} [options.wasmPath] - URL ou locateFile vers `sql-wasm.wasm`.
+     * @returns {NSql} Instance partagée de `NSql`.
+     *
+     * @example <caption>Exemple 1 : Initialisation au premier appel avec options</caption>
+     * const sql = NSql.instance({ name: 'pos', wasmPath: '/assets/wasm/sql-wasm.wasm' });
+     * console.log(sql.name); // 'pos'
+     *
+     * @example <caption>Exemple 2 : Réutilisation de l'instance partagée lors des appels suivants</caption>
+     * const sameSql = NSql.instance();
+     * console.log(sameSql === sql); // true
+     */
+    static instance(options = {}) {
+        if (!NSql.#instance) {
+            NSql.#instance = new NSql(options);
+        }
+        return NSql.#instance;
     }
 
     // =========================================================================
@@ -196,6 +263,70 @@ export class NSql extends NObject {
      */
     get isInitialized() {
         return this.#isInitialized;
+    }
+
+    /**
+     * Indique si la sauvegarde automatique de la base SQLite dans IndexedDB est activée lors des changements.
+     * @type {boolean}
+     *
+     * @example <caption>Exemple 1 : Consulter l'état de l'auto-sauvegarde</caption>
+     * console.log(sql.autoSave); // true
+     *
+     * @example <caption>Exemple 2 : Désactiver temporairement l'auto-sauvegarde</caption>
+     * sql.autoSave = false;
+     * // Opérations en masse
+     * await sql.saveToIndexedDB();
+     * sql.autoSave = true;
+     */
+    get autoSave() {
+        return this.#autoSave;
+    }
+
+    /**
+     * Active ou désactive la sauvegarde automatique dans IndexedDB sur modification SQL.
+     * @param {boolean} value - Nouvel état d'auto-sauvegarde.
+     *
+     * @example <caption>Exemple 1 : Désactiver l'auto-sauvegarde</caption>
+     * sql.autoSave = false;
+     *
+     * @example <caption>Exemple 2 : Réactiver l'auto-sauvegarde</caption>
+     * sql.autoSave = true;
+     */
+    set autoSave(value) {
+        this.#autoSave = Boolean(value);
+        if (!this.#autoSave) {
+            this.cancelAutoSave();
+        }
+    }
+
+    /**
+     * Retourne le délai de temporisation (en ms) avant l'exécution de la sauvegarde automatique.
+     * @type {number}
+     *
+     * @example <caption>Exemple 1 : Consulter le délai configuré</caption>
+     * console.log(sql.autoSaveDelay); // 500
+     *
+     * @example <caption>Exemple 2 : Modifier le délai</caption>
+     * sql.autoSaveDelay = 1000;
+     */
+    get autoSaveDelay() {
+        return this.#autoSaveDelay;
+    }
+
+    /**
+     * Définit le délai de temporisation (en ms) avant l'exécution de la sauvegarde automatique.
+     * @param {number} value - Délai en millisecondes (>= 0).
+     *
+     * @example <caption>Exemple 1 : Définir un délai de 250 ms</caption>
+     * sql.autoSaveDelay = 250;
+     *
+     * @example <caption>Exemple 2 : Sauvegarde quasi immédiate</caption>
+     * sql.autoSaveDelay = 0;
+     */
+    set autoSaveDelay(value) {
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+            this.#autoSaveDelay = Math.floor(value);
+        }
     }
 
     /**
@@ -238,52 +369,6 @@ export class NSql extends NObject {
      */
     get rawDatabase() {
         return this.#db;
-    }
-
-    /**
-     * Accès direct à la classe utilitaire transversale `NUtil`.
-     * @type {typeof NUtil}
-     *
-     * @example <caption>Exemple 1 : Accès au logger via sql.util.log</caption>
-     * sql.util.log.info('Opération SQL terminée');
-     *
-     * @example <caption>Exemple 2 : Utilitaires de conversion</caption>
-     * console.log(sql.util.str.camelCase('table_name'));
-     */
-    get util() {
-        return NUtil;
-    }
-
-    /**
-     * Gestionnaire d'événements réactif de l'instance `NSql`.
-     * Permet d'écouter les opérations et changements intervenant sur la base de données :
-     * - Événement général : `'change'` (reçoit `{ type, table, database, timestamp, ... }`)
-     * - Événements par action : `'insert'`, `'update'`, `'delete'`, `'createTable'`, `'dropTable'`, `'clear'`, etc.
-     * - Événements ciblés par table : `'insert:tableName'`, `'update:tableName'`, `'delete:tableName'`, `'createTable:tableName'`
-     * - Canal de table unifié : `'tableName:change'`
-     *
-     * @type {NEvent}
-     *
-     * @example <caption>Exemple 1 : Écouter les insertions sur la table users</caption>
-     * sql.event.on('insert:users', (evt) => {
-     *     console.log('Utilisateur inséré :', evt.data, 'ID généré :', evt.id);
-     * });
-     *
-     * @example <caption>Exemple 2 : Écouter tous les changements d'une table spécifique</caption>
-     * sql.event.on('products:change', (evt) => {
-     *     console.log(`Action [${evt.type}] sur les produits :`, evt);
-     * });
-     *
-     * @example <caption>Exemple 3 : Écouter l'ensemble des modifications de la base</caption>
-     * sql.event.on('change', ({ type, table, data }) => {
-     *     console.log(`Changement SQL [${type}] sur la table "${table}" :`, data);
-     * });
-     */
-    get event() {
-        if (!this.#event) {
-            this.#event = new NEvent(this);
-        }
-        return this.#event;
     }
 
     // =========================================================================
@@ -334,7 +419,7 @@ export class NSql extends NObject {
                     this.#isInitialized = res?.ok ?? Boolean(res);
                     return this.#isInitialized;
                 } catch (err) {
-                    NUtil.log.error('NSql.init : Échec de l\'initialisation SQLite native.', {
+                    NLog.error('NSql.init : Échec de l\'initialisation SQLite native.', {
                         code: 'ERR_SQL_NATIVE_INIT',
                         error: err,
                         stack: err?.stack,
@@ -349,7 +434,7 @@ export class NSql extends NObject {
             try {
                 const SQL = await this.#ensureSqlJsModule(opts.wasmPath || this.#wasmPath);
                 if (!SQL) {
-                    NUtil.log.error('NSql.init : Module sql.js non disponible pour l\'initialisation.', {
+                    NLog.error('NSql.init : Module sql.js non disponible pour l\'initialisation.', {
                         code: 'ERR_SQL_JS_UNAVAILABLE',
                         database: this.#name
                     });
@@ -365,8 +450,12 @@ export class NSql extends NObject {
                 let initialBinaryData = null;
                 if (opts.dbUint8ArrayData instanceof Uint8Array) {
                     initialBinaryData = opts.dbUint8ArrayData;
+                } else if (opts.dbData instanceof Uint8Array) {
+                    initialBinaryData = opts.dbData;
                 } else if (typeof opts.dbBase64Data === 'string' && opts.dbBase64Data.trim()) {
                     initialBinaryData = this.#base64ToUint8(opts.dbBase64Data);
+                } else if (this.#autoSave && opts.loadFromIndexedDB !== false) {
+                    initialBinaryData = await this.loadFromIndexedDB();
                 }
 
                 if (initialBinaryData && initialBinaryData.length > 0) {
@@ -385,7 +474,7 @@ export class NSql extends NObject {
                 this.#isInitialized = true;
                 return true;
             } catch (err) {
-                NUtil.log.error('NSql.init : Échec de l\'initialisation du moteur sql.js.', {
+                NLog.error('NSql.init : Échec de l\'initialisation du moteur sql.js.', {
                     code: 'ERR_SQL_INIT_FAILED',
                     error: err,
                     stack: err?.stack,
@@ -425,11 +514,15 @@ export class NSql extends NObject {
      * console.log('Fermé :', closed);
      */
     close() {
+        this.cancelAutoSave();
         if (this.#db) {
+            if (this.#autoSave && this.idb) {
+                this.saveToIndexedDB();
+            }
             try {
                 this.#db.close();
             } catch (err) {
-                NUtil.log.warn('NSql.close : Avertissement lors de la fermeture de la base.', {
+                NLog.warn('NSql.close : Avertissement lors de la fermeture de la base.', {
                     code: 'WARN_SQL_CLOSE',
                     error: err,
                     database: this.#name
@@ -440,6 +533,173 @@ export class NSql extends NObject {
         this.#isInitialized = false;
         this.#transactionDepth = 0;
         return true;
+    }
+
+    // =========================================================================
+    // Persistance IndexedDB (Sauvegarde & Restauration WebAssembly)
+    // =========================================================================
+
+    /**
+     * Sauvegarde l'état binaire courant de la base SQLite (`export()`)
+     * dans le magasin `'ntable'` de `NIndexedDB` (`this.idb` par défaut).
+     *
+     * @async
+     * @param {any} [idbInstance=this.idb] - Instance `NIndexedDB` cible.
+     * @returns {Promise<{ ok: boolean, error?: string }>} Statut de la sauvegarde.
+     *
+     * @example <caption>Exemple 1 : Sauvegarder la base SQL dans IndexedDB</caption>
+     * await sql.insert('orders', { client: 'Bob', total: 4200 });
+     * const res = await sql.saveToIndexedDB();
+     * if (res.ok) console.log('Base SQL sauvegardée');
+     *
+     * @example <caption>Exemple 2 : Sauvegarder dans une instance NIndexedDB spécifique</caption>
+     * const res = await sql.saveToIndexedDB(customIdb);
+     * console.log(res.ok);
+     */
+    async saveToIndexedDB(idbInstance = this.idb) {
+        try {
+            if (!this.isOpen) {
+                return { ok: false, error: 'Base SQL fermée ou non initialisée.' };
+            }
+            if (!idbInstance) {
+                return { ok: false, error: 'Instance NIndexedDB indisponible.' };
+            }
+
+            const binary = await this.export();
+            if (!binary) {
+                return { ok: false, error: 'Échec de l\'export binaire SQLite.' };
+            }
+
+            const key = `__sql_db_${this.#name}__`;
+            const putRes = await idbInstance.put('ntable', {
+                id: key,
+                data: binary,
+                context: this.#context,
+                updatedAt: Date.now()
+            });
+
+            return {
+                ok: Boolean(putRes?.ok),
+                ...(putRes?.error ? { error: putRes.error } : {})
+            };
+        } catch (err) {
+            NLog.error('NSql.saveToIndexedDB : Exception lors de la sauvegarde SQL dans IndexedDB.', {
+                code: 'ERR_SQL_SAVE_IDB',
+                error: err,
+                database: this.#name
+            });
+            return { ok: false, error: err?.message || String(err) };
+        }
+    }
+
+    /**
+     * Charge les données binaires SQLite précédemment persistées dans `NIndexedDB` (`this.idb` par défaut).
+     *
+     * @async
+     * @param {any} [idbInstance=this.idb] - Instance `NIndexedDB` source.
+     * @returns {Promise<Uint8Array|null>} Données binaires SQLite exportées ou `null`.
+     *
+     * @example <caption>Exemple 1 : Charger les données binaires sauvegardées</caption>
+     * const bytes = await sql.loadFromIndexedDB();
+     * if (bytes) console.log('Taille sauvegardée :', bytes.length);
+     *
+     * @example <caption>Exemple 2 : Vérifier l'existence d'une sauvegarde</caption>
+     * const hasBackup = (await sql.loadFromIndexedDB()) !== null;
+     */
+    async loadFromIndexedDB(idbInstance = this.idb) {
+        try {
+            if (!idbInstance) {
+                return null;
+            }
+            const key = `__sql_db_${this.#name}__`;
+            const getRes = await idbInstance.get('ntable', key);
+            if (getRes?.ok && getRes.data && getRes.data.data) {
+                return getRes.data.data;
+            }
+            return null;
+        } catch (err) {
+            NLog.warn('NSql.loadFromIndexedDB : Aucune sauvegarde SQL trouvée dans IndexedDB.', {
+                code: 'WARN_SQL_LOAD_IDB',
+                error: err,
+                database: this.#name
+            });
+            return null;
+        }
+    }
+
+    /**
+     * Planifie une sauvegarde automatique différée de la base SQL dans IndexedDB (`saveToIndexedDB()`).
+     *
+     * @param {number} [delayMs] - Délai d'attente en millisecondes (par défaut `this.#autoSaveDelay`).
+     * @returns {void}
+     *
+     * @example <caption>Exemple 1 : Planifier une sauvegarde avec le délai par défaut</caption>
+     * sql.scheduleAutoSave();
+     *
+     * @example <caption>Exemple 2 : Planifier avec un délai de 1 seconde</caption>
+     * sql.scheduleAutoSave(1000);
+     */
+    scheduleAutoSave(delayMs) {
+        if (!this.#autoSave || this.isNative || !this.idb) {
+            return;
+        }
+
+        const wait = typeof delayMs === 'number' && Number.isFinite(delayMs) && delayMs >= 0
+            ? Math.floor(delayMs)
+            : this.#autoSaveDelay;
+
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+        }
+
+        this.#autoSaveTimer = NUtil.setTimeout(async () => {
+            this.#autoSaveTimer = null;
+            await this.saveToIndexedDB();
+        }, wait);
+    }
+
+    /**
+     * Annule toute sauvegarde automatique planifiée en attente d'exécution.
+     *
+     * @returns {boolean} `true` si un timer était planifié et a été annulé, sinon `false`.
+     *
+     * @example <caption>Exemple 1 : Annuler une sauvegarde en attente</caption>
+     * const cancelled = sql.cancelAutoSave();
+     * console.log('Annulée :', cancelled);
+     *
+     * @example <caption>Exemple 2 : Nettoyer avant fermeture</caption>
+     * sql.cancelAutoSave();
+     */
+    cancelAutoSave() {
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Force l'exécution immédiate de la sauvegarde automatique en attente.
+     *
+     * @async
+     * @returns {Promise<{ ok: boolean, error?: string }|null>} Résultat de `saveToIndexedDB()` ou `null` si aucune sauvegarde n'était planifiée.
+     *
+     * @example <caption>Exemple 1 : Purger une sauvegarde planifiée avant navigation</caption>
+     * await sql.flushAutoSave();
+     *
+     * @example <caption>Exemple 2 : Vérifier le statut retourné</caption>
+     * const res = await sql.flushAutoSave();
+     * if (res?.ok) console.log('Sauvegarde exécutée');
+     */
+    async flushAutoSave() {
+        if (this.#autoSaveTimer) {
+            NUtil.clearTimeout(this.#autoSaveTimer);
+            this.#autoSaveTimer = null;
+            return await this.saveToIndexedDB();
+        }
+        return null;
     }
 
     // =========================================================================
@@ -481,7 +741,7 @@ export class NSql extends NObject {
             this.#emitChange('createTable', tableName, { sql: sqlCreateTable });
             return true;
         } catch (err) {
-            NUtil.log.error(`NSql.createTable : Échec de la création de la table "${tableName}".`, {
+            NLog.error(`NSql.createTable : Échec de la création de la table "${tableName}".`, {
                 code: 'ERR_SQL_CREATE_TABLE',
                 tableName,
                 sql: sqlCreateTable,
@@ -568,7 +828,7 @@ export class NSql extends NObject {
 
             return true;
         } catch (err) {
-            NUtil.log.error('NSql.query : Échec d\'exécution de la requête.', {
+            NLog.error('NSql.query : Échec d\'exécution de la requête.', {
                 code: 'ERR_SQL_QUERY',
                 sql,
                 params,
@@ -690,7 +950,7 @@ export class NSql extends NObject {
                 code: null
             };
         } catch (err) {
-            NUtil.log.error('NSql.execute : Échec lors de l\'exécution de la requête SQL.', {
+            NLog.error('NSql.execute : Échec lors de l\'exécution de la requête SQL.', {
                 code: 'ERR_SQL_EXECUTE',
                 sql,
                 params,
@@ -753,7 +1013,7 @@ export class NSql extends NObject {
             }
             return results;
         } catch (err) {
-            NUtil.log.error('NSql.select : Échec lors de la sélection SQL.', {
+            NLog.error('NSql.select : Échec lors de la sélection SQL.', {
                 code: 'ERR_SQL_SELECT',
                 sql,
                 params,
@@ -954,7 +1214,7 @@ export class NSql extends NObject {
             this.#emitChange('insert', tableName, { data, id: generatedId });
             return generatedId;
         } catch (err) {
-            NUtil.log.error(`NSql.insert : Échec d'insertion dans "${tableName}".`, {
+            NLog.error(`NSql.insert : Échec d'insertion dans "${tableName}".`, {
                 code: 'ERR_SQL_INSERT',
                 tableName,
                 data,
@@ -1023,7 +1283,7 @@ export class NSql extends NObject {
             this.#emitChange('update', tableName, { data, condition, params, rowsModified });
             return rowsModified;
         } catch (err) {
-            NUtil.log.error(`NSql.update : Échec de mise à jour de "${tableName}".`, {
+            NLog.error(`NSql.update : Échec de mise à jour de "${tableName}".`, {
                 code: 'ERR_SQL_UPDATE',
                 tableName,
                 data,
@@ -1089,7 +1349,7 @@ export class NSql extends NObject {
             this.#emitChange('delete', tableName, { condition, params, rowsModified });
             return rowsModified;
         } catch (err) {
-            NUtil.log.error(`NSql.delete : Échec de suppression dans "${tableName}".`, {
+            NLog.error(`NSql.delete : Échec de suppression dans "${tableName}".`, {
                 code: 'ERR_SQL_DELETE',
                 tableName,
                 condition,
@@ -1153,7 +1413,7 @@ export class NSql extends NObject {
                 const res = await callback(this);
                 return { ok: true, data: res, error: null, code: null };
             } catch (err) {
-                NUtil.log.error('NSql.transaction : Erreur durant la transaction native.', {
+                NLog.error('NSql.transaction : Erreur durant la transaction native.', {
                     code: 'ERR_TX_NATIVE_FAILED',
                     error: err,
                     stack: err?.stack
@@ -1197,7 +1457,7 @@ export class NSql extends NObject {
                 code: null
             };
         } catch (err) {
-            NUtil.log.error('NSql.transaction : Erreur durant la transaction, exécution du ROLLBACK.', {
+            NLog.error('NSql.transaction : Erreur durant la transaction, exécution du ROLLBACK.', {
                 code: 'ERR_SQL_TRANSACTION_FAILED',
                 error: err,
                 stack: err?.stack,
@@ -1213,7 +1473,7 @@ export class NSql extends NObject {
                     this.#db.run('ROLLBACK');
                 }
             } catch (rollbackErr) {
-                NUtil.log.error('NSql.transaction : Échec critique du ROLLBACK.', {
+                NLog.error('NSql.transaction : Échec critique du ROLLBACK.', {
                     code: 'ERR_SQL_ROLLBACK_FAILED',
                     error: rollbackErr,
                     stack: rollbackErr?.stack
@@ -1426,7 +1686,7 @@ export class NSql extends NObject {
         try {
             return this.#db.export();
         } catch (err) {
-            NUtil.log.error('NSql.export : Échec de l\'export binaire de la base.', {
+            NLog.error('NSql.export : Échec de l\'export binaire de la base.', {
                 code: 'ERR_SQL_EXPORT_BINARY',
                 error: err,
                 stack: err?.stack,
@@ -1448,7 +1708,7 @@ export class NSql extends NObject {
      * console.log('Longueur Base64 :', b64.length);
      *
      * @example <caption>Exemple 2 : Envoi vers un serveur par API</caption>
-     * await NUtil.net.post('/api/sync-db', { dbData: await sql.exportBase64() });
+     * await NNet.post('/api/sync-db', { dbData: await sql.exportBase64() });
      */
     async exportBase64() {
         if (this.#isNativeApp()) {
@@ -1576,7 +1836,9 @@ export class NSql extends NObject {
      * @param {Object} [details={}] - Métadonnées associées au changement.
      */
     #emitChange(type, table = '', details = {}) {
-        if (!this.#event || this.#event.isEmpty) {
+        this.scheduleAutoSave();
+
+        if (this.listenerCount() === 0) {
             return;
         }
 
@@ -1588,12 +1850,12 @@ export class NSql extends NObject {
             ...details
         };
 
-        this.#event.emit('change', eventPayload);
-        this.#event.emit(type, eventPayload);
+        this.emit('change', eventPayload);
+        this.emit(type, eventPayload);
 
         if (table && table !== '*') {
-            this.#event.emit(`${type}:${table}`, eventPayload);
-            this.#event.emit(`${table}:change`, eventPayload);
+            this.emit(`${type}:${table}`, eventPayload);
+            this.emit(`${table}:change`, eventPayload);
         }
     }
 
@@ -1657,14 +1919,14 @@ export class NSql extends NObject {
     }
 
     /**
-     * Relaye une action SQLite vers le conteneur applicatif natif via `NUtil.sys.invokeNative`.
+     * Relaye une action SQLite vers le conteneur applicatif natif via `NSys.invokeNative`.
      * @private
      * @param {string} actionType - Type d'action demandée.
      * @param {Object} [extraParams={}] - Paramètres transmis.
      * @returns {Promise<any>}
      */
     async #requestNative(actionType, extraParams = {}) {
-        return await NUtil.sys.invokeNative({
+        return await NSys.invokeNative({
             type: ['app', 'sql', actionType],
             params: extraParams
         });
@@ -1691,7 +1953,7 @@ export class NSql extends NObject {
             try {
                 const initSqlJsFn = this.#resolveInitSqlJs();
                 if (typeof initSqlJsFn !== 'function') {
-                    NUtil.log.error('NSql : Le module sql.js (initSqlJs) est introuvable.', {
+                    NLog.error('NSql : Le module sql.js (initSqlJs) est introuvable.', {
                         code: 'ERR_SQL_JS_NOT_FOUND',
                         database: this.#name
                     });
@@ -1716,7 +1978,7 @@ export class NSql extends NObject {
                 NSql.#sqlJsModule = loaded;
                 return loaded;
             } catch (err) {
-                NUtil.log.error('NSql : Échec du chargement du binaire WebAssembly sql.js.', {
+                NLog.error('NSql : Échec du chargement du binaire WebAssembly sql.js.', {
                     code: 'ERR_SQL_JS_LOAD_FAILED',
                     error: err,
                     stack: err?.stack,
@@ -1756,7 +2018,7 @@ export class NSql extends NObject {
      */
     #ensureDbReady() {
         if (!this.#db) {
-            NUtil.log.warn('NSql : La base de données n\'est pas initialisée. Appelez d\'abord await sql.init().', {
+            NLog.warn('NSql : La base de données n\'est pas initialisée. Appelez d\'abord await sql.init().', {
                 code: 'WARN_SQL_NOT_INITIALIZED',
                 database: this.#name
             });
@@ -1895,7 +2157,7 @@ export class NSql extends NObject {
                     if (key in params) {
                         cleanParams.push(this.#formatParamValue(params[key]));
                     } else {
-                        NUtil.log.warn(`NSql : Paramètre nommé manquant "${key}". Liaison avec null.`, {
+                        NLog.warn(`NSql : Paramètre nommé manquant "${key}". Liaison avec null.`, {
                             code: 'WARN_SQL_MISSING_PARAM',
                             key,
                             sql
@@ -2127,8 +2389,13 @@ export class NSql extends NObject {
      */
     destroy() {
         this.close();
+        if (NSql.#instance === this) {
+            NSql.#instance = null;
+        }
         super.destroy();
     }
 }
+
+NObject.registerSql(NSql);
 
 export default NSql;

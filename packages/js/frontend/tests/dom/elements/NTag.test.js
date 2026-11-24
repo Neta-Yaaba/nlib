@@ -1,4 +1,4 @@
-﻿import { describe, it, assert } from '../../index.js';
+import { describe, it, assert } from '../../index.js';
 import { NTag } from '../../../index.js';
 import { NObject } from '../../../../backend/index.js';
 
@@ -284,7 +284,7 @@ describe('NTag (dom/elements/NTag.js)', () => {
     });
 
     it('appelle applyLanguage() à la création (sous-classe et option) et lors de la réapplication', async () => {
-        const lang = new NTag('div').util.lang;
+        const lang = new NTag('div').lang;
         await lang.init({
             language: 'fr',
             fallback: 'en',
@@ -296,7 +296,7 @@ describe('NTag (dom/elements/NTag.js)', () => {
 
         class GreetingTag extends NTag {
             applyLanguage() {
-                return this.setText(this.util.lang.get('greeting'));
+                return this.setText(this.lang.get('greeting'));
             }
         }
 
@@ -307,7 +307,7 @@ describe('NTag (dom/elements/NTag.js)', () => {
 
         const optTag = new NTag({
             tagName: 'span',
-            applyLanguage: (tag) => tag.setText(tag.util.lang.get('greeting'))
+            applyLanguage: (tag) => tag.setText(tag.lang.get('greeting'))
         });
         assert.equal(optTag.text, '');
         optTag.applyLanguage();

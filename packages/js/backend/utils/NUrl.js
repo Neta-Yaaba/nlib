@@ -1,40 +1,35 @@
 /**
  * @file NUrl.js
  * @package @nlib/js-backend
- * @description Classe utilitaire pure pour la validation, la décomposition, la construction,
+ * @description Classe utilitaire statique pour la validation, la décomposition, la construction,
  * la normalisation, la manipulation des paramètres de requête (Query String), des chemins (paths)
  * et des ancres (hash) d'URL dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * @class NUrl
- * @extends NObject
- * @description Utilitaire de gestion et traitement des URLs et paramètres de requête.
+ * @description Utilitaire statique de gestion et traitement des URLs et paramètres de requête.
  *
  * @example <caption>Exemple 1 : Validation, analyse et normalisation d'URL</caption>
- * const urlUtil = new NUrl();
- * console.log(urlUtil.isValid('https://api.nlib.dev/v1/users?page=2')); // true
- * console.log(urlUtil.isHttps('https://api.nlib.dev'));                 // true
- * console.log(urlUtil.getDomain('https://api.nlib.dev:8080/v1'));       // 'api.nlib.dev'
+ * console.log(NUrl.isValid('https://api.nlib.dev/v1/users?page=2')); // true
+ * console.log(NUrl.isHttps('https://api.nlib.dev'));                 // true
+ * console.log(NUrl.getDomain('https://api.nlib.dev:8080/v1'));       // 'api.nlib.dev'
  *
  * @example <caption>Exemple 2 : Manipulation des paramètres de requête (Query String)</caption>
- * const urlUtil = new NUrl();
- * const url = urlUtil.setQueryParams('https://nlib.dev/search', { q: 'sqlite', page: 1 });
+ * const url = NUrl.setQueryParams('https://nlib.dev/search', { q: 'sqlite', page: 1 });
  * console.log(url); // 'https://nlib.dev/search?q=sqlite&page=1'
- * console.log(urlUtil.getQueryParam(url, 'q')); // 'sqlite'
+ * console.log(NUrl.getQueryParam(url, 'q')); // 'sqlite'
  *
  * @example <caption>Exemple 3 : Jointure de segments de chemin et construction complète</caption>
- * const urlUtil = new NUrl();
- * console.log(urlUtil.join('https://api.nlib.dev/', '/v1/', '/users/42/'));
+ * console.log(NUrl.join('https://api.nlib.dev/', '/v1/', '/users/42/'));
  * // 'https://api.nlib.dev/v1/users/42'
  */
-export class NUrl extends NObject {
+export class NUrl {
 
     // =========================================================================
-    // Méthodes privées internes (Résolution sécurisée sans état)
+    // Méthodes privées internes (Résolution sécurisée)
     // =========================================================================
 
     /**
@@ -50,7 +45,7 @@ export class NUrl extends NObject {
      * @example <caption>Exemple 2 : URL relative</caption>
      * // Interne : #toUrlInstance('/api/users?id=1') -> { instance: URL, isRelative: true }
      */
-    #toUrlInstance(url, base = '') {
+    static #toUrlInstance(url, base = '') {
         if (typeof url !== 'string') {
             return null;
         }
@@ -91,7 +86,7 @@ export class NUrl extends NObject {
      * @example <caption>Exemple 2 : Reconstruction relative</caption>
      * // Interne : #formatUrlInstance(urlObj, true) -> '/path?a=1'
      */
-    #formatUrlInstance(instance, isRelative) {
+    static #formatUrlInstance(instance, isRelative) {
         if (!isRelative) {
             return instance.toString();
         }
@@ -113,21 +108,19 @@ export class NUrl extends NObject {
      * @returns {boolean} `true` si l'URL est valide selon les critères, sinon `false`.
      *
      * @example <caption>Exemple 1 : URLs HTTP/HTTPS valides</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isValid('https://nlib.dev/docs'));      // true
-     * console.log(urlUtil.isValid('http://localhost:3000/api'));  // true
+     * console.log(NUrl.isValid('https://nlib.dev/docs'));      // true
+     * console.log(NUrl.isValid('http://localhost:3000/api'));  // true
      *
      * @example <caption>Exemple 2 : URLs relatives ou protocole non autorisé</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isValid('/api/users'));                               // false
-     * console.log(urlUtil.isValid('/api/users', { allowRelative: true }));      // true
+     * console.log(NUrl.isValid('/api/users'));                               // false
+     * console.log(NUrl.isValid('/api/users', { allowRelative: true }));      // true
      */
-    isValid(url, options = {}) {
+    static isValid(url, options = {}) {
         if (typeof url !== 'string' || url.trim().length === 0) {
             return false;
         }
         const allowRelative = options?.allowRelative ?? false;
-        const resolved = this.#toUrlInstance(url);
+        const resolved = NUrl.#toUrlInstance(url);
         if (!resolved) {
             return false;
         }
@@ -164,15 +157,13 @@ export class NUrl extends NObject {
      * @returns {boolean} `true` si le protocole est `https:` ou `wss:`, sinon `false`.
      *
      * @example <caption>Exemple 1 : URL HTTPS sécurisée</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isHttps('https://nlib.dev')); // true
+     * console.log(NUrl.isHttps('https://nlib.dev')); // true
      *
      * @example <caption>Exemple 2 : URL HTTP non chiffrée</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isHttps('http://nlib.dev'));  // false
+     * console.log(NUrl.isHttps('http://nlib.dev'));  // false
      */
-    isHttps(url) {
-        const resolved = this.#toUrlInstance(url);
+    static isHttps(url) {
+        const resolved = NUrl.#toUrlInstance(url);
         if (!resolved || resolved.isRelative) {
             return false;
         }
@@ -187,14 +178,12 @@ export class NUrl extends NObject {
      * @returns {boolean} `true` si l'URL est absolue, sinon `false`.
      *
      * @example <caption>Exemple 1 : URL absolue</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isAbsolute('https://nlib.dev/v1')); // true
+     * console.log(NUrl.isAbsolute('https://nlib.dev/v1')); // true
      *
      * @example <caption>Exemple 2 : Chemin relatif</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isAbsolute('/v1/users'));           // false
+     * console.log(NUrl.isAbsolute('/v1/users'));           // false
      */
-    isAbsolute(url) {
+    static isAbsolute(url) {
         if (typeof url !== 'string') {
             return false;
         }
@@ -208,18 +197,16 @@ export class NUrl extends NObject {
      * @returns {boolean} `true` si l'URL est relative, sinon `false`.
      *
      * @example <caption>Exemple 1 : URL relative</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isRelative('/dashboard/settings')); // true
+     * console.log(NUrl.isRelative('/dashboard/settings')); // true
      *
      * @example <caption>Exemple 2 : URL absolue</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isRelative('https://nlib.dev'));    // false
+     * console.log(NUrl.isRelative('https://nlib.dev'));    // false
      */
-    isRelative(url) {
+    static isRelative(url) {
         if (typeof url !== 'string' || url.trim().length === 0) {
             return false;
         }
-        return !this.isAbsolute(url);
+        return !NUrl.isAbsolute(url);
     }
 
     /**
@@ -230,16 +217,14 @@ export class NUrl extends NObject {
      * @returns {boolean} `true` si les deux URLs ont la même origine, sinon `false`.
      *
      * @example <caption>Exemple 1 : Même origine</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isSameOrigin('https://nlib.dev/a', 'https://nlib.dev/b?x=1')); // true
+     * console.log(NUrl.isSameOrigin('https://nlib.dev/a', 'https://nlib.dev/b?x=1')); // true
      *
      * @example <caption>Exemple 2 : Origines différentes (sous-domaine ou port différent)</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.isSameOrigin('https://nlib.dev', 'https://api.nlib.dev')); // false
+     * console.log(NUrl.isSameOrigin('https://nlib.dev', 'https://api.nlib.dev')); // false
      */
-    isSameOrigin(urlA, urlB) {
-        const resA = this.#toUrlInstance(urlA);
-        const resB = this.#toUrlInstance(urlB);
+    static isSameOrigin(urlA, urlB) {
+        const resA = NUrl.#toUrlInstance(urlA);
+        const resB = NUrl.#toUrlInstance(urlB);
         if (!resA || !resB || resA.isRelative || resB.isRelative) {
             return false;
         }
@@ -256,23 +241,21 @@ export class NUrl extends NObject {
      * @returns {boolean} `true` si les deux URLs sont équivalentes, sinon `false`.
      *
      * @example <caption>Exemple 1 : Paramètres de requête dans un ordre différent</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.equals(
+     * console.log(NUrl.equals(
      *     'https://nlib.dev/items?b=2&a=1',
      *     'https://nlib.dev/items/?a=1&b=2'
      * )); // true
      *
      * @example <caption>Exemple 2 : Ignorer l'ancre #hash</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.equals(
+     * console.log(NUrl.equals(
      *     'https://nlib.dev/docs#intro',
      *     'https://nlib.dev/docs',
      *     { stripHash: true }
      * )); // true
      */
-    equals(urlA, urlB, options = {}) {
-        const normA = this.normalize(urlA, options);
-        const normB = this.normalize(urlB, options);
+    static equals(urlA, urlB, options = {}) {
+        const normA = NUrl.normalize(urlA, options);
+        const normB = NUrl.normalize(urlB, options);
         if (!normA || !normB) {
             return false;
         }
@@ -305,8 +288,7 @@ export class NUrl extends NObject {
      * }|null} Objet détaillant les parties de l'URL, ou `null`.
      *
      * @example <caption>Exemple 1 : Décomposer une URL complète</caption>
-     * const urlUtil = new NUrl();
-     * const info = urlUtil.parse('https://api.nlib.dev:8443/v1/users?role=admin#top');
+     * const info = NUrl.parse('https://api.nlib.dev:8443/v1/users?role=admin#top');
      * console.log(info.protocol); // 'https'
      * console.log(info.hostname); // 'api.nlib.dev'
      * console.log(info.port);     // '8443'
@@ -315,18 +297,17 @@ export class NUrl extends NObject {
      * console.log(info.hash);     // 'top'
      *
      * @example <caption>Exemple 2 : Décomposer une URL relative</caption>
-     * const urlUtil = new NUrl();
-     * const rel = urlUtil.parse('/articles?page=3');
+     * const rel = NUrl.parse('/articles?page=3');
      * console.log(rel.isRelative, rel.pathname, rel.query); // true '/articles' { page: '3' }
      */
-    parse(url) {
-        const resolved = this.#toUrlInstance(url);
+    static parse(url) {
+        const resolved = NUrl.#toUrlInstance(url);
         if (!resolved) {
             return null;
         }
         const { instance, isRelative } = resolved;
         return {
-            href: this.#formatUrlInstance(instance, isRelative),
+            href: NUrl.#formatUrlInstance(instance, isRelative),
             protocol: isRelative ? '' : instance.protocol.replace(/:$/, '').toLowerCase(),
             origin: isRelative ? '' : instance.origin,
             host: isRelative ? '' : instance.host,
@@ -334,7 +315,7 @@ export class NUrl extends NObject {
             port: isRelative ? '' : instance.port,
             pathname: instance.pathname,
             search: instance.search,
-            query: this.parseQueryString(instance.search),
+            query: NUrl.parseQueryString(instance.search),
             hash: instance.hash.replace(/^#/, ''),
             username: isRelative ? '' : instance.username,
             password: isRelative ? '' : instance.password,
@@ -349,15 +330,13 @@ export class NUrl extends NObject {
      * @returns {string} Protocole en minuscules ou `''`.
      *
      * @example <caption>Exemple 1 : Extraire le protocole</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getProtocol('https://nlib.dev')); // 'https'
+     * console.log(NUrl.getProtocol('https://nlib.dev')); // 'https'
      *
      * @example <caption>Exemple 2 : Chemin relatif</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getProtocol('/chemin/local'));    // ''
+     * console.log(NUrl.getProtocol('/chemin/local'));    // ''
      */
-    getProtocol(url) {
-        return this.parse(url)?.protocol ?? '';
+    static getProtocol(url) {
+        return NUrl.parse(url)?.protocol ?? '';
     }
 
     /**
@@ -368,15 +347,13 @@ export class NUrl extends NObject {
      * @returns {string} Nom de domaine ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Extraire le domaine</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getDomain('https://www.nlib.dev:8080/docs')); // 'www.nlib.dev'
+     * console.log(NUrl.getDomain('https://www.nlib.dev:8080/docs')); // 'www.nlib.dev'
      *
      * @example <caption>Exemple 2 : Sans le préfixe www.</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getDomain('https://www.nlib.dev/docs', true)); // 'nlib.dev'
+     * console.log(NUrl.getDomain('https://www.nlib.dev/docs', true)); // 'nlib.dev'
      */
-    getDomain(url, stripWww = false) {
-        const hostname = this.parse(url)?.hostname ?? '';
+    static getDomain(url, stripWww = false) {
+        const hostname = NUrl.parse(url)?.hostname ?? '';
         if (!hostname) {
             return '';
         }
@@ -390,15 +367,13 @@ export class NUrl extends NObject {
      * @returns {string} Chemin de l'URL ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Extraire le chemin</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getPath('https://nlib.dev/v1/users?id=10')); // '/v1/users'
+     * console.log(NUrl.getPath('https://nlib.dev/v1/users?id=10')); // '/v1/users'
      *
      * @example <caption>Exemple 2 : URL racine</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getPath('https://nlib.dev')); // '/'
+     * console.log(NUrl.getPath('https://nlib.dev')); // '/'
      */
-    getPath(url) {
-        return this.parse(url)?.pathname ?? '';
+    static getPath(url) {
+        return NUrl.parse(url)?.pathname ?? '';
     }
 
     /**
@@ -408,16 +383,14 @@ export class NUrl extends NObject {
      * @returns {string[]} Tableau des segments du chemin.
      *
      * @example <caption>Exemple 1 : Extraire les segments</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getPathSegments('https://nlib.dev/api/v1/users/42/'));
+     * console.log(NUrl.getPathSegments('https://nlib.dev/api/v1/users/42/'));
      * // ['api', 'v1', 'users', '42']
      *
      * @example <caption>Exemple 2 : URL racine retourne un tableau vide</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getPathSegments('https://nlib.dev/')); // []
+     * console.log(NUrl.getPathSegments('https://nlib.dev/')); // []
      */
-    getPathSegments(url) {
-        const pathname = this.getPath(url);
+    static getPathSegments(url) {
+        const pathname = NUrl.getPath(url);
         if (!pathname) {
             return [];
         }
@@ -434,15 +407,13 @@ export class NUrl extends NObject {
      * @returns {string} Valeur du hash ou `''`.
      *
      * @example <caption>Exemple 1 : Extraire l'ancre</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getHash('https://nlib.dev/guide#installation')); // 'installation'
+     * console.log(NUrl.getHash('https://nlib.dev/guide#installation')); // 'installation'
      *
      * @example <caption>Exemple 2 : URL sans ancre</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getHash('https://nlib.dev/guide')); // ''
+     * console.log(NUrl.getHash('https://nlib.dev/guide')); // ''
      */
-    getHash(url) {
-        return this.parse(url)?.hash ?? '';
+    static getHash(url) {
+        return NUrl.parse(url)?.hash ?? '';
     }
 
     // =========================================================================
@@ -457,16 +428,14 @@ export class NUrl extends NObject {
      * @returns {Object<string, string|string[]>} Objet contenant les paramètres décodés.
      *
      * @example <caption>Exemple 1 : Analyser les paramètres d'une URL</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.parseQueryString('https://nlib.dev/search?q=nlib&lang=fr'));
+     * console.log(NUrl.parseQueryString('https://nlib.dev/search?q=nlib&lang=fr'));
      * // { q: 'nlib', lang: 'fr' }
      *
      * @example <caption>Exemple 2 : Paramètres multiples avec la même clé</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.parseQueryString('?tag=js&tag=php'));
+     * console.log(NUrl.parseQueryString('?tag=js&tag=php'));
      * // { tag: ['js', 'php'] }
      */
-    parseQueryString(queryOrUrl) {
+    static parseQueryString(queryOrUrl) {
         if (typeof queryOrUrl !== 'string' || queryOrUrl.trim().length === 0) {
             return {};
         }
@@ -507,16 +476,14 @@ export class NUrl extends NObject {
      * @returns {string} Chaîne de requête encodée.
      *
      * @example <caption>Exemple 1 : Sérialiser un objet en Query String</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.stringifyQueryParams({ q: 'nlib framework', page: 2 }));
+     * console.log(NUrl.stringifyQueryParams({ q: 'nlib framework', page: 2 }));
      * // 'q=nlib+framework&page=2'
      *
      * @example <caption>Exemple 2 : Avec le préfixe '?'</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.stringifyQueryParams({ active: true }, true));
+     * console.log(NUrl.stringifyQueryParams({ active: true }, true));
      * // '?active=true'
      */
-    stringifyQueryParams(params, prefixQuestionMark = false) {
+    static stringifyQueryParams(params, prefixQuestionMark = false) {
         if (!params || typeof params !== 'object') {
             return '';
         }
@@ -554,18 +521,16 @@ export class NUrl extends NObject {
      * @returns {string|string[]|any} Valeur du paramètre ou `fallback`.
      *
      * @example <caption>Exemple 1 : Lire un paramètre existant</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getQueryParam('https://nlib.dev/items?id=42', 'id')); // '42'
+     * console.log(NUrl.getQueryParam('https://nlib.dev/items?id=42', 'id')); // '42'
      *
      * @example <caption>Exemple 2 : Paramètre absent avec valeur par défaut</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.getQueryParam('https://nlib.dev/items', 'page', '1')); // '1'
+     * console.log(NUrl.getQueryParam('https://nlib.dev/items', 'page', '1')); // '1'
      */
-    getQueryParam(url, paramName, fallback = null) {
+    static getQueryParam(url, paramName, fallback = null) {
         if (typeof paramName !== 'string' || paramName.length === 0) {
             return fallback;
         }
-        const query = this.parseQueryString(url);
+        const query = NUrl.parseQueryString(url);
         return Object.prototype.hasOwnProperty.call(query, paramName) ? query[paramName] : fallback;
     }
 
@@ -578,17 +543,15 @@ export class NUrl extends NObject {
      * @returns {string} Nouvelle URL avec les paramètres mis à jour.
      *
      * @example <caption>Exemple 1 : Ajouter et modifier des paramètres</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.setQueryParams('https://nlib.dev/users?page=1', { page: 2, limit: 20 }));
+     * console.log(NUrl.setQueryParams('https://nlib.dev/users?page=1', { page: 2, limit: 20 }));
      * // 'https://nlib.dev/users?page=2&limit=20'
      *
      * @example <caption>Exemple 2 : Sur une URL relative</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.setQueryParams('/api/items', { sort: 'asc' }));
+     * console.log(NUrl.setQueryParams('/api/items', { sort: 'asc' }));
      * // '/api/items?sort=asc'
      */
-    setQueryParams(url, params) {
-        const resolved = this.#toUrlInstance(url);
+    static setQueryParams(url, params) {
+        const resolved = NUrl.#toUrlInstance(url);
         if (!resolved || !params || typeof params !== 'object') {
             return typeof url === 'string' ? url : '';
         }
@@ -613,7 +576,7 @@ export class NUrl extends NObject {
             }
         }
 
-        return this.#formatUrlInstance(instance, isRelative);
+        return NUrl.#formatUrlInstance(instance, isRelative);
     }
 
     /**
@@ -624,17 +587,15 @@ export class NUrl extends NObject {
      * @returns {string} URL nettoyée des paramètres indiqués.
      *
      * @example <caption>Exemple 1 : Supprimer un paramètre unique</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.removeQueryParams('https://nlib.dev/page?token=secret&id=5', 'token'));
+     * console.log(NUrl.removeQueryParams('https://nlib.dev/page?token=secret&id=5', 'token'));
      * // 'https://nlib.dev/page?id=5'
      *
      * @example <caption>Exemple 2 : Supprimer plusieurs paramètres</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.removeQueryParams('https://nlib.dev/page?utm_source=x&utm_medium=y&id=1', ['utm_source', 'utm_medium']));
+     * console.log(NUrl.removeQueryParams('https://nlib.dev/page?utm_source=x&utm_medium=y&id=1', ['utm_source', 'utm_medium']));
      * // 'https://nlib.dev/page?id=1'
      */
-    removeQueryParams(url, paramNames) {
-        const resolved = this.#toUrlInstance(url);
+    static removeQueryParams(url, paramNames) {
+        const resolved = NUrl.#toUrlInstance(url);
         if (!resolved) {
             return '';
         }
@@ -645,7 +606,7 @@ export class NUrl extends NObject {
                 instance.searchParams.delete(names[i]);
             }
         }
-        return this.#formatUrlInstance(instance, isRelative);
+        return NUrl.#formatUrlInstance(instance, isRelative);
     }
 
     // =========================================================================
@@ -660,16 +621,14 @@ export class NUrl extends NObject {
      * @returns {string} URL ou chemin joint proprement.
      *
      * @example <caption>Exemple 1 : Joindre une base et plusieurs segments</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.join('https://api.nlib.dev/', '/v1/', '/users/', 'profile'));
+     * console.log(NUrl.join('https://api.nlib.dev/', '/v1/', '/users/', 'profile'));
      * // 'https://api.nlib.dev/v1/users/profile'
      *
      * @example <caption>Exemple 2 : Joindre des chemins relatifs</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.join('/assets/', '/images/', 'logo.png'));
+     * console.log(NUrl.join('/assets/', '/images/', 'logo.png'));
      * // '/assets/images/logo.png'
      */
-    join(...segments) {
+    static join(...segments) {
         const valid = segments
             .filter((s) => typeof s === 'string' && s.trim().length > 0)
             .map((s) => s.trim());
@@ -726,8 +685,7 @@ export class NUrl extends NObject {
      * @returns {string} URL complète construite.
      *
      * @example <caption>Exemple 1 : Construire à partir d'une base, d'un chemin et d'une query</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.build({
+     * console.log(NUrl.build({
      *     base: 'https://api.nlib.dev',
      *     path: ['v1', 'products'],
      *     query: { category: 'books', limit: 10 },
@@ -736,8 +694,7 @@ export class NUrl extends NObject {
      * // 'https://api.nlib.dev/v1/products?category=books&limit=10#results'
      *
      * @example <caption>Exemple 2 : Construire à partir de protocol, hostname et port</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.build({
+     * console.log(NUrl.build({
      *     protocol: 'http',
      *     hostname: 'localhost',
      *     port: 8080,
@@ -745,7 +702,7 @@ export class NUrl extends NObject {
      * }));
      * // 'http://localhost:8080/health'
      */
-    build(parts = {}) {
+    static build(parts = {}) {
         if (!parts || typeof parts !== 'object') {
             return '';
         }
@@ -761,14 +718,14 @@ export class NUrl extends NObject {
         }
 
         const pathSegments = Array.isArray(parts.path) ? parts.path : [parts.path || ''];
-        let fullUrl = baseStr ? this.join(baseStr, ...pathSegments) : this.join(...pathSegments);
+        let fullUrl = baseStr ? NUrl.join(baseStr, ...pathSegments) : NUrl.join(...pathSegments);
 
         if (!fullUrl) {
             return '';
         }
 
         if (parts.query && typeof parts.query === 'object') {
-            fullUrl = this.setQueryParams(fullUrl, parts.query);
+            fullUrl = NUrl.setQueryParams(fullUrl, parts.query);
         }
 
         if (typeof parts.hash === 'string' && parts.hash.trim().length > 0) {
@@ -792,20 +749,18 @@ export class NUrl extends NObject {
      * @returns {string} URL normalisée, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Normaliser le slash final et trier la Query String</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.normalize('HTTPS://NLib.DEV/api/users/?z=2&a=1'));
+     * console.log(NUrl.normalize('HTTPS://NLib.DEV/api/users/?z=2&a=1'));
      * // 'https://nlib.dev/api/users?a=1&z=2'
      *
      * @example <caption>Exemple 2 : Retirer la Query String et le Hash</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.normalize('https://nlib.dev/page/?ref=mail#top', {
+     * console.log(NUrl.normalize('https://nlib.dev/page/?ref=mail#top', {
      *     stripQuery: true,
      *     stripHash: true
      * }));
      * // 'https://nlib.dev/page'
      */
-    normalize(url, options = {}) {
-        const resolved = this.#toUrlInstance(url);
+    static normalize(url, options = {}) {
+        const resolved = NUrl.#toUrlInstance(url);
         if (!resolved) {
             return '';
         }
@@ -827,7 +782,7 @@ export class NUrl extends NObject {
             instance.hash = '';
         }
 
-        return this.#formatUrlInstance(instance, isRelative);
+        return NUrl.#formatUrlInstance(instance, isRelative);
     }
 
     // =========================================================================
@@ -842,14 +797,12 @@ export class NUrl extends NObject {
      * @returns {string} Chaîne encodée sûre pour une URL.
      *
      * @example <caption>Exemple 1 : Encoder un paramètre contenant des caractères spéciaux</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.encode('a&b=c?d/e')); // 'a%26b%3Dc%3Fd%2Fe'
+     * console.log(NUrl.encode('a&b=c?d/e')); // 'a%26b%3Dc%3Fd%2Fe'
      *
      * @example <caption>Exemple 2 : Encoder des parenthèses et apostrophes (RFC 3986)</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.encode("l'été (2026)")); // 'l%27%C3%A9t%C3%A9%20%282026%29'
+     * console.log(NUrl.encode("l'été (2026)")); // 'l%27%C3%A9t%C3%A9%20%282026%29'
      */
-    encode(value) {
+    static encode(value) {
         if (value === null || value === undefined) {
             return '';
         }
@@ -866,21 +819,19 @@ export class NUrl extends NObject {
      * @returns {string} Chaîne décodée en clair.
      *
      * @example <caption>Exemple 1 : Décoder un composant d'URL</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.decode('a%26b%3Dc%3Fd%2Fe')); // 'a&b=c?d/e'
+     * console.log(NUrl.decode('a%26b%3Dc%3Fd%2Fe')); // 'a&b=c?d/e'
      *
      * @example <caption>Exemple 2 : Décoder une chaîne contenant des '+'</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.decode('Bonjour+le+monde')); // 'Bonjour le monde'
+     * console.log(NUrl.decode('Bonjour+le+monde')); // 'Bonjour le monde'
      */
-    decode(encodedValue) {
+    static decode(encodedValue) {
         if (typeof encodedValue !== 'string' || encodedValue.length === 0) {
             return '';
         }
         try {
             return decodeURIComponent(encodedValue.replace(/\+/g, '%20'));
         } catch (error) {
-            NUtil.log.warn('NUrl.decode: Échec du décodage URI', { error, encodedValue });
+            NLog.warn('NUrl.decode: Échec du décodage URI', { error, encodedValue });
             return encodedValue;
         }
     }
@@ -894,16 +845,14 @@ export class NUrl extends NObject {
      * @returns {string} Jeton Base64URL sûr pour les URLs.
      *
      * @example <caption>Exemple 1 : Encoder un texte ou JSON pour une URL</caption>
-     * const urlUtil = new NUrl();
-     * const token = urlUtil.encodeBase64Url('user:42|role:admin');
+     * const token = NUrl.encodeBase64Url('user:42|role:admin');
      * console.log(token); // 'dXNlcjo0Mnxyb2xlOmFkbWlu'
      *
      * @example <caption>Exemple 2 : Décoder ensuite avec decodeBase64Url</caption>
-     * const urlUtil = new NUrl();
-     * const token = urlUtil.encodeBase64Url('https://nlib.dev/?a=1&b=2');
-     * console.log(urlUtil.decodeBase64Url(token)); // 'https://nlib.dev/?a=1&b=2'
+     * const token = NUrl.encodeBase64Url('https://nlib.dev/?a=1&b=2');
+     * console.log(NUrl.decodeBase64Url(token)); // 'https://nlib.dev/?a=1&b=2'
      */
-    encodeBase64Url(text) {
+    static encodeBase64Url(text) {
         if (text === null || text === undefined || text === '') {
             return '';
         }
@@ -925,14 +874,12 @@ export class NUrl extends NObject {
      * @returns {string} Texte décodé, ou `''` si le jeton est invalide.
      *
      * @example <caption>Exemple 1 : Décoder un jeton Base64URL</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.decodeBase64Url('dXNlcjo0Mnxyb2xlOmFkbWlu')); // 'user:42|role:admin'
+     * console.log(NUrl.decodeBase64Url('dXNlcjo0Mnxyb2xlOmFkbWlu')); // 'user:42|role:admin'
      *
      * @example <caption>Exemple 2 : Jeton invalide retourne une chaîne vide</caption>
-     * const urlUtil = new NUrl();
-     * console.log(urlUtil.decodeBase64Url('***invalide***')); // ''
+     * console.log(NUrl.decodeBase64Url('***invalide***')); // ''
      */
-    decodeBase64Url(base64Url) {
+    static decodeBase64Url(base64Url) {
         if (typeof base64Url !== 'string' || base64Url.trim().length === 0) {
             return '';
         }
@@ -948,7 +895,7 @@ export class NUrl extends NObject {
             }
             return new TextDecoder().decode(bytes);
         } catch (error) {
-            NUtil.log.warn('NUrl.decodeBase64Url: Format Base64URL invalide', { error, base64Url });
+            NLog.warn('NUrl.decodeBase64Url: Format Base64URL invalide', { error, base64Url });
             return '';
         }
     }
@@ -963,16 +910,14 @@ export class NUrl extends NObject {
      * @returns {string} Jeton obfusqué sûr pour les URLs (sans `'+'`, `'/'` ni `'='`), ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Masquer un ID de table SQLite/SQL pour une route URL</caption>
-     * const urlUtil = new NUrl();
-     * const maskedId = urlUtil.encodeId(42, 'mon-secret');
+     * const maskedId = NUrl.encodeId(42, 'mon-secret');
      * console.log(maskedId); // ex: 'E1x9fG0=' -> 'E1x9fG0' (aucun chiffre '42' visible)
      *
      * @example <caption>Exemple 2 : Masquer une clé composite</caption>
-     * const urlUtil = new NUrl();
-     * const token = urlUtil.encodeId('facture:2026:105', 'mon-secret');
-     * console.log(urlUtil.decodeId(token, 'mon-secret')); // 'facture:2026:105'
+     * const token = NUrl.encodeId('facture:2026:105', 'mon-secret');
+     * console.log(NUrl.decodeId(token, 'mon-secret')); // 'facture:2026:105'
      */
-    encodeId(idOrValue, salt = 'nlib-url-key') {
+    static encodeId(idOrValue, salt = 'nlib-url-key') {
         if (idOrValue === null || idOrValue === undefined || idOrValue === '') {
             return '';
         }
@@ -1022,16 +967,14 @@ export class NUrl extends NObject {
      * @returns {string|number|null} Valeur originale décodée, ou `null` si le jeton est invalide/falsifié.
      *
      * @example <caption>Exemple 1 : Décoder un ID numérique en nombre</caption>
-     * const urlUtil = new NUrl();
-     * const token = urlUtil.encodeId(42, 'mon-secret');
-     * console.log(urlUtil.decodeId(token, 'mon-secret', true)); // 42
+     * const token = NUrl.encodeId(42, 'mon-secret');
+     * console.log(NUrl.decodeId(token, 'mon-secret', true)); // 42
      *
      * @example <caption>Exemple 2 : Jeton modifié ou mauvais secret retourne null</caption>
-     * const urlUtil = new NUrl();
-     * const token = urlUtil.encodeId(42, 'mon-secret');
-     * console.log(urlUtil.decodeId(token, 'autre-secret')); // null
+     * const token = NUrl.encodeId(42, 'mon-secret');
+     * console.log(NUrl.decodeId(token, 'autre-secret')); // null
      */
-    decodeId(token, salt = 'nlib-url-key', asNumber = false) {
+    static decodeId(token, salt = 'nlib-url-key', asNumber = false) {
         if (typeof token !== 'string' || token.trim().length === 0) {
             return null;
         }
@@ -1082,7 +1025,7 @@ export class NUrl extends NObject {
             }
             return decodedStr;
         } catch (error) {
-            NUtil.log.warn('NUrl.unmaskId: Échec du démasquage ou format invalide', { error, token });
+            NLog.warn('NUrl.unmaskId: Échec du démasquage ou format invalide', { error, token });
             return null;
         }
     }

@@ -6,17 +6,21 @@
  *
  * Architecture et fonctionnement technique :
  * - Sélection automatique et exécution d'un moteur d'écoute unique parmi la chaîne de priorité :
- *   1. `'native'`    : Communication bidirectionnelle via le pont système natif (`NUtil.sys.invokeNative` avec `type: ['app', 'service', action]`) et réception d'événements sur `window.NLibNativeBridgeEvent`.
+ *   1. `'native'`    : Communication bidirectionnelle via le pont système natif (`NSys.invokeNative` avec `type: ['app', 'service', action]`) et réception d'événements sur `window.NLibNativeBridgeEvent`.
  *   2. `'websocket'` : Connexion TCP/WebSocket persistante bidirectionnelle (`ws://` / `wss://`).
  *   3. `'sse'`       : Flux continu unidirectionnel Server-Sent Events (`EventSource`).
- *   4. `'polling'`   : Interrogation HTTP périodique (`NUtil.network` / `NNetwork`) à intervalle configurable (`pollingInterval`).
+ *   4. `'polling'`   : Interrogation HTTP périodique (`NNet`) à intervalle configurable (`pollingInterval`).
  * - Synchronisation d'identifiants entiers (`int`) : normalise les réponses serveur (entier brut, chaîne numérique ou structure JSON `{ id, lastId }`), met à jour `lastId` et émet les événements `'id'` et `'change'`.
- * - Persistance locale : stocke et restaure l'identifiant entier `lastId` dans `NIndexedDB` (`NUtil.db.idb`) sous la clé dédiée au service (`__nservice_last_id__:<serviceId>`).
+ * - Persistance locale : stocke et restaure l'identifiant entier `lastId` dans `NIndexedDB` (`NIndexedDB.instance`) sous la clé dédiée au service (`__nservice_last_id__:<serviceId>`).
  */
 
 import { NObject } from '../core/NObject.js';
 import { NEvent } from '../core/NEvent.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NIndexedDB } from '../database/NIndexedDB.js';
+import { NEnv } from '../environment/NEnv.js';
+import { NNet } from './NNet.js';
+import { NSys } from '../system/NSys.js';
 
 /**
  * @class NService
@@ -320,7 +324,7 @@ export class NService extends NObject {
     }
 
     /**
-     * Indique si l'environnement d'exécution courant expose le conteneur natif (`NUtil.env.isWebView`).
+     * Indique si l'environnement d'exécution courant expose le conteneur natif (`NEnv.isWebView`).
      *
      * @returns {boolean} `true` si le moteur `'native'` est utilisable.
      *
@@ -368,7 +372,7 @@ export class NService extends NObject {
     }
 
     /**
-     * Indique si le transport HTTP via `NUtil.network` (`NNetwork`) est disponible pour exécuter des requêtes de synchronisation.
+     * Indique si le transport HTTP via `NNet` est disponible pour exécuter des requêtes de synchronisation.
      *
      * @returns {boolean} `true` si le moteur `'polling'` est utilisable.
      *
@@ -380,10 +384,10 @@ export class NService extends NObject {
      * console.log(typeof s.isPollingAvailable); // 'boolean'
      */
     get isPollingAvailable() {
-        return Boolean(NUtil.network) && (
+        return Boolean(NNet) && (
             typeof fetch === 'function' ||
             typeof XMLHttpRequest === 'function' ||
-            NUtil.env.isWebView
+            NEnv.isWebView
         );
     }
 
@@ -532,7 +536,7 @@ export class NService extends NObject {
         }
 
         try {
-            const res = await NUtil.db.idb.get(
+            const res = await NIndexedDB.instance.get(
                 this.#idbStoreName,
                 this.#getStorageKey(),
                 { encryptData: false, encryptKey: false }
@@ -579,7 +583,7 @@ export class NService extends NObject {
 
         try {
             const key = this.#getStorageKey();
-            const res = await NUtil.db.idb.put(
+            const res = await NIndexedDB.instance.put(
                 this.#idbStoreName,
                 { id: key, lastId: this.#lastId, updatedAt: Date.now() },
                 { encryptData: false, encryptKey: false }
@@ -748,11 +752,11 @@ export class NService extends NObject {
             }
         }
 
-        // 3. Envoi via requête HTTP POST centralisée (NUtil.network)
+        // 3. Envoi via requête HTTP POST centralisée (NNet)
         if (this.#url && this.isPollingAvailable) {
             try {
                 const targetUrl = this.#buildUrlWithId(this.#url, intId);
-                const response = await NUtil.network.post(targetUrl, String(intId), {
+                const response = await NNet.post(targetUrl, String(intId), {
                     headers: {
                         'Content-Type': 'text/plain;charset=UTF-8',
                         'Cache-Control': 'no-store, no-cache'
@@ -802,7 +806,7 @@ export class NService extends NObject {
 
         try {
             const pollUrl = this.#buildUrlWithId(baseUrl, this.#lastId);
-            const response = await NUtil.network.get(pollUrl, {
+            const response = await NNet.get(pollUrl, {
                 headers: {
                     'Cache-Control': 'no-store, no-cache',
                     'Pragma': 'no-cache'
@@ -1406,7 +1410,7 @@ export class NService extends NObject {
      * @returns {Promise<any>}
      */
     async #invokeNativeService(action, params = {}) {
-        return await NUtil.sys.invokeNative({
+        return await NSys.invokeNative({
             type: ['app', 'service', action],
             params
         });

@@ -482,6 +482,29 @@ export class NEditNumber extends NTag {
     clear(): this;
 }
 
+export interface NEditTagOptions extends NTagOptions {
+    editable?: boolean | 'true' | 'false' | 'plaintext-only';
+    value?: string;
+    placeholder?: string;
+    spellcheck?: boolean;
+    autofocus?: boolean;
+}
+
+export class NEditTag extends NTag {
+    constructor(options?: NEditTagOptions | string);
+    editable: string;
+    value: string;
+    placeholder: string;
+    setEditable(mode?: boolean | 'true' | 'false' | 'plaintext-only'): this;
+    isEditable(): boolean;
+    setValue(value: any): this;
+    getValue(): string;
+    setPlaceholder(placeholder: string | null | undefined): this;
+    setSpellcheck(enabled?: boolean): this;
+    selectAll(): this;
+    clear(): this;
+}
+
 export interface NFilePickerOptions extends NTagOptions {
     name?: string;
     accept?: string;
@@ -519,7 +542,7 @@ export interface NSelectOptionItem {
 export interface NSelectOptions extends NTagOptions {
     name?: string;
     options?: Array<string | NSelectOptionItem>;
-    value?: string;
+    value?: string | string[];
     multiple?: boolean;
     size?: number;
     disabled?: boolean;
@@ -550,6 +573,47 @@ export class NSelect extends NTag {
     setCustomValidity(message?: string): this;
     getValidationMessage(): string;
     clear(): this;
+}
+
+export interface NItemOptions extends NTagOptions {
+    itemId?: string | number | null;
+    primaryKey?: string;
+    data?: Record<string, any> | null;
+    autoUpdate?: boolean;
+    loading?: boolean;
+    selected?: boolean;
+    disabled?: boolean;
+    syncParams?: Record<string, any> | string | null;
+}
+
+export class NItem extends NTag {
+    constructor(options?: NItemOptions | string);
+    itemId: string | number | null;
+    primaryKey: string;
+    setItemId(id: string | number | null): this;
+    getItemId(): string | number | null;
+    setPrimaryKey(key: string): this;
+    getPrimaryKey(): string;
+    setAutoUpdate(autoUpdate?: boolean): this;
+    isAutoUpdate(): boolean;
+    setData(dataOrKey: Record<string, any> | string | null, value?: any): this;
+    getData(key?: string): any;
+    updateData(partial: Record<string, any>): this;
+    requestData(params?: Record<string, any> | any[] | null): Promise<Record<string, any> | null>;
+    matchesData(data: Record<string, any>): boolean;
+    displayData(data?: Record<string, any> | null): this;
+    applyLanguage(): this;
+    setLoading(loading?: boolean): this;
+    isLoading(): boolean;
+    setSelected(selected?: boolean): this;
+    isSelected(): boolean;
+    setDisabled(disabled?: boolean): this;
+    isDisabled(): boolean;
+    setSyncParams(params: Record<string, any> | string | null): this;
+    getSyncParams(): Record<string, any> | string | null;
+    getLastEventId(): string | number | null;
+    notifyChange(eventId: string | number, payload?: any): this;
+    destroy(): void;
 }
 
 export interface NFrameOptions extends NTagOptions {
@@ -662,6 +726,8 @@ export type NWindowFrameEntry =
 
 export interface NWindowOptions extends NTagOptions {
     config?: Record<string, any>;
+    withWorker?: boolean;
+    withService?: boolean;
     frames?: Array<NWindowFrameEntry> | Record<string, typeof NFrame | [typeof NFrame, (boolean | NWindowRegisterOptions)?] | { FrameClass?: typeof NFrame; frame?: typeof NFrame; routes?: NWindowRoutes; route?: NWindowRoutes; overlay?: boolean; includes?: boolean }>;
 }
 
@@ -681,6 +747,13 @@ export declare class NWindow extends NTag {
     static instance(): NWindow | null;
 
     protected _init(): void;
+    initLanguage(options?: Record<string, any> | null, workerIsInit?: boolean): this;
+    initWorker(options?: Record<string, any> | null): Promise<boolean>;
+    initDatabase(options?: Record<string, any> | null, workerIsInit?: boolean): Promise<boolean>;
+    initService(options?: Record<string, any> | null): Promise<boolean>;
+    getService(): any | null;
+    initServiceWorker(options?: Record<string, any> | null): Promise<boolean>;
+    getServiceWorker(): any | null;
 
     getBaseUrl(): string;
     getFrames(): NFrame[];

@@ -1,36 +1,31 @@
 /**
- * @file NPhoneNumber.js
+ * @file NPhone.js
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, le nettoyage, la normalisation (E.164),
  * l'extraction d'indicatif pays, la comparaison, le formatage, le masquage et la génération de liens
  * (`tel:`, `sms:`, WhatsApp) des numéros de téléphone dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
 
 /**
- * @class NPhoneNumber
- * @extends NObject
+ * @class NPhone
  * @description Utilitaire de gestion et traitement des numéros de téléphone.
  *
  * @example <caption>Exemple 1 : Validation et normalisation au standard international E.164</caption>
- * const phoneUtil = new NPhoneNumber();
- * console.log(phoneUtil.isValid('+226 70 12 34 56'));              // true
- * console.log(phoneUtil.toE164('70 12 34 56', '226'));             // '+22670123456'
- * console.log(phoneUtil.toE164('0033 6 12 34 56 78'));             // '+33612345678'
+ * console.log(NPhone.isValid('+226 70 12 34 56'));              // true
+ * console.log(NPhone.toE164('70 12 34 56', '226'));             // '+22670123456'
+ * console.log(NPhone.toE164('0033 6 12 34 56 78'));             // '+33612345678'
  *
  * @example <caption>Exemple 2 : Formatage par groupes et masquage de confidentialité</caption>
- * const phoneUtil = new NPhoneNumber();
- * console.log(phoneUtil.format('70123456', { groupSize: 2 }));     // '70 12 34 56'
- * console.log(phoneUtil.mask('+22670123456'));                     // '+226****3456'
+ * console.log(NPhone.format('70123456', { groupSize: 2 }));     // '70 12 34 56'
+ * console.log(NPhone.mask('+22670123456'));                     // '+226****3456'
  *
  * @example <caption>Exemple 3 : Comparaison et liens d'appel / WhatsApp</caption>
- * const phoneUtil = new NPhoneNumber();
- * console.log(phoneUtil.equals('00226 70-12-34-56', '+22670123456')); // true
- * console.log(phoneUtil.toWhatsAppUrl('+226 70 12 34 56', 'Bonjour'));
+ * console.log(NPhone.equals('00226 70-12-34-56', '+22670123456')); // true
+ * console.log(NPhone.toWhatsAppUrl('+226 70 12 34 56', 'Bonjour'));
  * // 'https://wa.me/22670123456?text=Bonjour'
  */
-export class NPhoneNumber extends NObject {
+export class NPhone {
 
     // =========================================================================
     // Méthodes publiques — Nettoyage & Validation
@@ -45,14 +40,12 @@ export class NPhoneNumber extends NObject {
      * @returns {string} Numéro nettoyé, ou `''` si l'entrée est invalide.
      *
      * @example <caption>Exemple 1 : Nettoyer avec conservation du '+'</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.clean('00226 (70) 12-34-56')); // '+22670123456'
+         * console.log(NPhone.clean('00226 (70) 12-34-56')); // '+22670123456'
      *
      * @example <caption>Exemple 2 : Extraire uniquement les chiffres</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.clean('+33 6 12 34 56 78', false)); // '33612345678'
+         * console.log(NPhone.clean('+33 6 12 34 56 78', false)); // '33612345678'
      */
-    clean(phone, keepPlus = true) {
+    static clean(phone, keepPlus = true) {
         if (typeof phone === 'number' && Number.isFinite(phone)) {
             return String(Math.trunc(Math.abs(phone)));
         }
@@ -87,16 +80,14 @@ export class NPhoneNumber extends NObject {
      * @returns {boolean} `true` si le numéro est valide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Validation standard</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.isValid('+226 70 12 34 56')); // true
-     * console.log(phoneUtil.isValid('70 12 34 56'));      // true
+         * console.log(NPhone.isValid('+226 70 12 34 56')); // true
+     * console.log(NPhone.isValid('70 12 34 56'));      // true
      *
      * @example <caption>Exemple 2 : Validation avec indicatif obligatoire</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.isValid('70 12 34 56', { requireCountryCode: true })); // false
-     * console.log(phoneUtil.isValid('+226 70 12 34 56', { countryCode: '226' }));  // true
+         * console.log(NPhone.isValid('70 12 34 56', { requireCountryCode: true })); // false
+     * console.log(NPhone.isValid('+226 70 12 34 56', { countryCode: '226' }));  // true
      */
-    isValid(phone, options = {}) {
+    static isValid(phone, options = {}) {
         if (typeof phone !== 'string' && typeof phone !== 'number') {
             return false;
         }
@@ -142,15 +133,13 @@ export class NPhoneNumber extends NObject {
      * @returns {boolean} `true` si le numéro respecte strictement E.164, sinon `false`.
      *
      * @example <caption>Exemple 1 : Numéro E.164 valide</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.isE164('+22670123456')); // true
+         * console.log(NPhone.isE164('+22670123456')); // true
      *
      * @example <caption>Exemple 2 : Numéro avec espaces ou sans '+'</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.isE164('+226 70 12 34 56')); // false
-     * console.log(phoneUtil.isE164('22670123456'));      // false
+         * console.log(NPhone.isE164('+226 70 12 34 56')); // false
+     * console.log(NPhone.isE164('22670123456'));      // false
      */
-    isE164(phone) {
+    static isE164(phone) {
         if (typeof phone !== 'string') {
             return false;
         }
@@ -172,15 +161,13 @@ export class NPhoneNumber extends NObject {
      * @returns {string} Numéro au format E.164 (ex: `'+22670123456'`), ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Numéro local avec indicatif par défaut</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toE164('70 12 34 56', '226'));    // '+22670123456'
-     * console.log(phoneUtil.toE164('06 12 34 56 78', '33'));  // '+33612345678'
+         * console.log(NPhone.toE164('70 12 34 56', '226'));    // '+22670123456'
+     * console.log(NPhone.toE164('06 12 34 56 78', '33'));  // '+33612345678'
      *
      * @example <caption>Exemple 2 : Numéro commençant par 00</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toE164('00221 77 123 45 67'));    // '+221771234567'
+         * console.log(NPhone.toE164('00221 77 123 45 67'));    // '+221771234567'
      */
-    toE164(phone, defaultCountryCode = '', stripLeadingZero = true) {
+    static toE164(phone, defaultCountryCode = '', stripLeadingZero = true) {
         const cleaned = this.clean(phone, true);
         if (!cleaned) {
             return '';
@@ -215,14 +202,12 @@ export class NPhoneNumber extends NObject {
      * @returns {string} Numéro national sous forme de chiffres, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Extraire le numéro local à partir d'un numéro +226</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toNational('+226 70 12 34 56', '226')); // '70123456'
+         * console.log(NPhone.toNational('+226 70 12 34 56', '226')); // '70123456'
      *
      * @example <caption>Exemple 2 : Extraire avec préfixe national '0' (ex: France +33)</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toNational('+33612345678', '33', '0')); // '0612345678'
+         * console.log(NPhone.toNational('+33612345678', '33', '0')); // '0612345678'
      */
-    toNational(phone, countryCode = '', nationalPrefix = '') {
+    static toNational(phone, countryCode = '', nationalPrefix = '') {
         const digits = this.clean(phone, false);
         if (!digits) {
             return '';
@@ -247,14 +232,12 @@ export class NPhoneNumber extends NObject {
      * @returns {boolean} `true` si les deux numéros sont identiques, sinon `false`.
      *
      * @example <caption>Exemple 1 : Comparer deux écritures internationales</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.equals('00226 70 12 34 56', '+226-70-12-34-56')); // true
+         * console.log(NPhone.equals('00226 70 12 34 56', '+226-70-12-34-56')); // true
      *
      * @example <caption>Exemple 2 : Comparer un numéro local et un numéro international</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.equals('70 12 34 56', '+22670123456', '226')); // true
+         * console.log(NPhone.equals('70 12 34 56', '+22670123456', '226')); // true
      */
-    equals(phoneA, phoneB, defaultCountryCode = '') {
+    static equals(phoneA, phoneB, defaultCountryCode = '') {
         if (!this.isValid(phoneA) || !this.isValid(phoneB)) {
             return false;
         }
@@ -285,15 +268,13 @@ export class NPhoneNumber extends NObject {
      * @returns {string} Numéro formaté, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Groupement par paires (standard francophone / UEMOA)</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.format('70123456')); // '70 12 34 56'
+         * console.log(NPhone.format('70123456')); // '70 12 34 56'
      *
      * @example <caption>Exemple 2 : Formatage international avec indicatif détaché</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.format('+22670123456', { countryCode: '226', separator: ' ' }));
+         * console.log(NPhone.format('+22670123456', { countryCode: '226', separator: ' ' }));
      * // '+226 70 12 34 56'
      */
-    format(phone, options = {}) {
+    static format(phone, options = {}) {
         const cleaned = this.clean(phone, true);
         if (!cleaned) {
             return '';
@@ -333,14 +314,12 @@ export class NPhoneNumber extends NObject {
      * @returns {string} Numéro masqué, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Masquer un numéro international</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.mask('+22670123456')); // '+226******56'
+         * console.log(NPhone.mask('+22670123456')); // '+226******56'
      *
      * @example <caption>Exemple 2 : Personnaliser le nombre de chiffres visibles</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.mask('70123456', { visibleStart: 2, visibleEnd: 2 })); // '70****56'
+         * console.log(NPhone.mask('70123456', { visibleStart: 2, visibleEnd: 2 })); // '70****56'
      */
-    mask(phone, options = {}) {
+    static mask(phone, options = {}) {
         const cleaned = this.clean(phone, true);
         if (!cleaned) {
             return '';
@@ -369,14 +348,12 @@ export class NPhoneNumber extends NObject {
      * @returns {string} URI (ex: `'tel:+22670123456'`), ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Lien d'appel téléphonique</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toTelUri('+226 70 12 34 56')); // 'tel:+22670123456'
+         * console.log(NPhone.toTelUri('+226 70 12 34 56')); // 'tel:+22670123456'
      *
      * @example <caption>Exemple 2 : Lien SMS</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toTelUri('+226 70 12 34 56', 'sms')); // 'sms:+22670123456'
+         * console.log(NPhone.toTelUri('+226 70 12 34 56', 'sms')); // 'sms:+22670123456'
      */
-    toTelUri(phone, scheme = 'tel') {
+    static toTelUri(phone, scheme = 'tel') {
         const cleaned = this.clean(phone, true);
         if (!cleaned) {
             return '';
@@ -393,16 +370,14 @@ export class NPhoneNumber extends NObject {
      * @returns {string} URL WhatsApp valide, ou `''` si le numéro est invalide.
      *
      * @example <caption>Exemple 1 : Lien WhatsApp simple</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toWhatsAppUrl('+226 70 12 34 56'));
+         * console.log(NPhone.toWhatsAppUrl('+226 70 12 34 56'));
      * // 'https://wa.me/22670123456'
      *
      * @example <caption>Exemple 2 : Lien WhatsApp avec message encodé</caption>
-     * const phoneUtil = new NPhoneNumber();
-     * console.log(phoneUtil.toWhatsAppUrl('+226 70 12 34 56', 'Bonjour NLib !'));
+         * console.log(NPhone.toWhatsAppUrl('+226 70 12 34 56', 'Bonjour NLib !'));
      * // 'https://wa.me/22670123456?text=Bonjour%20NLib%20!'
      */
-    toWhatsAppUrl(phone, message = '') {
+    static toWhatsAppUrl(phone, message = '') {
         const digits = this.clean(phone, false);
         if (!digits || digits.length < 7) {
             return '';
@@ -415,5 +390,5 @@ export class NPhoneNumber extends NObject {
     }
 }
 
-export default NPhoneNumber;
+export default NPhone;
 

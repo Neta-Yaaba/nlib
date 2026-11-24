@@ -6,34 +6,29 @@
  * des remises, des devises et le formatage des montants dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * @class NAmount
- * @extends NObject
  * @description Utilitaire de gestion et traitement des montants financiers.
  *
  * @example <caption>Exemple 1 : Calculs financiers exacts et formatage</caption>
- * const amt = new NAmount();
- * const total = amt.add(19.99, 5.01); // 25 (sans erreur flottante 25.000000000000004)
- * console.log(amt.format(total, 'EUR')); // '25,00 €'
- * console.log(amt.format(125000, 'XOF', { decimals: 0 })); // '125 000 FCFA'
+ * const total = NAmount.add(19.99, 5.01); // 25 (sans erreur flottante 25.000000000000004)
+ * console.log(NAmount.format(total, 'EUR')); // '25,00 €'
+ * console.log(NAmount.format(125000, 'XOF', { decimals: 0 })); // '125 000 FCFA'
  *
  * @example <caption>Exemple 2 : Calcul de TVA (HT <-> TTC) et remises</caption>
- * const amt = new NAmount();
- * console.log(amt.addTax(100, 18));          // 118 (TTC avec TVA 18%)
- * console.log(amt.extractTax(118, 18));      // { ht: 100, tax: 18, ttc: 118 }
- * console.log(amt.applyDiscount(200, 15));   // 170 (remise de 15%)
+ * console.log(NAmount.addTax(100, 18));          // 118 (TTC avec TVA 18%)
+ * console.log(NAmount.extractTax(118, 18));      // { ht: 100, tax: 18, ttc: 118 }
+ * console.log(NAmount.applyDiscount(200, 15));   // 170 (remise de 15%)
  *
  * @example <caption>Exemple 3 : Répartition équitable sans perte de centime</caption>
- * const amt = new NAmount();
- * console.log(amt.allocate(100, 3)); // [33.34, 33.33, 33.33] (somme exacte = 100)
+ * console.log(NAmount.allocate(100, 3)); // [33.34, 33.33, 33.33] (somme exacte = 100)
  */
-export class NAmount extends NObject {
+export class NAmount {
 
     // =========================================================================
-    // Méthodes privées internes (Arrondi financier exact sans état)
+    // Méthodes privées internes (Arrondi financier exact)
     // =========================================================================
 
     /**
@@ -50,7 +45,7 @@ export class NAmount extends NObject {
      * @example <caption>Exemple 2 : Arrondi à 0 décimale</caption>
      * // Interne : #round(1500.6, 0) -> 1501
      */
-    #round(value, decimals = 2) {
+    static #round(value, decimals = 2) {
         const d = Math.max(0, Math.trunc(decimals));
         const factor = 10 ** d;
         return Math.round((value + Number.EPSILON) * factor) / factor;
@@ -68,7 +63,7 @@ export class NAmount extends NObject {
      * @example <caption>Exemple 2 : Franc CFA</caption>
      * // Interne : #resolveCurrencySymbol('XOF') -> 'FCFA'
      */
-    #resolveCurrencySymbol(currency = '') {
+    static #resolveCurrencySymbol(currency = '') {
         if (typeof currency !== 'string') {
             return '';
         }
@@ -103,16 +98,14 @@ export class NAmount extends NObject {
      * @returns {boolean} `true` si le montant est valide selon les critères, sinon `false`.
      *
      * @example <caption>Exemple 1 : Montants positifs valides</caption>
-     * const amt = new NAmount();
-     * console.log(amt.isValid(1500.50));       // true
-     * console.log(amt.isValid('1 250,00 €')); // true
+         * console.log(NAmount.isValid(1500.50));       // true
+     * console.log(NAmount.isValid('1 250,00 €')); // true
      *
      * @example <caption>Exemple 2 : Rejeter les montants négatifs par défaut</caption>
-     * const amt = new NAmount();
-     * console.log(amt.isValid(-50));                              // false
-     * console.log(amt.isValid(-50, { allowNegative: true }));     // true
+         * console.log(NAmount.isValid(-50));                              // false
+     * console.log(NAmount.isValid(-50, { allowNegative: true }));     // true
      */
-    isValid(value, options = {}) {
+    static isValid(value, options = {}) {
         const parsed = this.parse(value, null);
         if (parsed === null) {
             return false;
@@ -137,16 +130,14 @@ export class NAmount extends NObject {
      * @returns {number|null} Montant numérique ou `fallback`.
      *
      * @example <caption>Exemple 1 : Analyser une chaîne avec espaces, virgule et devise</caption>
-     * const amt = new NAmount();
-     * console.log(amt.parse('12 500,75 €'));    // 12500.75
-     * console.log(amt.parse('250 000 FCFA'));   // 250000
+         * console.log(NAmount.parse('12 500,75 €'));    // 12500.75
+     * console.log(NAmount.parse('250 000 FCFA'));   // 250000
      *
      * @example <caption>Exemple 2 : Format anglo-saxon ou valeur invalide</caption>
-     * const amt = new NAmount();
-     * console.log(amt.parse('$1,250.50'));      // 1250.5
-     * console.log(amt.parse('aucun', null));    // null
+         * console.log(NAmount.parse('$1,250.50'));      // 1250.5
+     * console.log(NAmount.parse('aucun', null));    // null
      */
-    parse(value, fallback = 0) {
+    static parse(value, fallback = 0) {
         if (typeof value === 'number') {
             return Number.isFinite(value) ? value : fallback;
         }
@@ -195,14 +186,12 @@ export class NAmount extends NObject {
      * @returns {boolean} `true` si les deux montants sont égaux après arrondi financier.
      *
      * @example <caption>Exemple 1 : Égalité malgré l'imprécision flottante JS</caption>
-     * const amt = new NAmount();
-     * console.log(amt.equals(0.1 + 0.2, 0.3)); // true
+         * console.log(NAmount.equals(0.1 + 0.2, 0.3)); // true
      *
      * @example <caption>Exemple 2 : Comparer un nombre et une chaîne formatée</caption>
-     * const amt = new NAmount();
-     * console.log(amt.equals(1500, '1 500,00 €')); // true
+         * console.log(NAmount.equals(1500, '1 500,00 €')); // true
      */
-    equals(amountA, amountB, decimals = 2) {
+    static equals(amountA, amountB, decimals = 2) {
         const a = this.parse(amountA, null);
         const b = this.parse(amountB, null);
         if (a === null || b === null) {
@@ -224,14 +213,12 @@ export class NAmount extends NObject {
      * @returns {number} Montant entier en sous-unités.
      *
      * @example <caption>Exemple 1 : Convertir des euros en centimes</caption>
-     * const amt = new NAmount();
-     * console.log(amt.toMinorUnits(19.99)); // 1999
+         * console.log(NAmount.toMinorUnits(19.99)); // 1999
      *
      * @example <caption>Exemple 2 : Convertir une chaîne formatée en centimes</caption>
-     * const amt = new NAmount();
-     * console.log(amt.toMinorUnits('1 250,50 €')); // 125050
+         * console.log(NAmount.toMinorUnits('1 250,50 €')); // 125050
      */
-    toMinorUnits(amount, decimals = 2) {
+    static toMinorUnits(amount, decimals = 2) {
         const parsed = this.parse(amount, 0);
         const factor = 10 ** Math.max(0, Math.trunc(decimals));
         return Math.round((parsed + Number.EPSILON) * factor);
@@ -246,14 +233,12 @@ export class NAmount extends NObject {
      * @returns {number} Montant en unité majeure.
      *
      * @example <caption>Exemple 1 : Convertir des centimes en euros</caption>
-     * const amt = new NAmount();
-     * console.log(amt.fromMinorUnits(1999)); // 19.99
+         * console.log(NAmount.fromMinorUnits(1999)); // 19.99
      *
      * @example <caption>Exemple 2 : Avec 3 décimales (ex: Dinar tunisien)</caption>
-     * const amt = new NAmount();
-     * console.log(amt.fromMinorUnits(15500, 3)); // 15.5
+         * console.log(NAmount.fromMinorUnits(15500, 3)); // 15.5
      */
-    fromMinorUnits(minorUnits, decimals = 2) {
+    static fromMinorUnits(minorUnits, decimals = 2) {
         const parsed = this.parse(minorUnits, 0);
         const factor = 10 ** Math.max(0, Math.trunc(decimals));
         return this.#round(parsed / factor, decimals);
@@ -272,14 +257,12 @@ export class NAmount extends NObject {
      * @returns {number} Somme exacte arrondie.
      *
      * @example <caption>Exemple 1 : Additionner deux montants</caption>
-     * const amt = new NAmount();
-     * console.log(amt.add(19.99, 5.01)); // 25
+         * console.log(NAmount.add(19.99, 5.01)); // 25
      *
      * @example <caption>Exemple 2 : Additionner une liste de prix</caption>
-     * const amt = new NAmount();
-     * console.log(amt.add([10.10, 20.20, 30.30])); // 60.6
+         * console.log(NAmount.add([10.10, 20.20, 30.30])); // 60.6
      */
-    add(amountA, amountB = 0, decimals = 2) {
+    static add(amountA, amountB = 0, decimals = 2) {
         if (Array.isArray(amountA)) {
             const d = typeof amountB === 'number' ? amountB : decimals;
             let totalMinor = 0;
@@ -301,14 +284,12 @@ export class NAmount extends NObject {
      * @returns {number} Différence exacte arrondie.
      *
      * @example <caption>Exemple 1 : Soustraction exacte</caption>
-     * const amt = new NAmount();
-     * console.log(amt.subtract(100, 19.99)); // 80.01
+         * console.log(NAmount.subtract(100, 19.99)); // 80.01
      *
      * @example <caption>Exemple 2 : Soustraction avec chaînes formatées</caption>
-     * const amt = new NAmount();
-     * console.log(amt.subtract('5 000 FCFA', '1 250 FCFA', 0)); // 3750
+         * console.log(NAmount.subtract('5 000 FCFA', '1 250 FCFA', 0)); // 3750
      */
-    subtract(amountA, amountB, decimals = 2) {
+    static subtract(amountA, amountB, decimals = 2) {
         const diffMinor = this.toMinorUnits(amountA, decimals) - this.toMinorUnits(amountB, decimals);
         return this.fromMinorUnits(diffMinor, decimals);
     }
@@ -322,14 +303,12 @@ export class NAmount extends NObject {
      * @returns {number} Produit arrondi.
      *
      * @example <caption>Exemple 1 : Prix unitaire x Quantité</caption>
-     * const amt = new NAmount();
-     * console.log(amt.multiply(19.99, 3)); // 59.97
+         * console.log(NAmount.multiply(19.99, 3)); // 59.97
      *
      * @example <caption>Exemple 2 : Avec coefficient décimal</caption>
-     * const amt = new NAmount();
-     * console.log(amt.multiply(150, 1.5)); // 225
+         * console.log(NAmount.multiply(150, 1.5)); // 225
      */
-    multiply(amount, factor, decimals = 2) {
+    static multiply(amount, factor, decimals = 2) {
         const a = this.parse(amount, 0);
         const f = this.parse(factor, 0);
         return this.#round(a * f, decimals);
@@ -344,18 +323,16 @@ export class NAmount extends NObject {
      * @returns {number} Quotient arrondi (ou `0` si `divisor === 0`).
      *
      * @example <caption>Exemple 1 : Diviser un montant</caption>
-     * const amt = new NAmount();
-     * console.log(amt.divide(100, 4)); // 25
+         * console.log(NAmount.divide(100, 4)); // 25
      *
      * @example <caption>Exemple 2 : Arrondi à 2 décimales</caption>
-     * const amt = new NAmount();
-     * console.log(amt.divide(100, 3)); // 33.33
+         * console.log(NAmount.divide(100, 3)); // 33.33
      */
-    divide(amount, divisor, decimals = 2) {
+    static divide(amount, divisor, decimals = 2) {
         const a = this.parse(amount, 0);
         const d = this.parse(divisor, 0);
         if (d === 0) {
-            NUtil.log.warn('NAmount.divide: Division par zéro impossible.', {
+            NLog.warn('NAmount.divide: Division par zéro impossible.', {
                 code: 'WARN_DIVIDE_BY_ZERO',
                 amount,
                 divisor
@@ -375,14 +352,12 @@ export class NAmount extends NObject {
      * @returns {number[]} Tableau des montants répartis dont la somme vaut exactement `amount`.
      *
      * @example <caption>Exemple 1 : Répartition en 3 parts égales de 100 €</caption>
-     * const amt = new NAmount();
-     * console.log(amt.allocate(100, 3)); // [33.34, 33.33, 33.33]
+         * console.log(NAmount.allocate(100, 3)); // [33.34, 33.33, 33.33]
      *
      * @example <caption>Exemple 2 : Répartition par ratios [50, 30, 20]</caption>
-     * const amt = new NAmount();
-     * console.log(amt.allocate(250, [50, 30, 20])); // [125, 75, 50]
+         * console.log(NAmount.allocate(250, [50, 30, 20])); // [125, 75, 50]
      */
-    allocate(amount, partsOrRatios, decimals = 2) {
+    static allocate(amount, partsOrRatios, decimals = 2) {
         const totalMinor = this.toMinorUnits(amount, decimals);
         let ratios = [];
 
@@ -391,7 +366,7 @@ export class NAmount extends NObject {
         } else if (Array.isArray(partsOrRatios) && partsOrRatios.length > 0) {
             ratios = partsOrRatios.map((r) => Math.max(0, Number(r) || 0));
         } else {
-            NUtil.log.warn('NAmount.allocate: Paramètre partsOrRatios invalide.', {
+            NLog.warn('NAmount.allocate: Paramètre partsOrRatios invalide.', {
                 code: 'WARN_ALLOCATE_INVALID_PARAM',
                 partsOrRatios
             });
@@ -400,7 +375,7 @@ export class NAmount extends NObject {
 
         const totalRatio = ratios.reduce((acc, r) => acc + r, 0);
         if (totalRatio <= 0) {
-            NUtil.log.warn('NAmount.allocate: Somme des ratios nulle ou négative.', {
+            NLog.warn('NAmount.allocate: Somme des ratios nulle ou négative.', {
                 code: 'WARN_ALLOCATE_ZERO_RATIO',
                 ratios
             });
@@ -438,14 +413,12 @@ export class NAmount extends NObject {
      * @returns {number} Montant de la taxe.
      *
      * @example <caption>Exemple 1 : TVA à 20% sur 150 € HT</caption>
-     * const amt = new NAmount();
-     * console.log(amt.taxAmount(150, 20)); // 30
+         * console.log(NAmount.taxAmount(150, 20)); // 30
      *
      * @example <caption>Exemple 2 : TVA à 18% en FCFA (0 décimale)</caption>
-     * const amt = new NAmount();
-     * console.log(amt.taxAmount(10000, 18, 0)); // 1800
+         * console.log(NAmount.taxAmount(10000, 18, 0)); // 1800
      */
-    taxAmount(amountHT, taxRate, decimals = 2) {
+    static taxAmount(amountHT, taxRate, decimals = 2) {
         const ht = this.parse(amountHT, 0);
         const rate = this.parse(taxRate, 0);
         return this.#round((ht * rate) / 100, decimals);
@@ -460,14 +433,12 @@ export class NAmount extends NObject {
      * @returns {number} Montant TTC.
      *
      * @example <caption>Exemple 1 : Calculer le TTC à partir du HT</caption>
-     * const amt = new NAmount();
-     * console.log(amt.addTax(100, 20)); // 120
+         * console.log(NAmount.addTax(100, 20)); // 120
      *
      * @example <caption>Exemple 2 : Calculer le TTC avec TVA 18%</caption>
-     * const amt = new NAmount();
-     * console.log(amt.addTax(50000, 18, 0)); // 59000
+         * console.log(NAmount.addTax(50000, 18, 0)); // 59000
      */
-    addTax(amountHT, taxRate, decimals = 2) {
+    static addTax(amountHT, taxRate, decimals = 2) {
         const ht = this.parse(amountHT, 0);
         const tax = this.taxAmount(ht, taxRate, decimals);
         return this.add(ht, tax, decimals);
@@ -482,19 +453,17 @@ export class NAmount extends NObject {
      * @returns {{ ht: number, tax: number, ttc: number }} Objet détaillant `ht`, `tax` et `ttc`.
      *
      * @example <caption>Exemple 1 : Extraire HT et TVA d'un montant TTC</caption>
-     * const amt = new NAmount();
-     * console.log(amt.extractTax(120, 20)); // { ht: 100, tax: 20, ttc: 120 }
+         * console.log(NAmount.extractTax(120, 20)); // { ht: 100, tax: 20, ttc: 120 }
      *
      * @example <caption>Exemple 2 : TVA 18%</caption>
-     * const amt = new NAmount();
-     * console.log(amt.extractTax(118, 18)); // { ht: 100, tax: 18, ttc: 118 }
+         * console.log(NAmount.extractTax(118, 18)); // { ht: 100, tax: 18, ttc: 118 }
      */
-    extractTax(amountTTC, taxRate, decimals = 2) {
+    static extractTax(amountTTC, taxRate, decimals = 2) {
         const ttc = this.#round(this.parse(amountTTC, 0), decimals);
         const rate = this.parse(taxRate, 0);
         const divisor = 1 + rate / 100;
         if (divisor === 0) {
-            NUtil.log.warn('NAmount.extractTax: Taux de taxe entraînant une division par zéro (-100%).', {
+            NLog.warn('NAmount.extractTax: Taux de taxe entraînant une division par zéro (-100%).', {
                 code: 'WARN_TAX_RATE_INVALID',
                 taxRate
             });
@@ -514,14 +483,12 @@ export class NAmount extends NObject {
      * @returns {number} Montant net après remise.
      *
      * @example <caption>Exemple 1 : Appliquer 15% de remise sur 200</caption>
-     * const amt = new NAmount();
-     * console.log(amt.applyDiscount(200, 15)); // 170
+         * console.log(NAmount.applyDiscount(200, 15)); // 170
      *
      * @example <caption>Exemple 2 : Remise de 25%</caption>
-     * const amt = new NAmount();
-     * console.log(amt.applyDiscount(99.90, 25)); // 74.93
+         * console.log(NAmount.applyDiscount(99.90, 25)); // 74.93
      */
-    applyDiscount(amount, discountPercent, decimals = 2) {
+    static applyDiscount(amount, discountPercent, decimals = 2) {
         const base = this.#round(this.parse(amount, 0), decimals);
         const rate = this.parse(discountPercent, 0);
         const discount = this.#round((base * rate) / 100, decimals);
@@ -537,14 +504,12 @@ export class NAmount extends NObject {
      * @returns {number} Montant converti.
      *
      * @example <caption>Exemple 1 : Convertir EUR vers XOF (1 EUR = 655.957 FCFA)</caption>
-     * const amt = new NAmount();
-     * console.log(amt.convert(100, 655.957, 0)); // 65596
+         * console.log(NAmount.convert(100, 655.957, 0)); // 65596
      *
      * @example <caption>Exemple 2 : Convertir USD vers EUR</caption>
-     * const amt = new NAmount();
-     * console.log(amt.convert(250, 0.92, 2)); // 230
+         * console.log(NAmount.convert(250, 0.92, 2)); // 230
      */
-    convert(amount, exchangeRate, decimals = 2) {
+    static convert(amount, exchangeRate, decimals = 2) {
         return this.multiply(amount, exchangeRate, decimals);
     }
 
@@ -566,22 +531,20 @@ export class NAmount extends NObject {
      * @returns {string} Montant formaté (ou `''` si invalide).
      *
      * @example <caption>Exemple 1 : Formatage en Euros et Francs CFA</caption>
-     * const amt = new NAmount();
-     * console.log(amt.format(1250.5, 'EUR'));   // '1 250,50 €'
-     * console.log(amt.format(75000, 'XOF'));    // '75 000 FCFA'
+         * console.log(NAmount.format(1250.5, 'EUR'));   // '1 250,50 €'
+     * console.log(NAmount.format(75000, 'XOF'));    // '75 000 FCFA'
      *
      * @example <caption>Exemple 2 : Formatage en Dollars avec symbole devant</caption>
-     * const amt = new NAmount();
-     * console.log(amt.format(1250.5, 'USD', {
+         * console.log(NAmount.format(1250.5, 'USD', {
      *     thousandsSeparator: ',',
      *     decimalSeparator: '.',
      *     symbolPosition: 'before'
      * })); // '$1,250.50'
      */
-    format(amount, currency = '', options = {}) {
+    static format(amount, currency = '', options = {}) {
         const num = this.parse(amount, null);
         if (num === null) {
-            NUtil.log.warn('NAmount.format: Montant non convertible fourni.', {
+            NLog.warn('NAmount.format: Montant non convertible fourni.', {
                 code: 'WARN_FORMAT_INVALID_AMOUNT',
                 amount
             });

@@ -138,12 +138,14 @@ import './dom/elements/NRadioBox.test.js';
 import './dom/elements/NTextarea.test.js';
 import './dom/elements/NEditText.test.js';
 import './dom/elements/NEditNumber.test.js';
+import './dom/elements/NEditTag.test.js';
 import './dom/elements/NFilePicker.test.js';
 import './dom/elements/NSelect.test.js';
 
 // 2. dom/ & dom/components/
 import './dom/NWindow.test.js';
 import './dom/components/frames/NFrame.test.js';
+import './dom/components/items/NItem.test.js';
 import './dom/components/panels/NToast.test.js';
 import './dom/components/panels/NProgress.test.js';
 

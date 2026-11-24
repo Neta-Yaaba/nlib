@@ -18,8 +18,10 @@
 @import './elements/NTextarea.css' layer(nlib.base);
 @import './elements/NEditText.css' layer(nlib.base);
 @import './elements/NEditNumber.css' layer(nlib.base);
+@import './elements/NEditTag.css' layer(nlib.base);
 @import './elements/NFilePicker.css' layer(nlib.base);
 @import './elements/NSelect.css' layer(nlib.base);
 @import './components/frames/NFrame.css' layer(nlib.base);
+@import './components/items/NItem.css' layer(nlib.base);
 @import './components/panels/NToast.css' layer(nlib.base);
 @import './components/panels/NProgress.css' layer(nlib.base);

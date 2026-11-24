@@ -16,7 +16,7 @@
  *   3. Donnée seule (`encryptData: true, encryptKey: false`)
  *   4. Aucun cryptage (`encryptKey: false, encryptData: false` - comportement par défaut)
  *   Prise en charge à la fois au niveau de l'instance et au niveau de chaque opération CRUD (add, put, get, getAll, cursor, etc.).
- * - Chiffrement local AES-256-GCM via `NUtil.crypto.encryptLocal()` et `NUtil.crypto.decryptLocal()`.
+ * - Chiffrement local AES-256-GCM via `NCrypto.encryptLocal()` et `NCrypto.decryptLocal()`.
  * - Méthode `cursor()` avec capture d'erreurs en bloc `try/catch`, support des callbacks synchrones et asynchrones,
  *   arrêt anticipé (`return false`) et déchiffrement transparent.
  * - Format de retour normalisé : `{ ok: true, data: any }` ou `{ ok: false, error: string, code: string }`.
@@ -24,7 +24,11 @@
  */
 
 import { NObject } from '../core/NObject.js';
+import NJson from '../utils/NJson.js';
+import NStr from '../utils/NStr.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NCrypto } from '../utils/NCrypto.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * Structure standard de retour des opérations NIndexedDB (`{ ok, data, error, code }`).
@@ -80,6 +84,17 @@ import { NUtil } from '../utils/NUtil.js';
  * await db.put('ntable', { id: 2, note: 'publique' }, { encryptKey: true, encryptData: false });
  */
 export class NIndexedDB extends NObject {
+
+    // =========================================================================
+    // Propriétés statiques privées (Instance partagée)
+    // =========================================================================
+
+    /**
+     * Instance statique partagée de `NIndexedDB`.
+     * @type {NIndexedDB|null}
+     * @private
+     */
+    static #instance = null;
 
     // =========================================================================
     // Propriétés privées (Encapsulation stricte)
@@ -162,6 +177,25 @@ export class NIndexedDB extends NObject {
      */
     constructor(options = {}) {
         super(options);
+        if (NJson.size(options) <= 0) {
+            let name = this.config.get("name", "nlib") + "_" + this.config.get("context", "");
+            name = NStr.replaceAll(name, " ", "");
+            name = NStr.toLower(name);
+            options = {
+                name: name,
+                version: 1,
+                stores: [
+                    {
+                        name: 'ntable',
+                        keyPath: 'id',
+                        autoIncrement: false,
+                        indexes: [
+                            { name: 'data', keyPath: 'data', unique: false }
+                        ]
+                    }
+                ]
+            };
+        }
         if (options && typeof options === 'object') {
             if (typeof options.name === 'string' && options.name.trim()) {
                 this.#name = options.name.trim();
@@ -184,6 +218,25 @@ export class NIndexedDB extends NObject {
     // =========================================================================
     // Getters & Setters
     // =========================================================================
+
+    /**
+     * Retourne l'instance statique partagée de `NIndexedDB`, créée lors du premier accès.
+     *
+     * @returns {NIndexedDB} Instance partagée de `NIndexedDB`.
+     *
+     * @example <caption>Exemple 1 : Accéder à l'instance statique partagée</caption>
+     * const res = await NIndexedDB.instance.get('ntable', 'cfg_1');
+     * console.log(res);
+     *
+     * @example <caption>Exemple 2 : Enregistrer une donnée via l'instance statique</caption>
+     * await NIndexedDB.instance.put('ntable', { id: 'session_1', active: true });
+     */
+    static get instance() {
+        if (!NIndexedDB.#instance) {
+            NIndexedDB.#instance = new NIndexedDB();
+        }
+        return NIndexedDB.#instance;
+    }
 
     /**
      * Retourne le nom de la base de données.
@@ -269,20 +322,6 @@ export class NIndexedDB extends NObject {
      */
     get isDataEncrypted() {
         return this.#encryptData;
-    }
-
-    /**
-     * Accès direct aux utilitaires partagés NUtil.
-     * @type {typeof NUtil}
-     *
-     * @example <caption>Exemple 1 : Accéder aux utilitaires</caption>
-     * const util = db.util;
-     *
-     * @example <caption>Exemple 2 : Journalisation standard via util</caption>
-     * db.util.log.info('Opération IndexedDB');
-     */
-    get util() {
-        return NUtil;
     }
 
     // =========================================================================
@@ -1364,7 +1403,7 @@ export class NIndexedDB extends NObject {
     }
 
     /**
-     * Chiffre une clé via `NUtil.crypto.encryptLocal`.
+     * Chiffre une clé via `NCrypto.encryptLocal`.
      *
      * @private
      * @param {string} plainKey - Clé en clair.
@@ -1374,12 +1413,12 @@ export class NIndexedDB extends NObject {
         if (this.#isEncryptedKey(plainKey)) {
             return plainKey;
         }
-        const cipherB64 = await NUtil.crypto.encryptLocal(String(plainKey));
+        const cipherB64 = await NCrypto.encryptLocal(String(plainKey));
         return cipherB64 ? `enck:${cipherB64}` : String(plainKey);
     }
 
     /**
-     * Déchiffre une clé chiffrée via `NUtil.crypto.decryptLocal` pour restituer son nom en clair.
+     * Déchiffre une clé chiffrée via `NCrypto.decryptLocal` pour restituer son nom en clair.
      *
      * @private
      * @param {string} encryptedKey - Clé chiffrée (`enck:...`).
@@ -1390,12 +1429,12 @@ export class NIndexedDB extends NObject {
             return encryptedKey;
         }
         const rawBase64 = encryptedKey.slice(5);
-        const plain = await NUtil.crypto.decryptLocal(rawBase64);
+        const plain = await NCrypto.decryptLocal(rawBase64);
         return plain || encryptedKey;
     }
 
     /**
-     * Chiffre une valeur quelconque via `NUtil.crypto.encryptLocal`.
+     * Chiffre une valeur quelconque via `NCrypto.encryptLocal`.
      *
      * @private
      * @param {any} value - Valeur à protéger.
@@ -1403,12 +1442,12 @@ export class NIndexedDB extends NObject {
      */
     async #encryptDataValue(value) {
         const jsonStr = JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
-        const cipherB64 = await NUtil.crypto.encryptLocal(jsonStr);
+        const cipherB64 = await NCrypto.encryptLocal(jsonStr);
         return cipherB64 ? `encd:${cipherB64}` : '';
     }
 
     /**
-     * Déchiffre une chaîne chiffrée `encd:...` via `NUtil.crypto.decryptLocal` et parse son JSON.
+     * Déchiffre une chaîne chiffrée `encd:...` via `NCrypto.decryptLocal` et parse son JSON.
      *
      * @private
      * @param {string} encryptedString - Donnée chiffrée.
@@ -1420,13 +1459,13 @@ export class NIndexedDB extends NObject {
         }
         try {
             const rawBase64 = encryptedString.slice(5);
-            const jsonStr = await NUtil.crypto.decryptLocal(rawBase64);
+            const jsonStr = await NCrypto.decryptLocal(rawBase64);
             if (!jsonStr) {
                 return null;
             }
             return JSON.parse(jsonStr);
         } catch (err) {
-            NUtil.log.warn('NIndexedDB : Échec du déchiffrement de la donnée.', {
+            NLog.warn('NIndexedDB : Échec du déchiffrement de la donnée.', {
                 code: 'WARN_IDB_DECRYPT_FAILED',
                 error: err
             });
@@ -1558,7 +1597,7 @@ export class NIndexedDB extends NObject {
         }
 
         if (typeof indexedDB === 'undefined') {
-            NUtil.log.warn('NIndexedDB : IndexedDB n\'est pas supporté dans cet environnement.', {
+            NLog.warn('NIndexedDB : IndexedDB n\'est pas supporté dans cet environnement.', {
                 code: 'IDB_NOT_SUPPORTED',
                 database: this.#name
             });
@@ -1571,7 +1610,7 @@ export class NIndexedDB extends NObject {
                 request = indexedDB.open(this.#name, this.#version);
             } catch (err) {
                 this.#openingPromise = null;
-                NUtil.log.error(`NIndexedDB : Échec de l'appel à indexedDB.open() pour "${this.#name}"`, err);
+                NLog.error(`NIndexedDB : Échec de l'appel à indexedDB.open() pour "${this.#name}"`, err);
                 return resolve(null);
             }
 
@@ -1608,13 +1647,13 @@ export class NIndexedDB extends NObject {
             request.onerror = () => {
                 this.#openingPromise = null;
                 const error = request.error || new Error('Erreur inconnue lors de l\'ouverture IndexedDB.');
-                NUtil.log.error(`NIndexedDB : Erreur d'ouverture de la base "${this.#name}"`, error);
+                NLog.error(`NIndexedDB : Erreur d'ouverture de la base "${this.#name}"`, error);
                 resolve(null);
             };
 
             request.onblocked = () => {
                 this.#openingPromise = null;
-                NUtil.log.warn(`NIndexedDB : Ouverture de la base "${this.#name}" bloquée : fermez les autres onglets ou connexions actives pour permettre la mise à niveau.`);
+                NLog.warn(`NIndexedDB : Ouverture de la base "${this.#name}" bloquée : fermez les autres onglets ou connexions actives pour permettre la mise à niveau.`);
                 resolve(null);
             };
         });
@@ -1948,8 +1987,13 @@ export class NIndexedDB extends NObject {
      */
     destroy() {
         this.close();
+        if (NIndexedDB.#instance === this) {
+            NIndexedDB.#instance = null;
+        }
         super.destroy();
     }
 }
+
+NObject.registerIdb(NIndexedDB);
 
 export default NIndexedDB;

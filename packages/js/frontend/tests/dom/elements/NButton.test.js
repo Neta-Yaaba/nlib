@@ -1,4 +1,4 @@
-﻿import { describe, it, assert } from '../../index.js';
+import { describe, it, assert } from '../../index.js';
 import { NButton, NImage, NTag } from '../../../index.js';
 
 describe('NButton (dom/elements/NButton.js)', () => {
@@ -108,10 +108,10 @@ describe('NButton (dom/elements/NButton.js)', () => {
         const btn = new NButton({
             text: 'Envoyer',
             disabled: false,
-            applyLanguage: (b) => b.setText(b.util.lang.get('actions.send'))
+            applyLanguage: (b) => b.setText(b.lang.get('actions.send'))
         });
 
-        await btn.util.lang.init({
+        await btn.lang.init({
             language: 'fr',
             fallback: 'en',
             languages: {
@@ -122,7 +122,7 @@ describe('NButton (dom/elements/NButton.js)', () => {
         btn.applyLanguage();
         assert.equal(btn.getText(), 'Envoyer');
 
-        await btn.util.lang.setLanguage('en');
+        await btn.lang.setLanguage('en');
         btn.setLanguage('en');
         assert.equal(btn.getText(), 'Send');
 

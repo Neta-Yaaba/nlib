@@ -1,38 +1,33 @@
 /**
- * @file NDateTime.js
+ * @file NDate.js
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, la conversion, le calcul, la comparaison
  * et le formatage des dates et heures dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
 
 /**
- * @class NDateTime
- * @extends NObject
+ * @class NDate
  * @description Utilitaire de gestion et traitement des dates et heures.
  *
  * @example <caption>Exemple 1 : Création, formatage et extraction de composants</caption>
- * const dt = new NDateTime();
- * const date = dt.create(2026, 11, 10, 14, 30, 0);
- * console.log(dt.format(date, 'DD/MM/YYYY HH:mm')); // '10/11/2026 14:30'
- * console.log(dt.toSql(date));                      // '2026-11-10 14:30:00'
+ * const date = NDate.create(2026, 11, 10, 14, 30, 0);
+ * console.log(NDate.format(date, 'DD/MM/YYYY HH:mm')); // '10/11/2026 14:30'
+ * console.log(NDate.toSql(date));                      // '2026-11-10 14:30:00'
  *
  * @example <caption>Exemple 2 : Arithmétique de dates (ajout et soustraction)</caption>
- * const dt = new NDateTime();
- * const nextWeek = dt.addDays('2026-11-10', 7);
- * console.log(dt.format(nextWeek, 'YYYY-MM-DD'));   // '2026-11-17'
+ * const nextWeek = NDate.addDays('2026-11-10', 7);
+ * console.log(NDate.format(nextWeek, 'YYYY-MM-DD'));   // '2026-11-17'
  *
  * @example <caption>Exemple 3 : Comparaison, écarts et âge</caption>
- * const dt = new NDateTime();
- * console.log(dt.diffInDays('2026-11-01', '2026-11-10')); // 9
- * console.log(dt.isBetween('2026-11-10', '2026-11-01', '2026-11-30')); // true
- * console.log(dt.getAge('2000-05-15', '2026-11-10'));     // 26
+ * console.log(NDate.diffInDays('2026-11-01', '2026-11-10')); // 9
+ * console.log(NDate.isBetween('2026-11-10', '2026-11-01', '2026-11-30')); // true
+ * console.log(NDate.getAge('2000-05-15', '2026-11-10'));     // 26
  */
-export class NDateTime extends NObject {
+export class NDate {
 
     // =========================================================================
-    // Méthodes privées internes (Normalisation & Helpers sans état)
+    // Méthodes privées internes (Normalisation & Helpers)
     // =========================================================================
 
     /**
@@ -48,7 +43,7 @@ export class NDateTime extends NObject {
      * @example <caption>Exemple 2 : Compléter les millisecondes sur 3 chiffres</caption>
      * // Interne : #pad(7, 3) -> '007'
      */
-    #pad(num, length = 2) {
+    static #pad(num, length = 2) {
         return String(Math.trunc(Math.abs(num))).padStart(length, '0');
     }
 
@@ -64,14 +59,12 @@ export class NDateTime extends NObject {
      * @returns {string} Date et heure actuelles formatées en chaîne de caractères.
      *
      * @example <caption>Exemple 1 : Date et heure actuelles au format standard</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.now()); // ex: '2026-11-10 10:02:11'
+         * console.log(NDate.now()); // ex: '2026-11-10 10:02:11'
      *
      * @example <caption>Exemple 2 : Format personnalisé</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.now('DD/MM/YYYY HH:mm')); // ex: '10/11/2026 10:02'
+         * console.log(NDate.now('DD/MM/YYYY HH:mm')); // ex: '10/11/2026 10:02'
      */
-    now(format = 'YYYY-MM-DD HH:mm:ss', utc = true) {
+    static now(format = 'YYYY-MM-DD HH:mm:ss', utc = true) {
         const date = new Date();
         const formatMap = utc
             ? {
@@ -106,14 +99,12 @@ export class NDateTime extends NObject {
      * @returns {string} Date actuelle formatée en chaîne de caractères.
      *
      * @example <caption>Exemple 1 : Date actuelle au format YYYY-MM-DD</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.nowDate()); // ex: '2026-11-10'
+         * console.log(NDate.nowDate()); // ex: '2026-11-10'
      *
      * @example <caption>Exemple 2 : Date actuelle au format français DD/MM/YYYY</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.nowDate('DD/MM/YYYY')); // ex: '10/11/2026'
+         * console.log(NDate.nowDate('DD/MM/YYYY')); // ex: '10/11/2026'
      */
-    nowDate(format = 'YYYY-MM-DD', utc = true) {
+    static nowDate(format = 'YYYY-MM-DD', utc = true) {
         return this.now(format, utc);
     }
 
@@ -125,14 +116,12 @@ export class NDateTime extends NObject {
      * @returns {string} Heure actuelle formatée en chaîne de caractères.
      *
      * @example <caption>Exemple 1 : Heure actuelle complète HH:mm:ss</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.nowTime()); // ex: '10:02:11'
+         * console.log(NDate.nowTime()); // ex: '10:02:11'
      *
      * @example <caption>Exemple 2 : Heure et minutes uniquement</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.nowTime('HH:mm')); // ex: '10:02'
+         * console.log(NDate.nowTime('HH:mm')); // ex: '10:02'
      */
-    nowTime(format = 'HH:mm:ss', utc = true) {
+    static nowTime(format = 'HH:mm:ss', utc = true) {
         return this.now(format, utc);
     }
 
@@ -143,14 +132,12 @@ export class NDateTime extends NObject {
      * @returns {number} Timestamp numérique.
      *
      * @example <caption>Exemple 1 : Timestamp en millisecondes</caption>
-     * const dt = new NDateTime();
-     * console.log(typeof dt.timestamp()); // 'number'
+         * console.log(typeof NDate.timestamp()); // 'number'
      *
      * @example <caption>Exemple 2 : Timestamp Unix en secondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.timestamp(true)); // ex: 1794304174
+         * console.log(NDate.timestamp(true)); // ex: 1794304174
      */
-    timestamp(inSeconds = false) {
+    static timestamp(inSeconds = false) {
         const ms = Date.now();
         return inSeconds ? Math.floor(ms / 1000) : ms;
     }
@@ -168,16 +155,14 @@ export class NDateTime extends NObject {
      * @returns {Date} Nouvelle instance `Date`.
      *
      * @example <caption>Exemple 1 : Créer une date simple</caption>
-     * const dt = new NDateTime();
-     * const d = dt.create(2026, 11, 10);
-     * console.log(dt.format(d, 'YYYY-MM-DD')); // '2026-11-10'
+         * const d = NDate.create(2026, 11, 10);
+     * console.log(NDate.format(d, 'YYYY-MM-DD')); // '2026-11-10'
      *
      * @example <caption>Exemple 2 : Créer une date avec heure précise</caption>
-     * const dt = new NDateTime();
-     * const d = dt.create(2026, 11, 10, 14, 30, 45);
-     * console.log(dt.toSql(d)); // '2026-11-10 14:30:45'
+         * const d = NDate.create(2026, 11, 10, 14, 30, 45);
+     * console.log(NDate.toSql(d)); // '2026-11-10 14:30:45'
      */
-    create(year, month = 1, day = 1, hours = 0, minutes = 0, seconds = 0, ms = 0) {
+    static create(year, month = 1, day = 1, hours = 0, minutes = 0, seconds = 0, ms = 0) {
         return new Date(year, month - 1, day, hours, minutes, seconds, ms);
     }
 
@@ -189,17 +174,15 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` clonée ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Convertir une chaîne ISO ou SQL</caption>
-     * const dt = new NDateTime();
-     * const d1 = dt.toDate('2026-11-10 14:30:00');
-     * const d2 = dt.toDate('10/11/2026');
-     * console.log(dt.format(d1, 'YYYY-MM-DD'), dt.format(d2, 'YYYY-MM-DD')); // '2026-11-10' '2026-11-10'
+         * const d1 = NDate.toDate('2026-11-10 14:30:00');
+     * const d2 = NDate.toDate('10/11/2026');
+     * console.log(NDate.format(d1, 'YYYY-MM-DD'), NDate.format(d2, 'YYYY-MM-DD')); // '2026-11-10' '2026-11-10'
      *
      * @example <caption>Exemple 2 : Valeur invalide retourne null</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toDate('date-invalide')); // null
-     * console.log(dt.toDate(null));            // null
+         * console.log(NDate.toDate('date-invalide')); // null
+     * console.log(NDate.toDate(null));            // null
      */
-    toDate(value) {
+    static toDate(value) {
         if (value instanceof Date) {
             return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
         }
@@ -268,17 +251,15 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si la date est valide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Dates valides</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isValid(new Date()));      // true
-     * console.log(dt.isValid('2026-11-10'));    // true
-     * console.log(dt.isValid('10/11/2026'));    // true
+         * console.log(NDate.isValid(new Date()));      // true
+     * console.log(NDate.isValid('2026-11-10'));    // true
+     * console.log(NDate.isValid('10/11/2026'));    // true
      *
      * @example <caption>Exemple 2 : Dates invalides (ex: 31 février)</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isValid('2026-02-31'));    // false
-     * console.log(dt.isValid('texte'));         // false
+         * console.log(NDate.isValid('2026-02-31'));    // false
+     * console.log(NDate.isValid('texte'));         // false
      */
-    isValid(value) {
+    static isValid(value) {
         return this.toDate(value) !== null;
     }
 
@@ -289,15 +270,13 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si l'année est bissextile, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester une année numérique</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isLeapYear(2024)); // true
-     * console.log(dt.isLeapYear(2026)); // false
+         * console.log(NDate.isLeapYear(2024)); // true
+     * console.log(NDate.isLeapYear(2026)); // false
      *
      * @example <caption>Exemple 2 : Tester à partir d'une date</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isLeapYear('2024-02-29')); // true
+         * console.log(NDate.isLeapYear('2024-02-29')); // true
      */
-    isLeapYear(yearOrDate) {
+    static isLeapYear(yearOrDate) {
         const year = typeof yearOrDate === 'number'
             ? Math.trunc(yearOrDate)
             : this.getYear(yearOrDate);
@@ -314,14 +293,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si c'est samedi ou dimanche, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester un samedi</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isWeekend('2026-11-14')); // true (Samedi)
+         * console.log(NDate.isWeekend('2026-11-14')); // true (Samedi)
      *
      * @example <caption>Exemple 2 : Tester un jour ouvré</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isWeekend('2026-11-10')); // false (Mardi)
+         * console.log(NDate.isWeekend('2026-11-10')); // false (Mardi)
      */
-    isWeekend(value) {
+    static isWeekend(value) {
         const d = this.toDate(value);
         if (!d) {
             return false;
@@ -337,14 +314,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si c'est entre lundi et vendredi, sinon `false`.
      *
      * @example <caption>Exemple 1 : Jour de semaine</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isWeekday('2026-11-10')); // true
+         * console.log(NDate.isWeekday('2026-11-10')); // true
      *
      * @example <caption>Exemple 2 : Week-end</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isWeekday('2026-11-15')); // false (Dimanche)
+         * console.log(NDate.isWeekday('2026-11-15')); // false (Dimanche)
      */
-    isWeekday(value) {
+    static isWeekday(value) {
         const d = this.toDate(value);
         if (!d) {
             return false;
@@ -360,14 +335,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si la date est aujourd'hui, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester l'instant présent</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isToday(dt.now())); // true
+         * console.log(NDate.isToday(NDate.now())); // true
      *
      * @example <caption>Exemple 2 : Tester une date passée</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isToday('2000-01-01')); // false
+         * console.log(NDate.isToday('2000-01-01')); // false
      */
-    isToday(value) {
+    static isToday(value) {
         return this.equals(value, new Date(), { ignoreTime: true });
     }
 
@@ -379,14 +352,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si `value` est antérieure à `reference`.
      *
      * @example <caption>Exemple 1 : Date passée</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isPast('2020-01-01')); // true
+         * console.log(NDate.isPast('2020-01-01')); // true
      *
      * @example <caption>Exemple 2 : Avec une date de référence</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isPast('2026-11-05', '2026-11-10')); // true
+         * console.log(NDate.isPast('2026-11-05', '2026-11-10')); // true
      */
-    isPast(value, reference = new Date()) {
+    static isPast(value, reference = new Date()) {
         return this.isBefore(value, reference);
     }
 
@@ -398,14 +369,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si `value` est postérieure à `reference`.
      *
      * @example <caption>Exemple 1 : Date future</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isFuture('2099-01-01')); // true
+         * console.log(NDate.isFuture('2099-01-01')); // true
      *
      * @example <caption>Exemple 2 : Avec une date de référence</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isFuture('2026-11-15', '2026-11-10')); // true
+         * console.log(NDate.isFuture('2026-11-15', '2026-11-10')); // true
      */
-    isFuture(value, reference = new Date()) {
+    static isFuture(value, reference = new Date()) {
         return this.isAfter(value, reference);
     }
 
@@ -419,14 +388,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si les deux dates sont égales, sinon `false`.
      *
      * @example <caption>Exemple 1 : Comparaison exacte</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.equals('2026-11-10 14:00:00', '2026-11-10 14:00:00')); // true
+         * console.log(NDate.equals('2026-11-10 14:00:00', '2026-11-10 14:00:00')); // true
      *
      * @example <caption>Exemple 2 : Comparer uniquement le jour (ignoreTime)</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.equals('2026-11-10 08:00:00', '2026-11-10 22:30:00', { ignoreTime: true })); // true
+         * console.log(NDate.equals('2026-11-10 08:00:00', '2026-11-10 22:30:00', { ignoreTime: true })); // true
      */
-    equals(dateA, dateB, options = {}) {
+    static equals(dateA, dateB, options = {}) {
         const a = this.toDate(dateA);
         const b = this.toDate(dateB);
         if (!a || !b) {
@@ -450,14 +417,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si `dateA < dateB`, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier l'antériorité</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isBefore('2026-11-01', '2026-11-10')); // true
+         * console.log(NDate.isBefore('2026-11-01', '2026-11-10')); // true
      *
      * @example <caption>Exemple 2 : Cas où la date est postérieure</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isBefore('2026-11-15', '2026-11-10')); // false
+         * console.log(NDate.isBefore('2026-11-15', '2026-11-10')); // false
      */
-    isBefore(dateA, dateB) {
+    static isBefore(dateA, dateB) {
         const a = this.toDate(dateA);
         const b = this.toDate(dateB);
         if (!a || !b) {
@@ -474,14 +439,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si `dateA > dateB`, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier la postériorité</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isAfter('2026-11-15', '2026-11-10')); // true
+         * console.log(NDate.isAfter('2026-11-15', '2026-11-10')); // true
      *
      * @example <caption>Exemple 2 : Cas où la date est antérieure</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isAfter('2026-11-01', '2026-11-10')); // false
+         * console.log(NDate.isAfter('2026-11-01', '2026-11-10')); // false
      */
-    isAfter(dateA, dateB) {
+    static isAfter(dateA, dateB) {
         const a = this.toDate(dateA);
         const b = this.toDate(dateB);
         if (!a || !b) {
@@ -500,14 +463,12 @@ export class NDateTime extends NObject {
      * @returns {boolean} `true` si la date est dans l'intervalle, sinon `false`.
      *
      * @example <caption>Exemple 1 : Intervalle inclusif</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isBetween('2026-11-10', '2026-11-01', '2026-11-30')); // true
+         * console.log(NDate.isBetween('2026-11-10', '2026-11-01', '2026-11-30')); // true
      *
      * @example <caption>Exemple 2 : Intervalle exclusif sur une borne</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.isBetween('2026-11-01', '2026-11-01', '2026-11-30', false)); // false
+         * console.log(NDate.isBetween('2026-11-01', '2026-11-01', '2026-11-30', false)); // false
      */
-    isBetween(value, start, end, inclusive = true) {
+    static isBetween(value, start, end, inclusive = true) {
         const d = this.toDate(value);
         const s = this.toDate(start);
         const e = this.toDate(end);
@@ -531,14 +492,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Année ou `null`.
      *
      * @example <caption>Exemple 1 : Extraire l'année</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getYear('2026-11-10')); // 2026
+         * console.log(NDate.getYear('2026-11-10')); // 2026
      *
      * @example <caption>Exemple 2 : Date invalide</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getYear('invalide')); // null
+         * console.log(NDate.getYear('invalide')); // null
      */
-    getYear(value) {
+    static getYear(value) {
         const d = this.toDate(value);
         return d ? d.getFullYear() : null;
     }
@@ -550,14 +509,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Mois (`1` à `12`) ou `null`.
      *
      * @example <caption>Exemple 1 : Extraire le mois (1-12)</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getMonth('2026-11-10')); // 11
+         * console.log(NDate.getMonth('2026-11-10')); // 11
      *
      * @example <caption>Exemple 2 : Janvier retourne 1</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getMonth('2026-01-15')); // 1
+         * console.log(NDate.getMonth('2026-01-15')); // 1
      */
-    getMonth(value) {
+    static getMonth(value) {
         const d = this.toDate(value);
         return d ? d.getMonth() + 1 : null;
     }
@@ -569,14 +526,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Jour du mois (`1` à `31`) ou `null`.
      *
      * @example <caption>Exemple 1 : Extraire le jour du mois</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getDay('2026-11-10')); // 10
+         * console.log(NDate.getDay('2026-11-10')); // 10
      *
      * @example <caption>Exemple 2 : À partir d'un format français</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getDay('25/12/2026')); // 25
+         * console.log(NDate.getDay('25/12/2026')); // 25
      */
-    getDay(value) {
+    static getDay(value) {
         const d = this.toDate(value);
         return d ? d.getDate() : null;
     }
@@ -589,14 +544,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Jour ISO (`1` à `7`) ou `null`.
      *
      * @example <caption>Exemple 1 : Mardi retourne 2</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getDayOfWeek('2026-11-10')); // 2
+         * console.log(NDate.getDayOfWeek('2026-11-10')); // 2
      *
      * @example <caption>Exemple 2 : Dimanche retourne 7</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getDayOfWeek('2026-11-15')); // 7
+         * console.log(NDate.getDayOfWeek('2026-11-15')); // 7
      */
-    getDayOfWeek(value) {
+    static getDayOfWeek(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -612,14 +565,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Heures (`0` à `23`) ou `null`.
      *
      * @example <caption>Exemple 1 : Extraire l'heure</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getHours('2026-11-10 14:35:20')); // 14
+         * console.log(NDate.getHours('2026-11-10 14:35:20')); // 14
      *
      * @example <caption>Exemple 2 : Date sans heure spécifiée</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getHours('2026-11-10')); // 0
+         * console.log(NDate.getHours('2026-11-10')); // 0
      */
-    getHours(value) {
+    static getHours(value) {
         const d = this.toDate(value);
         return d ? d.getHours() : null;
     }
@@ -631,14 +582,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Minutes (`0` à `59`) ou `null`.
      *
      * @example <caption>Exemple 1 : Extraire les minutes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getMinutes('2026-11-10 14:35:20')); // 35
+         * console.log(NDate.getMinutes('2026-11-10 14:35:20')); // 35
      *
      * @example <caption>Exemple 2 : Date invalide</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getMinutes('invalide')); // null
+         * console.log(NDate.getMinutes('invalide')); // null
      */
-    getMinutes(value) {
+    static getMinutes(value) {
         const d = this.toDate(value);
         return d ? d.getMinutes() : null;
     }
@@ -650,14 +599,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Secondes (`0` à `59`) ou `null`.
      *
      * @example <caption>Exemple 1 : Extraire les secondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getSeconds('2026-11-10 14:35:20')); // 20
+         * console.log(NDate.getSeconds('2026-11-10 14:35:20')); // 20
      *
      * @example <caption>Exemple 2 : Date sans secondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getSeconds('2026-11-10 14:35')); // 0
+         * console.log(NDate.getSeconds('2026-11-10 14:35')); // 0
      */
-    getSeconds(value) {
+    static getSeconds(value) {
         const d = this.toDate(value);
         return d ? d.getSeconds() : null;
     }
@@ -670,14 +617,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Nombre de jours (`28`, `29`, `30` ou `31`) ou `null`.
      *
      * @example <caption>Exemple 1 : Nombre de jours à partir d'une date</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.daysInMonth('2026-11-10')); // 30
+         * console.log(NDate.daysInMonth('2026-11-10')); // 30
      *
      * @example <caption>Exemple 2 : Février d'une année bissextile</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.daysInMonth(2024, 2)); // 29
+         * console.log(NDate.daysInMonth(2024, 2)); // 29
      */
-    daysInMonth(yearOrDate, month) {
+    static daysInMonth(yearOrDate, month) {
         if (typeof yearOrDate === 'number' && typeof month === 'number') {
             if (month < 1 || month > 12) {
                 return null;
@@ -703,14 +648,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Ajouter 5 ans</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.addYears('2026-11-10', 5), 'YYYY-MM-DD')); // '2031-11-10'
+         * console.log(NDate.format(NDate.addYears('2026-11-10', 5), 'YYYY-MM-DD')); // '2031-11-10'
      *
      * @example <caption>Exemple 2 : Retirer 2 ans</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.addYears('2026-11-10', -2), 'YYYY-MM-DD')); // '2024-11-10'
+         * console.log(NDate.format(NDate.addYears('2026-11-10', -2), 'YYYY-MM-DD')); // '2024-11-10'
      */
-    addYears(value, years) {
+    static addYears(value, years) {
         return this.addMonths(value, Math.trunc(years) * 12);
     }
 
@@ -723,14 +666,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Ajouter 3 mois</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.addMonths('2026-11-10', 3), 'YYYY-MM-DD')); // '2027-02-10'
+         * console.log(NDate.format(NDate.addMonths('2026-11-10', 3), 'YYYY-MM-DD')); // '2027-02-10'
      *
      * @example <caption>Exemple 2 : Gestion automatique de fin de mois</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.addMonths('2026-01-31', 1), 'YYYY-MM-DD')); // '2026-02-28'
+         * console.log(NDate.format(NDate.addMonths('2026-01-31', 1), 'YYYY-MM-DD')); // '2026-02-28'
      */
-    addMonths(value, months) {
+    static addMonths(value, months) {
         const d = this.toDate(value);
         if (!d || typeof months !== 'number' || !Number.isFinite(months)) {
             return null;
@@ -751,14 +692,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Ajouter 10 jours</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.addDays('2026-11-10', 10), 'YYYY-MM-DD')); // '2026-11-20'
+         * console.log(NDate.format(NDate.addDays('2026-11-10', 10), 'YYYY-MM-DD')); // '2026-11-20'
      *
      * @example <caption>Exemple 2 : Soustraire 15 jours</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.addDays('2026-11-10', -15), 'YYYY-MM-DD')); // '2026-10-26'
+         * console.log(NDate.format(NDate.addDays('2026-11-10', -15), 'YYYY-MM-DD')); // '2026-10-26'
      */
-    addDays(value, days) {
+    static addDays(value, days) {
         const d = this.toDate(value);
         if (!d || typeof days !== 'number' || !Number.isFinite(days)) {
             return null;
@@ -775,14 +714,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Ajouter 5 heures</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.addHours('2026-11-10 10:00:00', 5))); // '2026-11-10 15:00:00'
+         * console.log(NDate.toSql(NDate.addHours('2026-11-10 10:00:00', 5))); // '2026-11-10 15:00:00'
      *
      * @example <caption>Exemple 2 : Retirer 2 heures</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.addHours('2026-11-10 01:00:00', -2))); // '2026-11-09 23:00:00'
+         * console.log(NDate.toSql(NDate.addHours('2026-11-10 01:00:00', -2))); // '2026-11-09 23:00:00'
      */
-    addHours(value, hours) {
+    static addHours(value, hours) {
         return this.addMinutes(value, hours * 60);
     }
 
@@ -794,14 +731,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Ajouter 45 minutes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.addMinutes('2026-11-10 14:30:00', 45))); // '2026-11-10 15:15:00'
+         * console.log(NDate.toSql(NDate.addMinutes('2026-11-10 14:30:00', 45))); // '2026-11-10 15:15:00'
      *
      * @example <caption>Exemple 2 : Retirer 30 minutes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.addMinutes('2026-11-10 14:15:00', -30))); // '2026-11-10 13:45:00'
+         * console.log(NDate.toSql(NDate.addMinutes('2026-11-10 14:15:00', -30))); // '2026-11-10 13:45:00'
      */
-    addMinutes(value, minutes) {
+    static addMinutes(value, minutes) {
         return this.addSeconds(value, minutes * 60);
     }
 
@@ -813,14 +748,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Nouvelle instance `Date` ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Ajouter 90 secondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.addSeconds('2026-11-10 14:00:00', 90))); // '2026-11-10 14:01:30'
+         * console.log(NDate.toSql(NDate.addSeconds('2026-11-10 14:00:00', 90))); // '2026-11-10 14:01:30'
      *
      * @example <caption>Exemple 2 : Retirer 10 secondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.addSeconds('2026-11-10 14:00:05', -10))); // '2026-11-10 13:59:55'
+         * console.log(NDate.toSql(NDate.addSeconds('2026-11-10 14:00:05', -10))); // '2026-11-10 13:59:55'
      */
-    addSeconds(value, seconds) {
+    static addSeconds(value, seconds) {
         const d = this.toDate(value);
         if (!d || typeof seconds !== 'number' || !Number.isFinite(seconds)) {
             return null;
@@ -839,14 +772,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Date à `00:00:00.000` ou `null`.
      *
      * @example <caption>Exemple 1 : Début de journée</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.startOfDay('2026-11-10 18:45:12'))); // '2026-11-10 00:00:00'
+         * console.log(NDate.toSql(NDate.startOfDay('2026-11-10 18:45:12'))); // '2026-11-10 00:00:00'
      *
      * @example <caption>Exemple 2 : Date invalide</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.startOfDay('invalide')); // null
+         * console.log(NDate.startOfDay('invalide')); // null
      */
-    startOfDay(value) {
+    static startOfDay(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -862,14 +793,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Date à `23:59:59.999` ou `null`.
      *
      * @example <caption>Exemple 1 : Fin de journée</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.endOfDay('2026-11-10 09:15:00'))); // '2026-11-10 23:59:59'
+         * console.log(NDate.toSql(NDate.endOfDay('2026-11-10 09:15:00'))); // '2026-11-10 23:59:59'
      *
      * @example <caption>Exemple 2 : Vérifier les millisecondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.endOfDay('2026-11-10').getMilliseconds()); // 999
+         * console.log(NDate.endOfDay('2026-11-10').getMilliseconds()); // 999
      */
-    endOfDay(value) {
+    static endOfDay(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -885,14 +814,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Début du mois ou `null`.
      *
      * @example <caption>Exemple 1 : Premier jour du mois</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.startOfMonth('2026-11-18 14:20:00'))); // '2026-11-01 00:00:00'
+         * console.log(NDate.toSql(NDate.startOfMonth('2026-11-18 14:20:00'))); // '2026-11-01 00:00:00'
      *
      * @example <caption>Exemple 2 : Format date simple</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.startOfMonth('2026-02-15'), 'YYYY-MM-DD')); // '2026-02-01'
+         * console.log(NDate.format(NDate.startOfMonth('2026-02-15'), 'YYYY-MM-DD')); // '2026-02-01'
      */
-    startOfMonth(value) {
+    static startOfMonth(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -909,14 +836,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Fin du mois ou `null`.
      *
      * @example <caption>Exemple 1 : Dernier jour de novembre</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.endOfMonth('2026-11-10'))); // '2026-11-30 23:59:59'
+         * console.log(NDate.toSql(NDate.endOfMonth('2026-11-10'))); // '2026-11-30 23:59:59'
      *
      * @example <caption>Exemple 2 : Dernier jour de février bissextile</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.endOfMonth('2024-02-05'), 'YYYY-MM-DD')); // '2024-02-29'
+         * console.log(NDate.format(NDate.endOfMonth('2024-02-05'), 'YYYY-MM-DD')); // '2024-02-29'
      */
-    endOfMonth(value) {
+    static endOfMonth(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -933,14 +858,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Début de l'année ou `null`.
      *
      * @example <caption>Exemple 1 : Début de l'année</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.startOfYear('2026-11-10'))); // '2026-01-01 00:00:00'
+         * console.log(NDate.toSql(NDate.startOfYear('2026-11-10'))); // '2026-01-01 00:00:00'
      *
      * @example <caption>Exemple 2 : Format court</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.startOfYear('2026-07-14'), 'DD/MM/YYYY')); // '01/01/2026'
+         * console.log(NDate.format(NDate.startOfYear('2026-07-14'), 'DD/MM/YYYY')); // '01/01/2026'
      */
-    startOfYear(value) {
+    static startOfYear(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -957,14 +880,12 @@ export class NDateTime extends NObject {
      * @returns {Date|null} Fin de l'année ou `null`.
      *
      * @example <caption>Exemple 1 : Fin de l'année</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql(dt.endOfYear('2026-11-10'))); // '2026-12-31 23:59:59'
+         * console.log(NDate.toSql(NDate.endOfYear('2026-11-10'))); // '2026-12-31 23:59:59'
      *
      * @example <caption>Exemple 2 : Format court</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format(dt.endOfYear('2026-03-01'), 'DD/MM/YYYY')); // '31/12/2026'
+         * console.log(NDate.format(NDate.endOfYear('2026-03-01'), 'DD/MM/YYYY')); // '31/12/2026'
      */
-    endOfYear(value) {
+    static endOfYear(value) {
         const d = this.toDate(value);
         if (!d) {
             return null;
@@ -987,14 +908,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Différence en secondes ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Écart en secondes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInSeconds('2026-11-10 14:00:00', '2026-11-10 14:02:30')); // 150
+         * console.log(NDate.diffInSeconds('2026-11-10 14:00:00', '2026-11-10 14:02:30')); // 150
      *
      * @example <caption>Exemple 2 : Écart signé (non absolu)</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInSeconds('2026-11-10 14:02:00', '2026-11-10 14:00:00', false)); // -120
+         * console.log(NDate.diffInSeconds('2026-11-10 14:02:00', '2026-11-10 14:00:00', false)); // -120
      */
-    diffInSeconds(dateA, dateB, absolute = true) {
+    static diffInSeconds(dateA, dateB, absolute = true) {
         const a = this.toDate(dateA);
         const b = this.toDate(dateB);
         if (!a || !b) {
@@ -1013,14 +932,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Différence en minutes ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Écart en minutes</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInMinutes('2026-11-10 14:00:00', '2026-11-10 15:30:00')); // 90
+         * console.log(NDate.diffInMinutes('2026-11-10 14:00:00', '2026-11-10 15:30:00')); // 90
      *
      * @example <caption>Exemple 2 : Écart signé</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInMinutes('2026-11-10 15:30:00', '2026-11-10 14:00:00', false)); // -90
+         * console.log(NDate.diffInMinutes('2026-11-10 15:30:00', '2026-11-10 14:00:00', false)); // -90
      */
-    diffInMinutes(dateA, dateB, absolute = true) {
+    static diffInMinutes(dateA, dateB, absolute = true) {
         const sec = this.diffInSeconds(dateA, dateB, absolute);
         return sec === null ? null : Math.trunc(sec / 60);
     }
@@ -1034,14 +951,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Différence en heures ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Écart en heures</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInHours('2026-11-10 08:00:00', '2026-11-10 20:00:00')); // 12
+         * console.log(NDate.diffInHours('2026-11-10 08:00:00', '2026-11-10 20:00:00')); // 12
      *
      * @example <caption>Exemple 2 : Sur plusieurs jours</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInHours('2026-11-10 00:00:00', '2026-11-12 00:00:00')); // 48
+         * console.log(NDate.diffInHours('2026-11-10 00:00:00', '2026-11-12 00:00:00')); // 48
      */
-    diffInHours(dateA, dateB, absolute = true) {
+    static diffInHours(dateA, dateB, absolute = true) {
         const min = this.diffInMinutes(dateA, dateB, absolute);
         return min === null ? null : Math.trunc(min / 60);
     }
@@ -1055,14 +970,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Différence en jours ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Écart en jours</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInDays('2026-11-01', '2026-11-10')); // 9
+         * console.log(NDate.diffInDays('2026-11-01', '2026-11-10')); // 9
      *
      * @example <caption>Exemple 2 : Écart négatif si non absolu</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.diffInDays('2026-11-10', '2026-11-01', false)); // -9
+         * console.log(NDate.diffInDays('2026-11-10', '2026-11-01', false)); // -9
      */
-    diffInDays(dateA, dateB, absolute = true) {
+    static diffInDays(dateA, dateB, absolute = true) {
         const a = this.toDate(dateA);
         const b = this.toDate(dateB);
         if (!a || !b) {
@@ -1082,14 +995,12 @@ export class NDateTime extends NObject {
      * @returns {number|null} Âge en années ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Calculer l'âge à une date donnée</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getAge('1995-06-15', '2026-11-10')); // 31
+         * console.log(NDate.getAge('1995-06-15', '2026-11-10')); // 31
      *
      * @example <caption>Exemple 2 : Anniversaire non encore passé dans l'année</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.getAge('1995-12-25', '2026-11-10')); // 30
+         * console.log(NDate.getAge('1995-12-25', '2026-11-10')); // 30
      */
-    getAge(birthDate, referenceDate = new Date()) {
+    static getAge(birthDate, referenceDate = new Date()) {
         const birth = this.toDate(birthDate);
         const ref = this.toDate(referenceDate);
         if (!birth || !ref) {
@@ -1125,15 +1036,13 @@ export class NDateTime extends NObject {
      * @returns {string} Chaîne formatée, ou `''` si la date est invalide.
      *
      * @example <caption>Exemple 1 : Format français</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.format('2026-11-10 14:05:09', 'DD/MM/YYYY à HH:mm')); // '10/11/2026 à 14:05'
+         * console.log(NDate.format('2026-11-10 14:05:09', 'DD/MM/YYYY à HH:mm')); // '10/11/2026 à 14:05'
      *
      * @example <caption>Exemple 2 : Format compact avec millisecondes</caption>
-     * const dt = new NDateTime();
-     * const d = dt.create(2026, 11, 10, 8, 5, 3, 42);
-     * console.log(dt.format(d, 'YYYYMMDD_HHmmss_SSS')); // '20261110_080503_042'
+         * const d = NDate.create(2026, 11, 10, 8, 5, 3, 42);
+     * console.log(NDate.format(d, 'YYYYMMDD_HHmmss_SSS')); // '20261110_080503_042'
      */
-    format(value, pattern = 'YYYY-MM-DD HH:mm:ss') {
+    static format(value, pattern = 'YYYY-MM-DD HH:mm:ss') {
         const d = this.toDate(value);
         if (!d || typeof pattern !== 'string') {
             return '';
@@ -1159,14 +1068,12 @@ export class NDateTime extends NObject {
      * @returns {string} Date formatée pour SQLite/SQL, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Format DATETIME SQL complet</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql('10/11/2026 14:30:00')); // '2026-11-10 14:30:00'
+         * console.log(NDate.toSql('10/11/2026 14:30:00')); // '2026-11-10 14:30:00'
      *
      * @example <caption>Exemple 2 : Format DATE SQL sans l'heure</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toSql('10/11/2026 14:30:00', false)); // '2026-11-10'
+         * console.log(NDate.toSql('10/11/2026 14:30:00', false)); // '2026-11-10'
      */
-    toSql(value = new Date(), includeTime = true) {
+    static toSql(value = new Date(), includeTime = true) {
         return this.format(value, includeTime ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD');
     }
 
@@ -1177,18 +1084,16 @@ export class NDateTime extends NObject {
      * @returns {string} Chaîne ISO 8601 ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Obtenir la chaîne ISO 8601</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toIso('2026-11-10').startsWith('2026-11-')); // true
+         * console.log(NDate.toIso('2026-11-10').startsWith('2026-11-')); // true
      *
      * @example <caption>Exemple 2 : Date invalide retourne une chaîne vide</caption>
-     * const dt = new NDateTime();
-     * console.log(dt.toIso('invalide')); // ''
+         * console.log(NDate.toIso('invalide')); // ''
      */
-    toIso(value = new Date()) {
+    static toIso(value = new Date()) {
         const d = this.toDate(value);
         return d ? d.toISOString() : '';
     }
 }
 
-export default NDateTime;
+export default NDate;
 

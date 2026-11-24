@@ -77,6 +77,16 @@ export class NObject {
     static create<T extends NObject = NObject>(options?: NObjectOptions): T;
     static isNObject(value: any): value is NObject;
     static registerUtil(util: typeof NUtil): typeof NObject;
+    static registerIdb(idb: typeof NIndexedDB): typeof NObject;
+    static registerConfig(config: typeof NConfig): typeof NObject;
+    static registerSql(sql: typeof NSql): typeof NObject;
+    static registerStorage(storage: typeof NStorage): typeof NObject;
+    static registerLang(lang: typeof NLang): typeof NObject;
+    readonly idb: NIndexedDB | null;
+    readonly config: NConfig | null;
+    readonly sql: NSql | null;
+    readonly storage: typeof NStorage | null;
+    readonly lang: typeof NLang | null;
 }
 
 /* ========================================================================== *
@@ -133,7 +143,7 @@ export interface NLogImportResult {
 /**
  * Gestionnaire de journalisation centralisé avec historique circulaire en mémoire (`log/NLog.js`).
  */
-export class NLog extends NObject {
+export class NLog {
     static readonly LEVEL: Readonly<{
         DEBUG: 0;
         INFO: 1;
@@ -142,37 +152,32 @@ export class NLog extends NObject {
         NONE: 99;
     }>;
 
-    constructor(options?: NLogOptions);
+    static readonly event: NEvent;
+    static readonly isConsoleEnabled: boolean;
+    static readonly isTraceEnabled: boolean;
+    static readonly maxLogs: number;
 
-    readonly event: NEvent;
-    readonly isConsoleEnabled: boolean;
-    readonly isTraceEnabled: boolean;
-    readonly maxLogs: number;
-    readonly context: NLogContext;
-
-    setConsoleEnabled(enabled?: boolean): this;
-    setTraceEnabled(enabled?: boolean): this;
-    setMaxLogs(max: number): this;
-    setContext(context: NLogContext): this;
-    debug(message: string, details?: any, context?: NLogContext): NLogEntry;
-    info(message: string, details?: any, context?: NLogContext): NLogEntry;
-    warn(message: string, details?: any, context?: NLogContext): NLogEntry;
-    error(message: string, errorOrDetails?: Error | any, context?: NLogContext): NLogEntry;
-    write(
+    static configure(options?: NLogOptions): typeof NLog;
+    static setConsoleEnabled(enabled?: boolean): typeof NLog;
+    static setTraceEnabled(enabled?: boolean): typeof NLog;
+    static setMaxLogs(max: number): typeof NLog;
+    static debug(message: string, details?: any, context?: NLogContext): NLogEntry;
+    static info(message: string, details?: any, context?: NLogContext): NLogEntry;
+    static warn(message: string, details?: any, context?: NLogContext): NLogEntry;
+    static error(message: string, errorOrDetails?: Error | any, context?: NLogContext): NLogEntry;
+    static write(
         level: NLogLevel | number,
         message: string,
         details?: any,
         context?: NLogContext,
         extra?: { stack?: string | null; code?: any; caller?: string | null }
     ): NLogEntry;
-    captureException(error: unknown, additionalContext?: Record<string, any>): NLogExceptionResult;
-    getLogs(filter?: NLogFilter | null): NLogEntry[];
-    export(format?: 'json' | 'text' | 'raw'): string | NLogEntry[];
-    import(data: string | Array<Partial<NLogEntry>>, options?: NLogImportOptions): NLogImportResult;
-    clear(): this;
-    destroy(): void;
-
-    static create(options?: NLogOptions): NLog;
+    static captureException(error: unknown, additionalContext?: Record<string, any>): NLogExceptionResult;
+    static getLogs(filter?: NLogFilter | null): NLogEntry[];
+    static export(format?: 'json' | 'text' | 'raw'): string | NLogEntry[];
+    static import(data: string | Array<Partial<NLogEntry>>, options?: NLogImportOptions): NLogImportResult;
+    static clear(): typeof NLog;
+    static destroy(): void;
 }
 
 /* ========================================================================== *
@@ -193,6 +198,7 @@ export interface NConfigOptions extends NObjectOptions {
  * Gestionnaire de configuration applicative en mémoire avec typage fort et valeurs par défaut (`config/NConfig.js`).
  */
 export class NConfig extends NObject {
+    static instance(options?: NConfigOptions): NConfig;
     constructor(options?: NConfigOptions);
 
     readonly isFrozen: boolean;
@@ -223,7 +229,7 @@ export class NConfig extends NObject {
 }
 
 /* ========================================================================== *
- * 4. DOSSIER environment/ (NEnvironment)                                     *
+ * 4. DOSSIER environment/ (NEnv)                                             *
  * ========================================================================== */
 
 export type NEnvironmentType = 'browser' | 'worker' | 'node' | 'unknown';
@@ -247,40 +253,38 @@ export interface NEnvironmentInfo {
 }
 
 /**
- * Détection des caractéristiques de l'environnement d'exécution (`environment/NEnvironment.js`).
+ * Détection des caractéristiques de l'environnement d'exécution (`environment/NEnv.js`).
  */
-export class NEnvironment extends NObject {
-    constructor(options?: NObjectOptions);
-
-    readonly type: NEnvironmentType;
-    readonly isBrowser: boolean;
-    readonly isNode: boolean;
-    readonly isWorker: boolean;
-    readonly os: NEnvironmentOS;
-    readonly isAndroid: boolean;
-    readonly isHarmonyOS: boolean;
-    readonly isIOS: boolean;
-    readonly isWindows: boolean;
-    readonly isMacOS: boolean;
-    readonly isLinux: boolean;
-    readonly browser: NEnvironmentBrowser;
-    readonly isMobile: boolean;
-    readonly isTablet: boolean;
-    readonly isDesktop: boolean;
-    readonly isTouch: boolean;
-    readonly isWebView: boolean;
-    readonly isOnline: boolean;
-    readonly isOffline: boolean;
-    readonly isSecureContext: boolean;
-    readonly isDarkMode: boolean;
-    readonly language: string;
-    readonly timezone: string;
-    readonly userAgent: string;
-    readonly info: NEnvironmentInfo;
+export class NEnv {
+    static readonly type: NEnvironmentType;
+    static readonly isBrowser: boolean;
+    static readonly isNode: boolean;
+    static readonly isWorker: boolean;
+    static readonly os: NEnvironmentOS;
+    static readonly isAndroid: boolean;
+    static readonly isHarmonyOS: boolean;
+    static readonly isIOS: boolean;
+    static readonly isWindows: boolean;
+    static readonly isMacOS: boolean;
+    static readonly isLinux: boolean;
+    static readonly browser: NEnvironmentBrowser;
+    static readonly isMobile: boolean;
+    static readonly isTablet: boolean;
+    static readonly isDesktop: boolean;
+    static readonly isTouch: boolean;
+    static readonly isWebView: boolean;
+    static readonly isOnline: boolean;
+    static readonly isOffline: boolean;
+    static readonly isSecureContext: boolean;
+    static readonly isDarkMode: boolean;
+    static readonly language: string;
+    static readonly timezone: string;
+    static readonly userAgent: string;
+    static readonly info: NEnvironmentInfo;
 }
 
 /* ========================================================================== *
- * 5. DOSSIER system/ (NSystem)                                               *
+ * 5. DOSSIER system/ (NSys)                                                    *
  * ========================================================================== */
 
 export interface NSystemOptions extends NObjectOptions {
@@ -341,44 +345,41 @@ export interface NSystemMeasureResult<T = any> {
 }
 
 /**
- * Informations matérielles, mesures de performance, presse-papiers et passerelle native (`system/NSystem.js`).
+ * Informations matérielles, mesures de performance, presse-papiers et passerelle native (`system/NSys.js`).
  */
-export class NSystem extends NObject {
-    constructor(options?: NSystemOptions);
+export class NSys {
+    static readonly cpuCores: number;
+    static readonly arch: string;
+    static readonly deviceMemory: number | null;
+    static readonly memory: NSystemMemoryInfo;
+    static readonly screen: NSystemScreenInfo;
+    static readonly network: NSystemNetworkInfo;
 
-    readonly cpuCores: number;
-    readonly arch: string;
-    readonly deviceMemory: number | null;
-    readonly memory: NSystemMemoryInfo;
-    readonly screen: NSystemScreenInfo;
-    readonly network: NSystemNetworkInfo;
-
-    uptime(inSeconds?: boolean): number;
-    hrtime(): number;
-    measure<T = any>(label: string, fn: () => T | Promise<T>): Promise<NSystemMeasureResult<T>>;
-    getBattery(): Promise<NSystemBatteryInfo | null>;
-    getStorageQuota(): Promise<NSystemStorageQuota>;
-    copyToClipboard(text: string): Promise<boolean>;
-    readFromClipboard(): Promise<string>;
-    getBrowserUrl(): string;
-    setBrowserTitle(title: string): Promise<any> | void;
-    setBrowserUrl(url: string, state?: any): Promise<any> | void;
-    pushBrowserUrl(url: string, state?: any): Promise<any> | void;
-    browserBack(): Promise<any> | void;
-    openUrl(url: string, target?: string): Promise<any> | Window | null;
-    loadUrl(url: string): Promise<any> | void;
-    share(data?: { title?: string; text?: string; url?: string }): Promise<boolean>;
-    watchNetwork(
+    static uptime(inSeconds?: boolean): number;
+    static hrtime(): number;
+    static measure<T = any>(label: string, fn: () => T | Promise<T>): Promise<NSystemMeasureResult<T>>;
+    static getBattery(): Promise<NSystemBatteryInfo | null>;
+    static getStorageQuota(): Promise<NSystemStorageQuota>;
+    static copyToClipboard(text: string): Promise<boolean>;
+    static readFromClipboard(): Promise<string>;
+    static getBrowserUrl(): string;
+    static setBrowserTitle(title: string): Promise<any> | void;
+    static setBrowserUrl(url: string, state?: any): Promise<any> | void;
+    static pushBrowserUrl(url: string, state?: any): Promise<any> | void;
+    static browserBack(): Promise<any> | void;
+    static openUrl(url: string, target?: string): Promise<any> | Window | null;
+    static loadUrl(url: string): Promise<any> | void;
+    static share(data?: { title?: string; text?: string; url?: string }): Promise<boolean>;
+    static watchNetwork(
         enable?: boolean,
         callbacks?: {
             onOnline?: (networkInfo: NSystemNetworkInfo) => void;
             onOffline?: (networkInfo: NSystemNetworkInfo) => void;
         }
-    ): this;
-    invokeNative<T = any>(actionOrParams: string | Record<string, any>, payloadOrOptions?: Record<string, any>): Promise<T>;
-    getSnapshot(): Promise<Record<string, any>>;
-    toJSON(): Record<string, any>;
-    destroy(): void;
+    ): typeof NSys;
+    static invokeNative<T = any>(actionOrParams: string | Record<string, any>, payloadOrOptions?: Record<string, any>): Promise<T>;
+    static getSnapshot(): Promise<Record<string, any>>;
+    static toJSON(): Record<string, any>;
 }
 
 /* ========================================================================== *
@@ -397,37 +398,9 @@ export type NDebouncedFunction<T extends (...args: any[]) => any> = ((...args: P
 };
 
 /**
- * Point d'entrée statique centralisant l'accès aux singletons et utilitaires globaux (`utils/NUtil.js`).
+ * Classe statique regroupant les méthodes utilitaires transversales (`utils/NUtil.js`).
  */
-export class NUtil extends NObject {
-    static readonly str: NString;
-    static readonly num: NNumber;
-    static readonly date: NDateTime;
-    static readonly amount: NAmount;
-    static readonly email: NEmail;
-    static readonly phone: NPhoneNumber;
-    static readonly crypto: NCryptography;
-    static readonly url: NUrl;
-    static readonly json: NJson;
-    static readonly password: NPassword;
-    static readonly arr: NArray;
-    static readonly env: NEnvironment;
-    static readonly config: NConfig;
-    static readonly sys: NSystem;
-    static readonly system: NSystem;
-    static readonly worker: NWorkerManager;
-    static readonly network: NNetwork;
-    static readonly net: NNetwork;
-    static readonly database: NDatabase;
-    static readonly db: NDatabase;
-    static readonly file: NFile;
-    static readonly dir: NDirectory;
-    static readonly directory: NDirectory;
-    static readonly cache: NCache;
-    static readonly log: NLog;
-    static readonly lang: NLanguage;
-    static readonly language: NLanguage;
-
+export class NUtil {
     static uuid(): string;
     static uid(prefix?: string, randomLength?: number): string;
     static getType(value: any): string;
@@ -448,38 +421,36 @@ export class NUtil extends NObject {
 
 /**
  * Primitives cryptographiques Web Crypto pour le hachage SHA-256, l'encodage Base64
- * et le chiffrement symétrique, asymétrique, hybride et local (`utils/NCryptography.js`).
+ * et le chiffrement symétrique, asymétrique, hybride et local (`utils/NCrypto.js`).
  */
-export class NCryptography extends NObject {
-    constructor();
+export class NCrypto {
+    static isWebCryptoAvailable(): boolean;
+    static randomBytes(length?: number): Uint8Array;
+    static bytesToBase64(bytes: Uint8Array | ArrayBuffer): string;
+    static base64ToBytes(base64: string): Uint8Array;
+    static encodeBase64(text: string): string;
+    static decodeBase64(base64: string): string;
 
-    isWebCryptoAvailable(): boolean;
-    randomBytes(length?: number): Uint8Array;
-    bytesToBase64(bytes: Uint8Array | ArrayBuffer): string;
-    base64ToBytes(base64: string): Uint8Array;
-    encodeBase64(text: string): string;
-    decodeBase64(base64: string): string;
+    static sha256(data: string | Uint8Array | any, outputFormat?: 'hex' | 'base64' | 'bytes'): Promise<string | Uint8Array>;
 
-    sha256(data: string | Uint8Array | any, outputFormat?: 'hex' | 'base64' | 'bytes'): Promise<string | Uint8Array>;
+    static generateKeyPair(options?: { modulusLength?: 2048 | 3072 | 4096; hash?: 'SHA-1' | 'SHA-256' }): Promise<CryptoKeyPair | null>;
+    static exportPublicKeyToPem(publicKey: CryptoKey): Promise<string>;
+    static importPublicKeyFromPem(pemKey: string): Promise<CryptoKey | null>;
 
-    generateKeyPair(options?: { modulusLength?: 2048 | 3072 | 4096; hash?: 'SHA-1' | 'SHA-256' }): Promise<CryptoKeyPair | null>;
-    exportPublicKeyToPem(publicKey: CryptoKey): Promise<string>;
-    importPublicKeyFromPem(pemKey: string): Promise<CryptoKey | null>;
-
-    encrypt(
+    static encrypt(
         data: any,
         publicKey?: CryptoKey | null
     ): Promise<{ type?: 'asymmetric' | 'hybrid'; data?: string; key?: string; iv?: string }>;
-    decrypt(encryptedPayload: Record<string, any> | string, privateKey?: CryptoKey | null): Promise<string>;
+    static decrypt(encryptedPayload: Record<string, any> | string, privateKey?: CryptoKey | null): Promise<string>;
 
-    encryptSymmetric(
+    static encryptSymmetric(
         data: any,
         secretKey: string
     ): Promise<{ type: 'aes-256-cbc'; iv: string; data: string } | null>;
-    decryptSymmetric(payload: Record<string, any> | string, secretKey: string): Promise<string>;
+    static decryptSymmetric(payload: Record<string, any> | string, secretKey: string): Promise<string>;
 
-    encryptLocal(data: any): Promise<string>;
-    decryptLocal(encryptedData: string): Promise<string>;
+    static encryptLocal(data: any): Promise<string>;
+    static decryptLocal(encryptedData: string): Promise<string>;
 }
 
 export interface NStringCompareOptions {
@@ -497,48 +468,46 @@ export interface NStringMaskOptions {
 }
 
 /**
- * Manipulation, comparaison, transformation de casse et formatage de chaînes (`utils/NString.js`).
+ * Manipulation, comparaison, transformation de casse et formatage de chaînes (`utils/NStr.js`).
  */
-export class NString extends NObject {
-    constructor();
-
-    isString(value: any): value is string;
-    isEmpty(text: any): boolean;
-    isEmail(text: string): boolean;
-    isAlphanumeric(text: string): boolean;
-    equals(textA: string, textB: string, options?: NStringCompareOptions): boolean;
-    contains(text: string, search: string, options?: NStringCompareOptions): boolean;
-    indexOf(text: string, search: string, options?: NStringCompareOptions): number;
-    startsWith(text: string, prefix: string, options?: NStringCompareOptions): boolean;
-    endsWith(text: string, suffix: string, options?: NStringCompareOptions): boolean;
-    toUpper(text: string): string;
-    toLower(text: string): string;
-    capitalize(text: string): string;
-    toTitleCase(text: string): string;
-    toCamelCase(text: string): string;
-    toPascalCase(text: string): string;
-    toSnakeCase(text: string): string;
-    toKebabCase(text: string): string;
-    trim(text: string, chars?: string | null): string;
-    cleanSpaces(text: string): string;
-    removeAccents(text: string): string;
-    slugify(text: string, separator?: string): string;
-    escapeHtml(text: string): string;
-    unescapeHtml(text: string): string;
-    split(text: string, separator?: string | RegExp, limit?: number): string[];
-    splitAt<T = string | null>(text: string, separator: string | RegExp, index: number, defaultValue?: T): string | T;
-    insertEvery(text: string, step?: number, separator?: string, fromEnd?: boolean): string;
-    truncate(text: string, maxLength: number, suffix?: string): string;
-    padStart(text: string | number, length: number, padChar?: string): string;
-    padEnd(text: string | number, length: number, padChar?: string): string;
-    repeat(text: string, count: number): string;
-    reverse(text: string): string;
-    replaceAll(text: string, search: string | RegExp, replacement: string): string;
-    template(text: string, data?: Record<string, any>): string;
-    mask(text: string, options?: NStringMaskOptions): string;
-    countOccurrences(text: string, subString: string, options?: NStringCompareOptions): number;
-    wordCount(text: string): number;
-    random(length?: number, charset?: string): string;
+export class NStr {
+    static isString(value: any): value is string;
+    static isEmpty(text: any): boolean;
+    static isEmail(text: string): boolean;
+    static isAlphanumeric(text: string): boolean;
+    static equals(textA: string, textB: string, options?: NStringCompareOptions): boolean;
+    static contains(text: string, search: string, options?: NStringCompareOptions): boolean;
+    static indexOf(text: string, search: string, options?: NStringCompareOptions): number;
+    static startsWith(text: string, prefix: string, options?: NStringCompareOptions): boolean;
+    static endsWith(text: string, suffix: string, options?: NStringCompareOptions): boolean;
+    static toUpper(text: string): string;
+    static toLower(text: string): string;
+    static capitalize(text: string): string;
+    static toTitleCase(text: string): string;
+    static toCamelCase(text: string): string;
+    static toPascalCase(text: string): string;
+    static toSnakeCase(text: string): string;
+    static toKebabCase(text: string): string;
+    static trim(text: string, chars?: string | null): string;
+    static cleanSpaces(text: string): string;
+    static removeAccents(text: string): string;
+    static slugify(text: string, separator?: string): string;
+    static escapeHtml(text: string): string;
+    static unescapeHtml(text: string): string;
+    static split(text: string, separator?: string | RegExp, limit?: number): string[];
+    static splitAt<T = string | null>(text: string, separator: string | RegExp, index: number, defaultValue?: T): string | T;
+    static insertEvery(text: string, step?: number, separator?: string, fromEnd?: boolean): string;
+    static truncate(text: string, maxLength: number, suffix?: string): string;
+    static padStart(text: string | number, length: number, padChar?: string): string;
+    static padEnd(text: string | number, length: number, padChar?: string): string;
+    static repeat(text: string, count: number): string;
+    static reverse(text: string): string;
+    static replaceAll(text: string, search: string | RegExp, replacement: string): string;
+    static template(text: string, data?: Record<string, any>): string;
+    static mask(text: string, options?: NStringMaskOptions): string;
+    static countOccurrences(text: string, subString: string, options?: NStringCompareOptions): number;
+    static wordCount(text: string): number;
+    static random(length?: number, charset?: string): string;
 }
 
 export interface NNumberFormatOptions {
@@ -554,94 +523,90 @@ export interface NNumberCurrencyOptions extends NNumberFormatOptions {
 }
 
 /**
- * Validation, conversion, calculs mathématiques et formatage numérique (`utils/NNumber.js`).
+ * Validation, conversion, calculs mathématiques et formatage numérique (`utils/NNum.js`).
  */
-export class NNumber extends NObject {
-    constructor();
-
-    isNumber(value: any): value is number;
-    isNumeric(value: any): boolean;
-    isInteger(value: any): boolean;
-    isFloat(value: any): boolean;
-    isPositive(value: any, includeZero?: boolean): boolean;
-    isNegative(value: any, includeZero?: boolean): boolean;
-    isEven(value: any): boolean;
-    isOdd(value: any): boolean;
-    isBetween(value: any, min: number, max: number, inclusive?: boolean): boolean;
-    equals(numA: any, numB: any, tolerance?: number): boolean;
-    toInt(value: any, defaultValue?: number, radix?: number): number;
-    toFloat(value: any, defaultValue?: number): number;
-    round(value: any, decimals?: number): number;
-    floor(value: any, decimals?: number): number;
-    ceil(value: any, decimals?: number): number;
-    clamp(value: any, min: number, max: number): number;
-    percentage(part: any, total: any, decimals?: number): number;
-    percentageOf(percent: any, total: any, decimals?: number): number;
-    sum(numbers?: any[]): number;
-    average(numbers?: any[], decimals?: number): number;
-    min(numbers?: any[]): number | null;
-    max(numbers?: any[]): number | null;
-    randomInt(min?: number, max?: number): number;
-    randomFloat(min?: number, max?: number, decimals?: number): number;
-    format(value: any, options?: NNumberFormatOptions): string;
-    formatCurrency(value: any, options?: NNumberCurrencyOptions): string;
-    formatBytes(bytes: number, decimals?: number): string;
-    pad(value: number | string, length?: number): string;
+export class NNum {
+    static isNumber(value: any): value is number;
+    static isNumeric(value: any): boolean;
+    static isInteger(value: any): boolean;
+    static isFloat(value: any): boolean;
+    static isPositive(value: any, includeZero?: boolean): boolean;
+    static isNegative(value: any, includeZero?: boolean): boolean;
+    static isEven(value: any): boolean;
+    static isOdd(value: any): boolean;
+    static isBetween(value: any, min: number, max: number, inclusive?: boolean): boolean;
+    static equals(numA: any, numB: any, tolerance?: number): boolean;
+    static toInt(value: any, defaultValue?: number, radix?: number): number;
+    static toFloat(value: any, defaultValue?: number): number;
+    static round(value: any, decimals?: number): number;
+    static floor(value: any, decimals?: number): number;
+    static ceil(value: any, decimals?: number): number;
+    static clamp(value: any, min: number, max: number): number;
+    static percentage(part: any, total: any, decimals?: number): number;
+    static percentageOf(percent: any, total: any, decimals?: number): number;
+    static sum(numbers?: any[]): number;
+    static average(numbers?: any[], decimals?: number): number;
+    static min(numbers?: any[]): number | null;
+    static max(numbers?: any[]): number | null;
+    static randomInt(min?: number, max?: number): number;
+    static randomFloat(min?: number, max?: number, decimals?: number): number;
+    static format(value: any, options?: NNumberFormatOptions): string;
+    static formatCurrency(value: any, options?: NNumberCurrencyOptions): string;
+    static formatBytes(bytes: number, decimals?: number): string;
+    static pad(value: number | string, length?: number): string;
 }
 
 export type NDateInput = Date | string | number;
 
 /**
- * Manipulation, arithmétique calendaire, calculs d'écarts et formatage de dates (`utils/NDateTime.js`).
+ * Manipulation, arithmétique calendaire, calculs d'écarts et formatage de dates (`utils/NDate.js`).
  */
-export class NDateTime extends NObject {
-    constructor();
-
-    now(): Date;
-    nowDate(format?: string, utc?: boolean): string;
-    nowTime(format?: string, utc?: boolean): string;
-    timestamp(inSeconds?: boolean): number;
-    create(year: number, month?: number, day?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
-    toDate(value: NDateInput): Date | null;
-    isValid(value: any): boolean;
-    isLeapYear(yearOrDate?: number | NDateInput): boolean;
-    isToday(value: NDateInput): boolean;
-    isPast(value: NDateInput, reference?: NDateInput): boolean;
-    isFuture(value: NDateInput, reference?: NDateInput): boolean;
-    isWeekend(value: NDateInput): boolean;
-    isWeekday(value: NDateInput): boolean;
-    equals(dateA: NDateInput, dateB: NDateInput, options?: { unit?: string; ignoreTime?: boolean }): boolean;
-    isBefore(dateA: NDateInput, dateB: NDateInput): boolean;
-    isAfter(dateA: NDateInput, dateB: NDateInput): boolean;
-    isBetween(value: NDateInput, start: NDateInput, end: NDateInput, inclusive?: boolean): boolean;
-    getYear(value: NDateInput): number | null;
-    getMonth(value: NDateInput): number | null;
-    getDay(value: NDateInput): number | null;
-    getDayOfWeek(value: NDateInput): number | null;
-    getHours(value: NDateInput): number | null;
-    getMinutes(value: NDateInput): number | null;
-    getSeconds(value: NDateInput): number | null;
-    daysInMonth(yearOrDate: number | NDateInput, month?: number): number | null;
-    addYears(value: NDateInput, years: number): Date | null;
-    addMonths(value: NDateInput, months: number): Date | null;
-    addDays(value: NDateInput, days: number): Date | null;
-    addHours(value: NDateInput, hours: number): Date | null;
-    addMinutes(value: NDateInput, minutes: number): Date | null;
-    addSeconds(value: NDateInput, seconds: number): Date | null;
-    startOfDay(value: NDateInput): Date | null;
-    endOfDay(value: NDateInput): Date | null;
-    startOfMonth(value: NDateInput): Date | null;
-    endOfMonth(value: NDateInput): Date | null;
-    startOfYear(value: NDateInput): Date | null;
-    endOfYear(value: NDateInput): Date | null;
-    diffInSeconds(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
-    diffInMinutes(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
-    diffInHours(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
-    diffInDays(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
-    getAge(birthDate: NDateInput, referenceDate?: NDateInput): number | null;
-    format(value: NDateInput, pattern?: string): string;
-    toSql(value?: NDateInput, includeTime?: boolean): string;
-    toIso(value?: NDateInput): string;
+export class NDate {
+    static now(): Date;
+    static nowDate(format?: string, utc?: boolean): string;
+    static nowTime(format?: string, utc?: boolean): string;
+    static timestamp(inSeconds?: boolean): number;
+    static create(year: number, month?: number, day?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
+    static toDate(value: NDateInput): Date | null;
+    static isValid(value: any): boolean;
+    static isLeapYear(yearOrDate?: number | NDateInput): boolean;
+    static isToday(value: NDateInput): boolean;
+    static isPast(value: NDateInput, reference?: NDateInput): boolean;
+    static isFuture(value: NDateInput, reference?: NDateInput): boolean;
+    static isWeekend(value: NDateInput): boolean;
+    static isWeekday(value: NDateInput): boolean;
+    static equals(dateA: NDateInput, dateB: NDateInput, options?: { unit?: string; ignoreTime?: boolean }): boolean;
+    static isBefore(dateA: NDateInput, dateB: NDateInput): boolean;
+    static isAfter(dateA: NDateInput, dateB: NDateInput): boolean;
+    static isBetween(value: NDateInput, start: NDateInput, end: NDateInput, inclusive?: boolean): boolean;
+    static getYear(value: NDateInput): number | null;
+    static getMonth(value: NDateInput): number | null;
+    static getDay(value: NDateInput): number | null;
+    static getDayOfWeek(value: NDateInput): number | null;
+    static getHours(value: NDateInput): number | null;
+    static getMinutes(value: NDateInput): number | null;
+    static getSeconds(value: NDateInput): number | null;
+    static daysInMonth(yearOrDate: number | NDateInput, month?: number): number | null;
+    static addYears(value: NDateInput, years: number): Date | null;
+    static addMonths(value: NDateInput, months: number): Date | null;
+    static addDays(value: NDateInput, days: number): Date | null;
+    static addHours(value: NDateInput, hours: number): Date | null;
+    static addMinutes(value: NDateInput, minutes: number): Date | null;
+    static addSeconds(value: NDateInput, seconds: number): Date | null;
+    static startOfDay(value: NDateInput): Date | null;
+    static endOfDay(value: NDateInput): Date | null;
+    static startOfMonth(value: NDateInput): Date | null;
+    static endOfMonth(value: NDateInput): Date | null;
+    static startOfYear(value: NDateInput): Date | null;
+    static endOfYear(value: NDateInput): Date | null;
+    static diffInSeconds(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    static diffInMinutes(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    static diffInHours(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    static diffInDays(dateA: NDateInput, dateB: NDateInput, absolute?: boolean): number | null;
+    static getAge(birthDate: NDateInput, referenceDate?: NDateInput): number | null;
+    static format(value: NDateInput, pattern?: string): string;
+    static toSql(value?: NDateInput, includeTime?: boolean): string;
+    static toIso(value?: NDateInput): string;
 }
 
 export interface NAmountValidOptions {
@@ -652,25 +617,23 @@ export interface NAmountValidOptions {
 /**
  * Calculs monétaires exacts en centimes, TVA, remises et formatage de devises (`utils/NAmount.js`).
  */
-export class NAmount extends NObject {
-    constructor();
-
-    isValid(value: any, options?: NAmountValidOptions): boolean;
-    parse(value: any, fallback?: number | null): number | null;
-    equals(amountA: any, amountB: any, decimals?: number): boolean;
-    toMinorUnits(amount: any, decimals?: number): number;
-    fromMinorUnits(minorUnits: number, decimals?: number): number;
-    add(amountA: any, amountB?: any, decimals?: number): number;
-    subtract(amountA: any, amountB: any, decimals?: number): number;
-    multiply(amount: any, factor: number, decimals?: number): number;
-    divide(amount: any, divisor: number, decimals?: number): number;
-    allocate(amount: any, partsOrRatios: number | number[], decimals?: number): number[];
-    taxAmount(amountHT: any, taxRate: number, decimals?: number): number;
-    addTax(amountHT: any, taxRate: number, decimals?: number): number;
-    extractTax(amountTTC: any, taxRate: number, decimals?: number): { ht: number; tax: number; ttc: number };
-    applyDiscount(amount: any, discountPercent: number, decimals?: number): number;
-    convert(amount: any, exchangeRate: number, decimals?: number): number;
-    format(amount: any, currency?: string, options?: NNumberCurrencyOptions): string;
+export class NAmount {
+    static isValid(value: any, options?: NAmountValidOptions): boolean;
+    static parse(value: any, fallback?: number | null): number | null;
+    static equals(amountA: any, amountB: any, decimals?: number): boolean;
+    static toMinorUnits(amount: any, decimals?: number): number;
+    static fromMinorUnits(minorUnits: number, decimals?: number): number;
+    static add(amountA: any, amountB?: any, decimals?: number): number;
+    static subtract(amountA: any, amountB: any, decimals?: number): number;
+    static multiply(amount: any, factor: number, decimals?: number): number;
+    static divide(amount: any, divisor: number, decimals?: number): number;
+    static allocate(amount: any, partsOrRatios: number | number[], decimals?: number): number[];
+    static taxAmount(amountHT: any, taxRate: number, decimals?: number): number;
+    static addTax(amountHT: any, taxRate: number, decimals?: number): number;
+    static extractTax(amountTTC: any, taxRate: number, decimals?: number): { ht: number; tax: number; ttc: number };
+    static applyDiscount(amount: any, discountPercent: number, decimals?: number): number;
+    static convert(amount: any, exchangeRate: number, decimals?: number): number;
+    static format(amount: any, currency?: string, options?: NNumberCurrencyOptions): string;
 }
 
 export interface NEmailParsed {
@@ -690,23 +653,21 @@ export interface NEmailNormalizeOptions {
 /**
  * Validation, normalisation, analyse et masquage d'adresses e-mail (`utils/NEmail.js`).
  */
-export class NEmail extends NObject {
-    constructor();
-
-    isValid(email: any): boolean;
-    isFreeProvider(email: string, customProviders?: string[]): boolean;
-    isDisposable(email: string, customBlacklist?: string[]): boolean;
-    isBusiness(email: string): boolean;
-    hasDomain(email: string, allowedDomains: string | string[], allowSubdomains?: boolean): boolean;
-    normalize(email: string, options?: NEmailNormalizeOptions): string;
-    equals(emailA: string, emailB: string, options?: NEmailNormalizeOptions): boolean;
-    parse(email: string): NEmailParsed | null;
-    getLocalPart(email: string, stripPlusTag?: boolean): string;
-    getDomain(email: string): string;
-    getTld(email: string): string;
-    mask(email: string, options?: { visibleStart?: number; visibleEnd?: number; maskChar?: string }): string;
-    formatDisplay(email: string, displayName?: string): string;
-    extractFromText(text: string, unique?: boolean): string[];
+export class NEmail {
+    static isValid(email: any): boolean;
+    static isFreeProvider(email: string, customProviders?: string[]): boolean;
+    static isDisposable(email: string, customBlacklist?: string[]): boolean;
+    static isBusiness(email: string): boolean;
+    static hasDomain(email: string, allowedDomains: string | string[], allowSubdomains?: boolean): boolean;
+    static normalize(email: string, options?: NEmailNormalizeOptions): string;
+    static equals(emailA: string, emailB: string, options?: NEmailNormalizeOptions): boolean;
+    static parse(email: string): NEmailParsed | null;
+    static getLocalPart(email: string, stripPlusTag?: boolean): string;
+    static getDomain(email: string): string;
+    static getTld(email: string): string;
+    static mask(email: string, options?: { visibleStart?: number; visibleEnd?: number; maskChar?: string }): string;
+    static formatDisplay(email: string, displayName?: string): string;
+    static extractFromText(text: string, unique?: boolean): string[];
 }
 
 export interface NPhoneParsed {
@@ -719,24 +680,22 @@ export interface NPhoneParsed {
 }
 
 /**
- * Validation, nettoyage, analyse et formatage de numéros de téléphone (`utils/NPhoneNumber.js`).
+ * Validation, nettoyage, analyse et formatage de numéros de téléphone (`utils/NPhone.js`).
  */
-export class NPhoneNumber extends NObject {
-    constructor();
-
-    clean(phone: string | number, keepPlus?: boolean): string;
-    isValid(phone: any, options?: { countryCode?: string; minLength?: number; maxLength?: number }): boolean;
-    isE164(phone: string): boolean;
-    equals(phoneA: string | number, phoneB: string | number, defaultCountryCode?: string): boolean;
-    toE164(phone: string | number, defaultCountryCode?: string, stripLeadingZero?: boolean): string;
-    toNational(phone: string | number, countryCode?: string, nationalPrefix?: string): string;
-    format(
+export class NPhone {
+    static clean(phone: string | number, keepPlus?: boolean): string;
+    static isValid(phone: any, options?: { countryCode?: string; minLength?: number; maxLength?: number }): boolean;
+    static isE164(phone: string): boolean;
+    static equals(phoneA: string | number, phoneB: string | number, defaultCountryCode?: string): boolean;
+    static toE164(phone: string | number, defaultCountryCode?: string, stripLeadingZero?: boolean): string;
+    static toNational(phone: string | number, countryCode?: string, nationalPrefix?: string): string;
+    static format(
         phone: string | number,
         options?: { groupSize?: number; separator?: string; countryCode?: string | number }
     ): string;
-    mask(phone: string | number, options?: NStringMaskOptions): string;
-    toTelUri(phone: string | number, scheme?: string): string;
-    toWhatsAppUrl(phone: string | number, message?: string): string;
+    static mask(phone: string | number, options?: NStringMaskOptions): string;
+    static toTelUri(phone: string | number, scheme?: string): string;
+    static toWhatsAppUrl(phone: string | number, message?: string): string;
 }
 
 export interface NUrlParsed {
@@ -768,35 +727,33 @@ export interface NUrlBuildParts {
 /**
  * Manipulation d'URLs, Query Strings et obfuscation signée d'identifiants (`utils/NUrl.js`).
  */
-export class NUrl extends NObject {
-    constructor();
-
-    isValid(url: any, options?: { requireHttps?: boolean; allowRelative?: boolean }): boolean;
-    isAbsolute(url: string): boolean;
-    isRelative(url: string): boolean;
-    isHttps(url: string): boolean;
-    isSameOrigin(urlA: string, urlB: string): boolean;
-    equals(urlA: string, urlB: string, options?: Record<string, any>): boolean;
-    parse(url: string): NUrlParsed | null;
-    getProtocol(url: string): string;
-    getDomain(url: string, stripWww?: boolean): string;
-    getPath(url: string): string;
-    getPathSegments(url: string): string[];
-    getHash(url: string): string;
-    parseQueryString(queryOrUrl: string): Record<string, any>;
-    stringifyQueryParams(params: Record<string, any>, prefixQuestionMark?: boolean): string;
-    getQueryParam<T = any>(url: string, paramName: string, fallback?: T): T;
-    setQueryParams(url: string, params: Record<string, any>): string;
-    removeQueryParams(url: string, paramNames: string | string[]): string;
-    join(...segments: string[]): string;
-    build(parts?: NUrlBuildParts): string;
-    normalize(url: string, options?: { sortQuery?: boolean; stripTrailingSlash?: boolean; stripHash?: boolean }): string;
-    encode(value: string): string;
-    decode(encodedValue: string): string;
-    encodeBase64Url(text: string): string;
-    decodeBase64Url(base64Url: string): string;
-    encodeId(idOrValue: string | number, salt?: string): string;
-    decodeId(token: string, salt?: string, asNumber?: boolean): string | number | null;
+export class NUrl {
+    static isValid(url: any, options?: { requireHttps?: boolean; allowRelative?: boolean }): boolean;
+    static isAbsolute(url: string): boolean;
+    static isRelative(url: string): boolean;
+    static isHttps(url: string): boolean;
+    static isSameOrigin(urlA: string, urlB: string): boolean;
+    static equals(urlA: string, urlB: string, options?: Record<string, any>): boolean;
+    static parse(url: string): NUrlParsed | null;
+    static getProtocol(url: string): string;
+    static getDomain(url: string, stripWww?: boolean): string;
+    static getPath(url: string): string;
+    static getPathSegments(url: string): string[];
+    static getHash(url: string): string;
+    static parseQueryString(queryOrUrl: string): Record<string, any>;
+    static stringifyQueryParams(params: Record<string, any>, prefixQuestionMark?: boolean): string;
+    static getQueryParam<T = any>(url: string, paramName: string, fallback?: T): T;
+    static setQueryParams(url: string, params: Record<string, any>): string;
+    static removeQueryParams(url: string, paramNames: string | string[]): string;
+    static join(...segments: string[]): string;
+    static build(parts?: NUrlBuildParts): string;
+    static normalize(url: string, options?: { sortQuery?: boolean; stripTrailingSlash?: boolean; stripHash?: boolean }): string;
+    static encode(value: string): string;
+    static decode(encodedValue: string): string;
+    static encodeBase64Url(text: string): string;
+    static decodeBase64Url(base64Url: string): string;
+    static encodeId(idOrValue: string | number, salt?: string): string;
+    static decodeId(token: string, salt?: string, asNumber?: boolean): string | number | null;
 }
 
 export type NJsonPath = string | number | Array<string | number>;
@@ -804,39 +761,37 @@ export type NJsonPath = string | number | Array<string | number>;
 /**
  * Sérialisation JSON tolérante aux cycles, clonage et lecture/écriture par chemin (`utils/NJson.js`).
  */
-export class NJson extends NObject {
-    constructor();
-
-    isValid(str: any, options?: { requireObjectOrArray?: boolean }): boolean;
-    isPlainObject(value: any): value is Record<string, any>;
-    isEmpty(value: any): boolean;
-    size(value: any, path?: NJsonPath): number;
-    count(value: any, path?: NJsonPath): number;
-    parse<T = any>(value: any, fallback?: T, reviver?: ((key: string, value: any) => any) | null): T;
-    stringify(
+export class NJson {
+    static isValid(str: any, options?: { requireObjectOrArray?: boolean }): boolean;
+    static isPlainObject(value: any): value is Record<string, any>;
+    static isEmpty(value: any): boolean;
+    static size(value: any, path?: NJsonPath): number;
+    static count(value: any, path?: NJsonPath): number;
+    static parse<T = any>(value: any, fallback?: T, reviver?: ((key: string, value: any) => any) | null): T;
+    static stringify(
         value: any,
         options?: { pretty?: boolean; indent?: number; sortKeys?: boolean; fallback?: string }
     ): string;
-    prettify(value: any, indent?: number): string;
-    minify(value: any): string;
-    clone<T = any>(value: T): T;
-    equals(a: any, b: any): boolean;
-    merge<T extends Record<string, any> = Record<string, any>>(...objects: Record<string, any>[]): T;
-    get<T = any>(data: any, path: NJsonPath, fallback?: T): T;
-    getNumber(data: any, path: NJsonPath, fallback?: number | null): number | null;
-    getInt(data: any, path: NJsonPath, fallback?: number | null): number | null;
-    getFloat(data: any, path: NJsonPath, fallback?: number | null): number | null;
-    getString(data: any, path: NJsonPath, fallback?: string): string;
-    getArray<T = any>(data: any, path: NJsonPath, fallback?: T[]): T[];
-    getObject<T extends Record<string, any> = Record<string, any>>(data: any, path: NJsonPath, fallback?: T | null): T | null;
-    has(data: any, path: NJsonPath): boolean;
-    set<T = any>(data: T, path: NJsonPath, value: any): T;
-    remove(data: any, path: NJsonPath): boolean;
-    pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys?: K[]): Pick<T, K>;
-    omit<T extends Record<string, any>, K extends keyof T>(obj: T, keysToOmit?: K[]): Omit<T, K>;
-    flatten(obj: Record<string, any>, separator?: string, prefix?: string): Record<string, any>;
-    unflatten(flatObj: Record<string, any>, separator?: string): Record<string, any>;
-    forEach(
+    static prettify(value: any, indent?: number): string;
+    static minify(value: any): string;
+    static clone<T = any>(value: T): T;
+    static equals(a: any, b: any): boolean;
+    static merge<T extends Record<string, any> = Record<string, any>>(...objects: Record<string, any>[]): T;
+    static get<T = any>(data: any, path: NJsonPath, fallback?: T): T;
+    static getNumber(data: any, path: NJsonPath, fallback?: number | null): number | null;
+    static getInt(data: any, path: NJsonPath, fallback?: number | null): number | null;
+    static getFloat(data: any, path: NJsonPath, fallback?: number | null): number | null;
+    static getString(data: any, path: NJsonPath, fallback?: string): string;
+    static getArray<T = any>(data: any, path: NJsonPath, fallback?: T[]): T[];
+    static getObject<T extends Record<string, any> = Record<string, any>>(data: any, path: NJsonPath, fallback?: T | null): T | null;
+    static has(data: any, path: NJsonPath): boolean;
+    static set<T = any>(data: T, path: NJsonPath, value: any): T;
+    static remove(data: any, path: NJsonPath): boolean;
+    static pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys?: K[]): Pick<T, K>;
+    static omit<T extends Record<string, any>, K extends keyof T>(obj: T, keysToOmit?: K[]): Omit<T, K>;
+    static flatten(obj: Record<string, any>, separator?: string, prefix?: string): Record<string, any>;
+    static unflatten(flatObj: Record<string, any>, separator?: string): Record<string, any>;
+    static forEach(
         data: any[] | Record<string, any> | string,
         callback: (value: any, keyOrIndex: string | number, source: any) => boolean | void
     ): boolean;
@@ -861,16 +816,14 @@ export interface NPasswordStrengthResult {
 }
 
 /**
- * Validation, évaluation de robustesse, génération et hachage PBKDF2 de mots de passe (`utils/NPassword.js`).
+ * Validation, évaluation de robustesse, génération et hachage PBKDF2 de mots de passe (`utils/NPass.js`).
  */
-export class NPassword extends NObject {
-    constructor();
-
-    isValid(password: string, options?: NPasswordRules): boolean;
-    evaluate(password: string, options?: NPasswordRules): NPasswordStrengthResult;
-    calculateEntropy(password: string): number;
-    isCommon(password: string): boolean;
-    generate(
+export class NPass {
+    static isValid(password: string, options?: NPasswordRules): boolean;
+    static evaluate(password: string, options?: NPasswordRules): NPasswordStrengthResult;
+    static calculateEntropy(password: string): number;
+    static isCommon(password: string): boolean;
+    static generate(
         length?: number,
         options?: {
             uppercase?: boolean;
@@ -880,10 +833,10 @@ export class NPassword extends NObject {
             excludeSimilar?: boolean;
         }
     ): string;
-    generatePin(length?: number): string;
-    hash(password: string, options?: { iterations?: number; saltHex?: string }): Promise<string>;
-    verify(plainPassword: string, storedHash: string): Promise<boolean>;
-    timingSafeEquals(a: string, b: string): boolean;
+    static generatePin(length?: number): string;
+    static hash(password: string, options?: { iterations?: number; saltHex?: string }): Promise<string>;
+    static verify(plainPassword: string, storedHash: string): Promise<boolean>;
+    static timingSafeEquals(a: string, b: string): boolean;
 }
 
 export interface NPaginatedResult<T = any> {
@@ -897,44 +850,42 @@ export interface NPaginatedResult<T = any> {
 }
 
 /**
- * Manipulation immuable de tableaux et de collections d'objets (`utils/NArray.js`).
+ * Manipulation immuable de tableaux et de collections d'objets (`utils/NArr.js`).
  */
-export class NArray extends NObject {
-    constructor();
-
-    isArray(value: any): value is any[];
-    isEmpty(list: any): boolean;
-    size<T = any>(list: T[], predicate?: (item: T) => boolean): number;
-    count<T = any>(list: T[], predicate?: (item: T) => boolean): number;
-    toArray<T = any>(value: any): T[];
-    equals(listA: any[], listB: any[], ignoreOrder?: boolean): boolean;
-    contains<T = any>(list: T[], target: any, key?: keyof T): boolean;
-    get<T = any>(list: T[], index: number, fallback?: any): T | any;
-    first<T = any>(list: T[], count?: number): T | T[] | undefined;
-    last<T = any>(list: T[], count?: number): T | T[] | undefined;
-    insertAt<T = any>(list: T[], index: number, ...items: T[]): T[];
-    removeAt<T = any>(list: T[], index: number): T[];
-    removeValue<T = any>(list: T[], valueToRemove: any, key?: keyof T): T[];
-    compact<T = any>(list: T[], removeFalsy?: boolean): NonNullable<T>[];
-    unique<T = any>(list: T[], key?: keyof T | ((item: T) => any)): T[];
-    flatten<T = any>(list: any[], depth?: number): T[];
-    pluck<T = any, K extends keyof T = keyof T>(list: T[], key: K): Array<T[K]>;
-    groupBy<T = any>(list: T[], keyOrFn: keyof T | ((item: T) => string)): Record<string, T[]>;
-    keyBy<T = any>(list: T[], key: keyof T | ((item: T) => string)): Record<string, T>;
-    sortBy<T = any>(list: T[], keyOrFn?: keyof T | ((item: T) => any) | null, order?: 'asc' | 'desc'): T[];
-    chunk<T = any>(list: T[], size?: number): T[][];
-    paginate<T = any>(list: T[], page?: number, perPage?: number): NPaginatedResult<T>;
-    shuffle<T = any>(list: T[]): T[];
-    sample<T = any>(list: T[], count?: number): T | T[];
-    intersection<T = any>(listA: T[], listB: T[]): T[];
-    difference<T = any>(listA: T[], listB: T[]): T[];
-    union<T = any>(...lists: T[][]): T[];
-    range(start: number, end: number, step?: number): number[];
+export class NArr {
+    static isArray(value: any): value is any[];
+    static isEmpty(list: any): boolean;
+    static size<T = any>(list: T[], predicate?: (item: T) => boolean): number;
+    static count<T = any>(list: T[], predicate?: (item: T) => boolean): number;
+    static toArray<T = any>(value: any): T[];
+    static equals(listA: any[], listB: any[], ignoreOrder?: boolean): boolean;
+    static contains<T = any>(list: T[], target: any, key?: keyof T): boolean;
+    static get<T = any>(list: T[], index: number, fallback?: any): T | any;
+    static first<T = any>(list: T[], count?: number): T | T[] | undefined;
+    static last<T = any>(list: T[], count?: number): T | T[] | undefined;
+    static insertAt<T = any>(list: T[], index: number, ...items: T[]): T[];
+    static removeAt<T = any>(list: T[], index: number): T[];
+    static removeValue<T = any>(list: T[], valueToRemove: any, key?: keyof T): T[];
+    static compact<T = any>(list: T[], removeFalsy?: boolean): NonNullable<T>[];
+    static unique<T = any>(list: T[], key?: keyof T | ((item: T) => any)): T[];
+    static flatten<T = any>(list: any[], depth?: number): T[];
+    static pluck<T = any, K extends keyof T = keyof T>(list: T[], key: K): Array<T[K]>;
+    static groupBy<T = any>(list: T[], keyOrFn: keyof T | ((item: T) => string)): Record<string, T[]>;
+    static keyBy<T = any>(list: T[], key: keyof T | ((item: T) => string)): Record<string, T>;
+    static sortBy<T = any>(list: T[], keyOrFn?: keyof T | ((item: T) => any) | null, order?: 'asc' | 'desc'): T[];
+    static chunk<T = any>(list: T[], size?: number): T[][];
+    static paginate<T = any>(list: T[], page?: number, perPage?: number): NPaginatedResult<T>;
+    static shuffle<T = any>(list: T[]): T[];
+    static sample<T = any>(list: T[], count?: number): T | T[];
+    static intersection<T = any>(listA: T[], listB: T[]): T[];
+    static difference<T = any>(listA: T[], listB: T[]): T[];
+    static union<T = any>(...lists: T[][]): T[];
+    static range(start: number, end: number, step?: number): number[];
 }
 
 
 /* ========================================================================== *
- * 7. DOSSIER database/ (NDatabase, NSql, NIndexedDB, NStorage)               *
+ * 7. DOSSIER database/ (NSql, NIndexedDB, NStorage)                          *
  * ========================================================================== */
 
 export interface NIndexedDBStoreIndexConfig {
@@ -951,53 +902,16 @@ export interface NIndexedDBStoreConfig {
     indexes?: NIndexedDBStoreIndexConfig[];
 }
 
-export interface NDatabaseOptions extends NObjectOptions {
-    name?: string;
-    version?: number;
-    stores?: Record<string, NIndexedDBStoreConfig>;
-    dbStructure?: Record<string, string> | null;
-    wasmPath?: string | null;
-    storagePrefix?: string;
-    autoSave?: boolean;
-    autoSaveDelay?: number;
-}
-
-/**
- * Façade unifiant l'accès à `NSql`, `NIndexedDB` et `NStorage` (`database/NDatabase.js`).
- */
-export class NDatabase extends NObject {
-    constructor(options?: NDatabaseOptions);
-
-    readonly context: 'native' | 'worker' | 'browser' | 'node';
-    readonly name: string;
-    readonly version: number;
-    readonly isInitialized: boolean;
-    autoSave: boolean;
-    autoSaveDelay: number;
-    readonly sql: NSql;
-    readonly indexed: NIndexedDB;
-    readonly idb: NIndexedDB;
-    readonly storage: NStorage;
-    readonly store: NStorage;
-    readonly util: typeof NUtil;
-
-    init(options?: NDatabaseOptions): Promise<boolean>;
-    saveSql(): Promise<{ ok: boolean; error?: string }>;
-    loadSql(): Promise<boolean>;
-    scheduleAutoSave(delayMs?: number): void;
-    flushAutoSave(): Promise<boolean>;
-    cancelAutoSave(): this;
-    clearAll(): Promise<boolean>;
-    close(): boolean;
-    drop(): Promise<boolean>;
-    destroy(): void;
-}
-
 export interface NSqlOptions {
     name?: string;
+    context?: string;
     wasmPath?: string | null;
     data?: Uint8Array | ArrayBuffer | number[] | null;
+    dbData?: Uint8Array | null;
     dbStructure?: Record<string, string> | null;
+    autoSave?: boolean;
+    autoSaveDelay?: number;
+    loadFromIndexedDB?: boolean;
 }
 
 export interface NSqlPrimaryKeyInfo {
@@ -1010,6 +924,7 @@ export interface NSqlPrimaryKeyInfo {
  * Moteur de base de données relationnelle SQLite natif / WebAssembly (`database/NSql.js`).
  */
 export class NSql extends NObject {
+    static instance(options?: NSqlOptions): NSql;
     constructor(options?: NSqlOptions);
 
     readonly name: string;
@@ -1019,9 +934,16 @@ export class NSql extends NObject {
     readonly rawDatabase: any | null;
     readonly util: typeof NUtil;
     readonly event: NEvent;
+    autoSave: boolean;
+    autoSaveDelay: number;
 
     init(options?: NSqlOptions): Promise<boolean>;
     close(): boolean;
+    saveToIndexedDB(idbInstance?: NIndexedDB): Promise<{ ok: boolean; error?: string }>;
+    loadFromIndexedDB(idbInstance?: NIndexedDB): Promise<Uint8Array | null>;
+    scheduleAutoSave(delayMs?: number): void;
+    cancelAutoSave(): boolean;
+    flushAutoSave(): Promise<{ ok: boolean; error?: string } | null>;
     createTable(tableName: string, sqlCreateTable: string): Promise<boolean>;
     createTables(dbStructure: Record<string, string>): Promise<boolean>;
     query<T = any>(sql: string, params?: any[]): Promise<T>;
@@ -1071,6 +993,7 @@ export interface NIndexedDBOptions extends NIndexedDBEncryptionOptions {
  * Moteur NoSQL asynchrone basé sur IndexedDB avec chiffrement local optionnel (`database/NIndexedDB.js`).
  */
 export class NIndexedDB extends NObject {
+    static readonly instance: NIndexedDB;
     constructor(options?: NIndexedDBOptions);
 
     readonly name: string;
@@ -1116,17 +1039,8 @@ export interface NStorageOptions {
 /**
  * Gestionnaire de stockage synchrone clé-valeur avec contextes et TTL (`database/NStorage.js`).
  */
-export class NStorage extends NObject {
-    constructor(options?: NStorageOptions);
-
-    readonly driver: 'localStorage' | 'sessionStorage' | null;
-    readonly isAvailable: boolean;
-    readonly prefix: string;
-    context: string;
-    readonly length: number;
-    readonly util: typeof NUtil;
-
-    withContext(context: string): NStorage;
+export interface NStorageContext {
+    readonly context: string;
     set(key: string, value: any, optionsOrTtl?: number | NStorageOptions): boolean;
     get<T = any>(key: string, defaultValue?: T, options?: NStorageOptions): T;
     getString(key: string, defaultValue?: string, options?: NStorageOptions): string;
@@ -1139,11 +1053,38 @@ export class NStorage extends NObject {
     clear(): boolean;
     keys(): string[];
     toObject(): Record<string, any>;
-    destroy(): void;
+}
+
+/**
+ * Gestionnaire statique de stockage synchrone clé-valeur avec contextes et TTL (`database/NStorage.js`).
+ */
+export class NStorage {
+    static configure(options?: NStorageOptions): typeof NStorage;
+
+    static readonly driver: 'localStorage' | 'sessionStorage' | null;
+    static readonly isAvailable: boolean;
+    static readonly prefix: string;
+    static context: string;
+    static readonly length: number;
+
+    static withContext(context: string): NStorageContext;
+    static set(key: string, value: any, optionsOrTtl?: number | NStorageOptions): boolean;
+    static get<T = any>(key: string, defaultValue?: T, options?: NStorageOptions): T;
+    static getString(key: string, defaultValue?: string, options?: NStorageOptions): string;
+    static getNumber(key: string, defaultValue?: number, options?: NStorageOptions): number;
+    static getBoolean(key: string, defaultValue?: boolean, options?: NStorageOptions): boolean;
+    static getJson<T = Record<string, any>>(key: string, defaultValue?: T, options?: NStorageOptions): T;
+    static getArray<T = any>(key: string, defaultValue?: T[], options?: NStorageOptions): T[];
+    static has(key: string, options?: NStorageOptions): boolean;
+    static remove(key: string, options?: NStorageOptions): boolean;
+    static clear(options?: NStorageOptions): boolean;
+    static keys(options?: NStorageOptions): string[];
+    static toObject(options?: NStorageOptions): Record<string, any>;
+    static destroy(): void;
 }
 
 /* ========================================================================== *
- * 8. DOSSIER filesystem/ (NFile, NDirectory)                                 *
+ * 8. DOSSIER filesystem/ (NFile, NDir)                                       *
  * ========================================================================== */
 
 export type NFileSystemDriver = 'native' | 'fs' | 'idb';
@@ -1181,54 +1122,52 @@ export interface NFileOperationOptions {
 /**
  * Gestionnaire de fichiers multiplateforme (`filesystem/NFile.js`).
  */
-export class NFile extends NObject {
-    constructor();
+export class NFile {
+    static readonly driver: NFileSystemDriver;
+    static readonly isNativeAvailable: boolean;
+    static readonly isFsApiAvailable: boolean;
 
-    readonly driver: NFileSystemDriver;
-    readonly isNativeAvailable: boolean;
-    readonly isFsApiAvailable: boolean;
+    static normalizePath(path?: string): string;
+    static joinPath(...segments: string[]): string;
+    static splitPath(path: string): NFilePathParts;
+    static getDirName(path: string): string;
+    static getFileName(path: string): string;
+    static getBaseName(path: string): string;
+    static getExtension(path: string, includeDot?: boolean): string;
+    static getMimeType(pathOrExt: string, fallback?: string): string;
 
-    normalizePath(path?: string): string;
-    joinPath(...segments: string[]): string;
-    splitPath(path: string): NFilePathParts;
-    getDirName(path: string): string;
-    getFileName(path: string): string;
-    getBaseName(path: string): string;
-    getExtension(path: string, includeDot?: boolean): string;
-    getMimeType(pathOrExt: string, fallback?: string): string;
+    static toUint8Array(data: string | ArrayBuffer | ArrayBufferView | Blob | number[]): Promise<Uint8Array>;
+    static toText(data: string | ArrayBuffer | ArrayBufferView | Blob, encoding?: string): Promise<string>;
+    static toBase64(data: string | ArrayBuffer | ArrayBufferView | Blob): Promise<string>;
+    static fromBase64(base64OrDataUrl: string): Uint8Array;
+    static toDataUrl(data: string | ArrayBuffer | ArrayBufferView | Blob, mimeType?: string): Promise<string>;
+    static toBlob(data: string | ArrayBuffer | ArrayBufferView | Blob, mimeType?: string): Promise<Blob | null>;
 
-    toUint8Array(data: string | ArrayBuffer | ArrayBufferView | Blob | number[]): Promise<Uint8Array>;
-    toText(data: string | ArrayBuffer | ArrayBufferView | Blob, encoding?: string): Promise<string>;
-    toBase64(data: string | ArrayBuffer | ArrayBufferView | Blob): Promise<string>;
-    fromBase64(base64OrDataUrl: string): Uint8Array;
-    toDataUrl(data: string | ArrayBuffer | ArrayBufferView | Blob, mimeType?: string): Promise<string>;
-    toBlob(data: string | ArrayBuffer | ArrayBufferView | Blob, mimeType?: string): Promise<Blob | null>;
+    static exists(path: string, options?: NFileOperationOptions): Promise<boolean>;
+    static stat(path: string, options?: NFileOperationOptions): Promise<NFileStat | null>;
+    static info(path: string, options?: NFileOperationOptions): Promise<NFileStat | null>;
 
-    exists(path: string, options?: NFileOperationOptions): Promise<boolean>;
-    stat(path: string, options?: NFileOperationOptions): Promise<NFileStat | null>;
-    info(path: string, options?: NFileOperationOptions): Promise<NFileStat | null>;
+    static write(path: string, data: any, options?: NFileOperationOptions): Promise<boolean>;
+    static writeText(path: string, text?: string, options?: NFileOperationOptions): Promise<boolean>;
+    static writeJson(path: string, value: any, options?: NFileOperationOptions): Promise<boolean>;
+    static writeBytes(path: string, bytes: Uint8Array | ArrayBuffer | number[], options?: NFileOperationOptions): Promise<boolean>;
+    static writeBase64(path: string, base64OrDataUrl: string, options?: NFileOperationOptions): Promise<boolean>;
+    static append(path: string, data: any, options?: NFileOperationOptions): Promise<boolean>;
 
-    write(path: string, data: any, options?: NFileOperationOptions): Promise<boolean>;
-    writeText(path: string, text?: string, options?: NFileOperationOptions): Promise<boolean>;
-    writeJson(path: string, value: any, options?: NFileOperationOptions): Promise<boolean>;
-    writeBytes(path: string, bytes: Uint8Array | ArrayBuffer | number[], options?: NFileOperationOptions): Promise<boolean>;
-    writeBase64(path: string, base64OrDataUrl: string, options?: NFileOperationOptions): Promise<boolean>;
-    append(path: string, data: any, options?: NFileOperationOptions): Promise<boolean>;
+    static read(path: string, options?: NFileOperationOptions): Promise<Uint8Array | null>;
+    static readBytes(path: string, options?: NFileOperationOptions): Promise<Uint8Array | null>;
+    static readText(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    static readJson<T = any>(path: string, options?: NFileOperationOptions): Promise<T | null>;
+    static readBase64(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    static readDataUrl(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    static readBlob(path: string, options?: NFileOperationOptions): Promise<Blob | null>;
 
-    read(path: string, options?: NFileOperationOptions): Promise<Uint8Array | null>;
-    readBytes(path: string, options?: NFileOperationOptions): Promise<Uint8Array | null>;
-    readText(path: string, options?: NFileOperationOptions): Promise<string | null>;
-    readJson<T = any>(path: string, options?: NFileOperationOptions): Promise<T | null>;
-    readBase64(path: string, options?: NFileOperationOptions): Promise<string | null>;
-    readDataUrl(path: string, options?: NFileOperationOptions): Promise<string | null>;
-    readBlob(path: string, options?: NFileOperationOptions): Promise<Blob | null>;
-
-    delete(path: string, options?: NFileOperationOptions): Promise<boolean>;
-    remove(path: string, options?: NFileOperationOptions): Promise<boolean>;
-    copy(sourcePath: string, destinationPath: string, options?: NFileOperationOptions): Promise<boolean>;
-    move(sourcePath: string, destinationPath: string, options?: NFileOperationOptions): Promise<boolean>;
-    rename(path: string, newFileName: string, options?: NFileOperationOptions): Promise<boolean>;
-    checksum(path: string, options?: NFileOperationOptions): Promise<string | null>;
+    static delete(path: string, options?: NFileOperationOptions): Promise<boolean>;
+    static remove(path: string, options?: NFileOperationOptions): Promise<boolean>;
+    static copy(sourcePath: string, destinationPath: string, options?: NFileOperationOptions): Promise<boolean>;
+    static move(sourcePath: string, destinationPath: string, options?: NFileOperationOptions): Promise<boolean>;
+    static rename(path: string, newFileName: string, options?: NFileOperationOptions): Promise<boolean>;
+    static checksum(path: string, options?: NFileOperationOptions): Promise<string | null>;
 }
 
 export interface NDirectoryEntry {
@@ -1255,41 +1194,39 @@ export interface NDirectoryFindCriteria {
 }
 
 /**
- * Gestionnaire de répertoires multiplateforme (`filesystem/NDirectory.js`).
+ * Gestionnaire de répertoires multiplateforme (`filesystem/NDir.js`).
  */
-export class NDirectory extends NObject {
-    constructor();
+export class NDir {
+    static readonly driver: NFileSystemDriver;
+    static readonly isNativeAvailable: boolean;
+    static readonly isFsApiAvailable: boolean;
 
-    readonly driver: NFileSystemDriver;
-    readonly isNativeAvailable: boolean;
-    readonly isFsApiAvailable: boolean;
+    static normalizePath(path?: string): string;
+    static joinPath(...segments: string[]): string;
+    static getName(path: string): string;
+    static getParent(path: string): string;
 
-    normalizePath(path?: string): string;
-    joinPath(...segments: string[]): string;
-    getName(path: string): string;
-    getParent(path: string): string;
+    static exists(path?: string, options?: Record<string, any>): Promise<boolean>;
+    static create(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    static mkdir(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    static ensure(path: string, options?: { recursive?: boolean }): Promise<boolean>;
 
-    exists(path?: string, options?: Record<string, any>): Promise<boolean>;
-    create(path: string, options?: { recursive?: boolean }): Promise<boolean>;
-    mkdir(path: string, options?: { recursive?: boolean }): Promise<boolean>;
-    ensure(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    static stat(path?: string, options?: Record<string, any>): Promise<Record<string, any> | null>;
+    static info(path?: string, options?: Record<string, any>): Promise<Record<string, any> | null>;
 
-    stat(path?: string, options?: Record<string, any>): Promise<Record<string, any> | null>;
-    info(path?: string, options?: Record<string, any>): Promise<Record<string, any> | null>;
+    static list(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
+    static listFiles(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
+    static listDirectories(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
+    static tree(path?: string, options?: Record<string, any>): Promise<NDirectoryTreeItem>;
+    static find(path?: string, criteria?: NDirectoryFindCriteria): Promise<NDirectoryEntry[]>;
+    static size(path?: string, options?: { recursive?: boolean }): Promise<number>;
 
-    list(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
-    listFiles(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
-    listDirectories(path?: string, options?: { recursive?: boolean }): Promise<NDirectoryEntry[]>;
-    tree(path?: string, options?: Record<string, any>): Promise<NDirectoryTreeItem>;
-    find(path?: string, criteria?: NDirectoryFindCriteria): Promise<NDirectoryEntry[]>;
-    size(path?: string, options?: { recursive?: boolean }): Promise<number>;
-
-    clear(path: string, options?: Record<string, any>): Promise<boolean>;
-    delete(path: string, options?: { recursive?: boolean }): Promise<boolean>;
-    rmdir(path: string, options?: { recursive?: boolean }): Promise<boolean>;
-    copy(sourcePath: string, destinationPath: string, options?: { overwrite?: boolean }): Promise<boolean>;
-    move(sourcePath: string, destinationPath: string, options?: { overwrite?: boolean }): Promise<boolean>;
-    rename(path: string, newDirectoryName: string, options?: Record<string, any>): Promise<boolean>;
+    static clear(path: string, options?: Record<string, any>): Promise<boolean>;
+    static delete(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    static rmdir(path: string, options?: { recursive?: boolean }): Promise<boolean>;
+    static copy(sourcePath: string, destinationPath: string, options?: { overwrite?: boolean }): Promise<boolean>;
+    static move(sourcePath: string, destinationPath: string, options?: { overwrite?: boolean }): Promise<boolean>;
+    static rename(path: string, newDirectoryName: string, options?: Record<string, any>): Promise<boolean>;
 }
 
 /* ========================================================================== *
@@ -1327,40 +1264,37 @@ export interface NCacheStats {
 /**
  * Système de mise en cache unifié à sélection automatique de moteur (`cache/NCache.js`).
  */
-export class NCache extends NObject {
-    constructor(options?: NCacheConstructorOptions);
+export class NCache {
+    static readonly driver: NCacheDriver;
+    static readonly isNativeAvailable: boolean;
+    static readonly isCacheStorageAvailable: boolean;
+    static readonly isIdbAvailable: boolean;
+    static readonly isStoreAvailable: boolean;
+    static readonly stats: NCacheStats;
 
-    readonly driver: NCacheDriver;
-    readonly isNativeAvailable: boolean;
-    readonly isCacheStorageAvailable: boolean;
-    readonly isIdbAvailable: boolean;
-    readonly isStoreAvailable: boolean;
-    readonly stats: NCacheStats;
+    static set(key: string, value: any, options?: NCacheItemOptions): Promise<boolean>;
+    static get<T = any>(key: string, options?: NCacheItemOptions): Promise<T>;
+    static has(key: string, options?: NCacheItemOptions): Promise<boolean>;
+    static remember<T = any>(key: string, ttlOrOptions: number | NCacheItemOptions, factoryFn: () => Promise<T> | T): Promise<T>;
+    static getOrSet<T = any>(key: string, ttlOrOptions: number | NCacheItemOptions, factoryFn: () => Promise<T> | T): Promise<T>;
+    static delete(key: string, options?: NCacheItemOptions): Promise<boolean>;
+    static remove(key: string, options?: NCacheItemOptions): Promise<boolean>;
+    static clearByTag(tag: string, options?: NCacheItemOptions): Promise<number>;
+    static prune(options?: NCacheItemOptions): Promise<number>;
+    static keys(options?: NCacheItemOptions): Promise<string[]>;
+    static clear(options?: NCacheItemOptions): Promise<boolean>;
 
-    set(key: string, value: any, options?: NCacheItemOptions): Promise<boolean>;
-    get<T = any>(key: string, options?: NCacheItemOptions): Promise<T>;
-    has(key: string, options?: NCacheItemOptions): Promise<boolean>;
-    remember<T = any>(key: string, ttlOrOptions: number | NCacheItemOptions, factoryFn: () => Promise<T> | T): Promise<T>;
-    getOrSet<T = any>(key: string, ttlOrOptions: number | NCacheItemOptions, factoryFn: () => Promise<T> | T): Promise<T>;
-    delete(key: string, options?: NCacheItemOptions): Promise<boolean>;
-    remove(key: string, options?: NCacheItemOptions): Promise<boolean>;
-    clearByTag(tag: string, options?: NCacheItemOptions): Promise<number>;
-    prune(options?: NCacheItemOptions): Promise<number>;
-    keys(options?: NCacheItemOptions): Promise<string[]>;
-    clear(options?: NCacheItemOptions): Promise<boolean>;
+    static putResponse(url: string, responseOrData: Response | any, options?: NCacheItemOptions): Promise<boolean>;
+    static matchUrl<T = any>(url: string, options?: NCacheItemOptions): Promise<T | Response | null>;
+    static cacheUrl<T = any>(url: string, options?: NCacheItemOptions): Promise<T | Response | null>;
+    static deleteUrl(url: string, options?: NCacheItemOptions): Promise<boolean>;
 
-    putResponse(url: string, responseOrData: Response | any, options?: NCacheItemOptions): Promise<boolean>;
-    matchUrl<T = any>(url: string, options?: NCacheItemOptions): Promise<T | Response | null>;
-    cacheUrl<T = any>(url: string, options?: NCacheItemOptions): Promise<T | Response | null>;
-    deleteUrl(url: string, options?: NCacheItemOptions): Promise<boolean>;
-
-    cacheFile(keyOrPath: string, data: any, options?: NCacheItemOptions): Promise<boolean>;
-    getFile<T = Uint8Array | string | Blob | null>(keyOrPath: string, options?: NCacheItemOptions): Promise<T>;
-    destroy(): void;
+    static cacheFile(keyOrPath: string, data: any, options?: NCacheItemOptions): Promise<boolean>;
+    static getFile<T = Uint8Array | string | Blob | null>(keyOrPath: string, options?: NCacheItemOptions): Promise<T>;
 }
 
 /* ========================================================================== *
- * 10. DOSSIER requests/ (NNetwork, NTableRequest, NRequestManager)           *
+ * 10. DOSSIER requests/ (NNet, NTableRequest, NRequestManager)              *
  * ========================================================================== */
 
 export interface NNetworkOptions {
@@ -1406,42 +1340,39 @@ export interface NNetworkResponse<T = any> {
 }
 
 /**
- * Client réseau HTTP/HTTPS avec chiffrement asymétrique et hybride RSA-OAEP + AES (`requests/NNetwork.js`).
+ * Client réseau HTTP/HTTPS avec chiffrement asymétrique et hybride RSA-OAEP + AES (`requests/NNet.js`).
  */
-export class NNetwork extends NObject {
+export class NNet {
     static readonly CHUNK_SIZE: number;
 
-    constructor(options?: NNetworkOptions);
+    static driver: 'auto' | 'fetch' | 'xhr' | 'native';
+    static baseUrl: string;
 
-    driver: 'auto' | 'fetch' | 'xhr' | 'native';
-    baseUrl: string;
+    static request<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    static get<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    static post<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    static put<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    static patch<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    static delete<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
+    static head(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<any>>;
 
-    request<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    get<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    post<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    put<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    patch<T = any>(url: string, body?: any, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    delete<T = any>(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<T>>;
-    head(url: string, options?: NNetworkRequestOptions): Promise<NNetworkResponse<any>>;
+    static requestAuthentication(url?: string | null, options?: { force?: boolean; hash?: 'SHA-1' | 'SHA-256' }): Promise<any>;
+    static generateClientKeyPair(options?: { modulusLength?: 2048 | 3072 | 4096; hash?: 'SHA-1' | 'SHA-256' }): Promise<CryptoKeyPair | null>;
+    static setClientKeyPair(publicKey: string | CryptoKey, privateKey: CryptoKey): Promise<boolean>;
+    static setServerPublicKey(publicKey: string | CryptoKey): Promise<boolean>;
+    static encryptPayload(data: any, options?: { serverPublicKey?: CryptoKey | string }): Promise<{ type?: 'asymmetric' | 'hybrid'; data?: string; key?: string; iv?: string }>;
+    static decryptPayload(encryptedPayload: Record<string, any> | string, options?: { clientPrivateKey?: CryptoKey }): Promise<string>;
+    static hasServerPublicKey(): boolean;
+    static getServerPublicKey(): CryptoKey | null;
+    static getClientKeyPair(): Promise<CryptoKeyPair | null>;
+    static clearCryptoSession(): Promise<void>;
 
-    requestAuthentication(url?: string | null, options?: { force?: boolean; hash?: 'SHA-1' | 'SHA-256' }): Promise<any>;
-    generateClientKeyPair(options?: { modulusLength?: 2048 | 3072 | 4096; hash?: 'SHA-1' | 'SHA-256' }): Promise<CryptoKeyPair | null>;
-    setClientKeyPair(publicKey: string | CryptoKey, privateKey: CryptoKey): Promise<boolean>;
-    setServerPublicKey(publicKey: string | CryptoKey): Promise<boolean>;
-    encryptPayload(data: any, options?: { serverPublicKey?: CryptoKey | string }): Promise<{ type?: 'asymmetric' | 'hybrid'; data?: string; key?: string; iv?: string }>;
-    decryptPayload(encryptedPayload: Record<string, any> | string, options?: { clientPrivateKey?: CryptoKey }): Promise<string>;
-    hasServerPublicKey(): boolean;
-    getServerPublicKey(): CryptoKey | null;
-    getClientKeyPair(): Promise<CryptoKeyPair | null>;
-    clearCryptoSession(): Promise<void>;
-
-    getFileInfo(url: string, options?: NNetworkRequestOptions): Promise<any>;
-    getFilesInfo(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
-    downloadFile(url: string, options?: NNetworkRequestOptions): Promise<any>;
-    downloadFiles(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
-    uploadFile(url: string, file: any, options?: NNetworkRequestOptions): Promise<any>;
-    uploadFiles(url: string, files: any[], options?: NNetworkRequestOptions): Promise<any[]>;
-    destroy(): void;
+    static getFileInfo(url: string, options?: NNetworkRequestOptions): Promise<any>;
+    static getFilesInfo(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
+    static downloadFile(url: string, options?: NNetworkRequestOptions): Promise<any>;
+    static downloadFiles(urls: string[], options?: NNetworkRequestOptions): Promise<any[]>;
+    static uploadFile(url: string, file: any, options?: NNetworkRequestOptions): Promise<any>;
+    static uploadFiles(url: string, files: any[], options?: NNetworkRequestOptions): Promise<any[]>;
 }
 
 export interface NTableRequestSyncConfig {
@@ -1460,7 +1391,7 @@ export interface NTableRequestSyncConfig {
 export interface NTableRequestOptions extends NObjectOptions {
     table?: string;
     request?: NRequestManager | null;
-    db?: NDatabase | NSql | null;
+    db?: NSql | null;
     primaryKey?: string;
     sync?: boolean | NTableRequestSyncConfig;
     synchronizer?: NDataSynchronizer | null;
@@ -1613,7 +1544,7 @@ export interface NDataSyncCollectionConfig {
 }
 
 export interface NDataSynchronizerOptions extends NObjectOptions {
-    network?: NNetwork;
+    network?: typeof NNet;
     metaDb?: NIndexedDB;
     metaDbName?: string;
     allowUnappliedPull?: boolean;
@@ -1667,7 +1598,7 @@ export class NDataSynchronizer extends NObject {
 }
 
 /* ========================================================================== *
- * 11. DOSSIER worker/ (NWorker, NWorkerManager, NServiceWorker)
+ * 11. DOSSIER worker/ (NWorker, NWorkMgr, NServiceWorker)       
  * ========================================================================== */
 
 export interface NWorkerOptions extends NObjectOptions {
@@ -1711,31 +1642,28 @@ export class NWorker extends NObject {
 }
 
 /**
- * Gestionnaire centralisé de Web Workers et de pools Round-Robin (`worker/NWorkerManager.js`).
+ * Gestionnaire centralisé de Web Workers et de pools Round-Robin (`worker/NWorkMgr.js`).
  */
-export class NWorkerManager extends NObject {
-    constructor();
+export class NWorkMgr {
+    static readonly isWorkerContext: boolean;
+    static readonly isSupported: boolean;
+    static readonly size: number;
+    static readonly names: string[];
 
-    readonly isWorkerContext: boolean;
-    readonly isSupported: boolean;
-    readonly size: number;
-    readonly names: string[];
+    static registerAction(action: string, handler: NWorkerActionHandler): typeof NWorkMgr;
+    static unregisterAction(action: string): typeof NWorkMgr;
+    static hasAction(action: string): boolean;
+    static executeAction<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null): Promise<T | null>;
 
-    registerAction(action: string, handler: NWorkerActionHandler): this;
-    unregisterAction(action: string): this;
-    hasAction(action: string): boolean;
-    executeAction<T = any>(action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null): Promise<T | null>;
-
-    create(name: string, options?: NWorkerOptions): NWorker;
-    add(name: string, worker: NWorker): NWorker | null;
-    createPool(name: string, options?: NWorkerOptions, size?: number): NWorker[];
-    has(name: string): boolean;
-    get(name: string): NWorker | null;
-    request<T = unknown>(name: string, action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<NWorkerResponse<T>>;
-    terminate(name: string): boolean;
-    terminateAll(): void;
-    toJSON(): Record<string, any>;
-    destroy(): void;
+    static create(name: string, options?: NWorkerOptions): NWorker;
+    static add(name: string, worker: NWorker): NWorker | null;
+    static createPool(name: string, options?: NWorkerOptions, size?: number): NWorker[];
+    static has(name: string): boolean;
+    static get(name: string): NWorker | null;
+    static request<T = unknown>(name: string, action: string, params?: any, onUpdate?: NWorkerUpdateCallback | null, timeout?: number | null): Promise<NWorkerResponse<T>>;
+    static terminate(name: string): boolean;
+    static terminateAll(): void;
+    static toJSON(): Record<string, any>;
 }
 
 export type NServiceWorkerStrategy =
@@ -1798,10 +1726,10 @@ export class NServiceWorker extends NObject {
 }
 
 /* ========================================================================== *
- * 12. DOSSIER language/ (NLanguage)                                          *
+ * 12. DOSSIER language/ (NLang)                                              *
  * ========================================================================== */
 
-export interface NLanguageOptions extends NObjectOptions {
+export interface NLangOptions {
     language?: string;
     fallback?: string | null;
     missingBehavior?: 'key' | 'empty';
@@ -1811,9 +1739,11 @@ export interface NLanguageOptions extends NObjectOptions {
     protectedLanguages?: string[];
     loader?: ((code: string) => Promise<Record<string, any> | string> | Record<string, any> | string) | null;
     languages?: Record<string, Record<string, any>>;
+    persist?: boolean;
+    storeName?: string;
 }
 
-export interface NLanguageMissingEntry {
+export interface NLangMissingEntry {
     key: string;
     language: string;
     type: string;
@@ -1821,7 +1751,7 @@ export interface NLanguageMissingEntry {
     timestamp: number;
 }
 
-export interface NLanguageCheckReport {
+export interface NLangCheckReport {
     ok: boolean;
     languages: string[];
     totalKeys: number;
@@ -1832,37 +1762,40 @@ export interface NLanguageCheckReport {
 }
 
 /**
- * Moteur central d'internationalisation (i18n) multi-environnements (`language/NLanguage.js`).
+ * Moteur statique d'internationalisation (i18n) multi-environnements (`language/NLang.js`).
  */
-export class NLanguage extends NObject {
-    constructor(options?: NLanguageOptions);
+export class NLang {
+    static on(event: string, handler: (...args: any[]) => void, options?: Record<string, any>): () => void;
+    static once(event: string, handler: (...args: any[]) => void): () => void;
+    static off(event: string, handler: (...args: any[]) => void): typeof NLang;
+    static emit(event: string, data?: any): boolean;
 
-    init(options?: NLanguageOptions): Promise<this>;
-    getConfig(): Readonly<Required<Omit<NLanguageOptions, 'languages' | 'state'>>>;
+    static init(options?: NLangOptions): Promise<typeof NLang>;
+    static getConfig(): Readonly<Required<Omit<NLangOptions, 'languages'>>>;
 
-    getLanguage(): string;
-    getFallbackLanguage(): string | null;
-    getLanguages(): string[];
-    hasLanguage(code: string): boolean;
-    addLanguage(code: string, dictionary?: Record<string, any>, options?: { merge?: boolean }): this;
-    removeLanguage(code: string): boolean;
-    loadLanguage(code: string, options?: { force?: boolean }): Promise<boolean>;
-    unloadLanguage(code: string): boolean;
-    setLanguage(code: string): Promise<this>;
+    static getLanguage(): string;
+    static getFallbackLanguage(): string | null;
+    static getLanguages(): string[];
+    static hasLanguage(code: string): boolean;
+    static addLanguage(code: string, dictionary?: Record<string, any>, options?: { merge?: boolean }): typeof NLang;
+    static removeLanguage(code: string): boolean;
+    static loadLanguage(code: string, options?: { force?: boolean }): Promise<boolean>;
+    static unloadLanguage(code: string): boolean;
+    static setLanguage(code: string): Promise<typeof NLang>;
 
-    get(
+    static get(
         key: string,
         params?: Record<string, any>,
         options?: { language?: string; fallback?: string | null; missingBehavior?: 'key' | 'empty' }
     ): string;
-    plural(
+    static plural(
         key: string,
         params?: Record<string, any>,
         options?: { countParam?: string; language?: string; fallback?: string | null; missingBehavior?: 'key' | 'empty' }
     ): string;
 
-    getMissing(): NLanguageMissingEntry[];
-    clearMissing(): this;
-    checkTranslations(referenceKeys?: string[] | null): NLanguageCheckReport;
-    destroy(): void;
+    static getMissing(): NLangMissingEntry[];
+    static clearMissing(): typeof NLang;
+    static checkTranslations(referenceKeys?: string[] | null): NLangCheckReport;
+    static destroy(): void;
 }

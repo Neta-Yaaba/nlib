@@ -2,13 +2,18 @@
  * @file NTableRequest.js
  * @package @nlib/js-backend
  * @description Gestionnaire intelligent et synchronisé de requêtes de données sur une table.
- * Coordonne la persistance locale (SQLite via `NSql` / `NDatabase`) et les appels réseau distants (`NNetwork` / `NRequestManager`),
+ * Coordonne la persistance locale (SQLite via `NSql`) et les appels réseau distants (`NNet` / `NRequestManager`),
  * avec gestion automatique du mode hors-ligne/en-ligne, synchronisation bidirectionnelle,
  * suivi des événements de synchronisation (`nevent`), recherche textuelle et pagination.
  */
 
 import { NObject } from '../core/NObject.js';
+import { NLog } from '../log/NLog.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NSql } from '../database/NSql.js';
+import { NIndexedDB } from '../database/NIndexedDB.js';
+import { NStorage } from '../database/NStorage.js';
+import { NNet } from './NNet.js';
 import { NDataSynchronizer } from './NDataSynchronizer.js';
 
 /**
@@ -61,7 +66,7 @@ export class NTableRequest extends NObject {
     #primaryKey = 'id';
 
     /**
-     * Instance de base de données associée (NSql ou NDatabase).
+     * Instance de base de données associée (NSql ou façade { sql, idb, store }).
      * @type {any}
      * @private
      */
@@ -135,7 +140,7 @@ export class NTableRequest extends NObject {
      * @param {NRequestManager|null} [options.request] - Gestionnaire de requête parent `NRequestManager`.
      * @param {string} [options.table=''] - Nom de la table associée.
      * @param {string} [options.primaryKey='id'] - Nom de la colonne clé primaire.
-     * @param {any} [options.db] - Instance explicite de base de données (utilise `NUtil.db.sql` par défaut).
+     * @param {any} [options.db] - Instance explicite de base de données (utilise `NSql.instance()` par défaut).
      * @param {boolean|Object} [options.sync=false] - Active et configure la synchronisation via `NDataSynchronizer`.
      * @param {NDataSynchronizer|null} [options.synchronizer] - Instance explicite de `NDataSynchronizer`.
      *
@@ -309,11 +314,11 @@ export class NTableRequest extends NObject {
     }
 
     /**
-     * Retourne la base de données utilisée par cette instance (`NDatabase`).
+     * Retourne la base de données utilisée par cette instance (`{ sql, idb, store }` ou `NSql`).
      *
      * @type {any}
      *
-     * @example <caption>Exemple 1 : Accéder à l'instance NDatabase sous-jacente</caption>
+     * @example <caption>Exemple 1 : Accéder à la base de données sous-jacente</caption>
      * const database = tr.db;
      *
      * @example <caption>Exemple 2 : Exécuter une requête SQL via tr.db.sql</caption>
@@ -327,7 +332,7 @@ export class NTableRequest extends NObject {
         if (this.#request && this.#request.db) {
             return this.#request.db;
         }
-        return NUtil.db;
+        return { sql: NSql.instance(), idb: NIndexedDB.instance, store: NStorage };
     }
 
     // =========================================================================
@@ -384,7 +389,7 @@ export class NTableRequest extends NObject {
             case 'DELETE':
                 return this.deleteData(req);
             default:
-                this.util.log.error(`NTableRequest.execute : type d'opération inconnu "${actionType}".`, {
+                NLog.error(`NTableRequest.execute : type d'opération inconnu "${actionType}".`, {
                     code: 'UNKNOWN_OPERATION_TYPE',
                     req
                 });
@@ -453,7 +458,7 @@ export class NTableRequest extends NObject {
                     result = networkRes;
                 }
             } catch (err) {
-                this.util.log.warn(`NTableRequest.get : échec synchronisation réseau pour "${this.#table}".`, {
+                NLog.warn(`NTableRequest.get : échec synchronisation réseau pour "${this.#table}".`, {
                     error: err?.message || String(err)
                 });
             }
@@ -540,7 +545,7 @@ export class NTableRequest extends NObject {
                     result.updated = 1;
                 }
             } catch (err) {
-                this.util.log.warn(`NTableRequest.gets : repli local après échec distant pour "${this.#table}".`, {
+                NLog.warn(`NTableRequest.gets : repli local après échec distant pour "${this.#table}".`, {
                     error: err?.message || String(err)
                 });
             }
@@ -609,7 +614,7 @@ export class NTableRequest extends NObject {
     async insert(req = {}) {
         const data = req.data || req.DATA;
         if (!data || typeof data !== 'object') {
-            this.util.log.error('NTableRequest.insert : le champ data est obligatoire.', {
+            NLog.error('NTableRequest.insert : le champ data est obligatoire.', {
                 code: 'INVALID_DATA',
                 req
             });
@@ -642,7 +647,7 @@ export class NTableRequest extends NObject {
         // 2. Synchronisation distante immédiate si en ligne et non restreint
         if (!isLocalOnly && this.#isOnline()) {
             this.syncDatas().catch((err) => {
-                this.util.log.warn(`NTableRequest.insert : échec de synchronisation automatique.`, {
+                NLog.warn(`NTableRequest.insert : échec de synchronisation automatique.`, {
                     error: err?.message || String(err)
                 });
             });
@@ -696,7 +701,7 @@ export class NTableRequest extends NObject {
         const isLocalOnly = Boolean(req.isLocalOnly || req.N_REQUEST_LOCAL);
 
         if (!data || !where) {
-            this.util.log.error('NTableRequest.update : data et where sont obligatoires.', {
+            NLog.error('NTableRequest.update : data et where sont obligatoires.', {
                 code: 'INVALID_UPDATE_REQUEST',
                 req
             });
@@ -767,7 +772,7 @@ export class NTableRequest extends NObject {
         const isLocalOnly = Boolean(req.isLocalOnly || req.N_REQUEST_LOCAL);
 
         if (!where) {
-            this.util.log.error('NTableRequest.delete : la clause where est obligatoire.', {
+            NLog.error('NTableRequest.delete : la clause where est obligatoire.', {
                 code: 'INVALID_DELETE_REQUEST',
                 req
             });
@@ -919,7 +924,7 @@ export class NTableRequest extends NObject {
                 const report = await this.synchronizer.sync(this.#getSyncCollectionId(), options);
                 return Boolean(report?.ok);
             } catch (err) {
-                this.util.log.warn(`NTableRequest.syncDatas : échec de synchronisation sur "${this.#table}".`, {
+                NLog.warn(`NTableRequest.syncDatas : échec de synchronisation sur "${this.#table}".`, {
                     error: err?.message || String(err)
                 });
                 return false;
@@ -950,7 +955,7 @@ export class NTableRequest extends NObject {
 
             return true;
         } catch (err) {
-            this.util.log.warn(`NTableRequest.syncDatas : échec de synchronisation sur "${this.#table}".`, {
+            NLog.warn(`NTableRequest.syncDatas : échec de synchronisation sur "${this.#table}".`, {
                 error: err?.message || String(err)
             });
             return false;
@@ -983,9 +988,9 @@ export class NTableRequest extends NObject {
         if (this.#request && typeof this.#request.fetchRemote === 'function') {
             return this.#request.fetchRemote(payload, requestCode);
         }
-        // Fallback direct sur NNetwork
+        // Fallback direct sur NNet
         const endpoint = `/api/${this.#table}`;
-        const res = await NUtil.network.post(endpoint, payload);
+        const res = await NNet.post(endpoint, payload);
         return res?.data ?? res;
     }
 
@@ -996,11 +1001,11 @@ export class NTableRequest extends NObject {
     async #recordDeletedIds(ids) {
         try {
             const key = `sync_deleted_${this.#table}`;
-            const existing = NUtil.db.store.getJson(key, []);
+            const existing = NStorage.getJson(key, []);
             const updated = Array.from(new Set([...existing, ...ids]));
-            NUtil.db.store.set(key, updated);
+            NStorage.set(key, updated);
         } catch (err) {
-            this.util.log.warn(`NTableRequest.#recordDeletedIds : échec d'enregistrement pour "${this.#table}".`, {
+            NLog.warn(`NTableRequest.#recordDeletedIds : échec d'enregistrement pour "${this.#table}".`, {
                 error: err?.message || String(err)
             });
         }
@@ -1012,7 +1017,7 @@ export class NTableRequest extends NObject {
      */
     async #syncPendingDeletions() {
         const key = `sync_deleted_${this.#table}`;
-        const ids = NUtil.db.store.getJson(key, []);
+        const ids = NStorage.getJson(key, []);
         if (Array.isArray(ids) && ids.length > 0) {
             try {
                 await this.#fetchRemote({
@@ -1020,9 +1025,9 @@ export class NTableRequest extends NObject {
                     table: this.#table,
                     ids
                 });
-                NUtil.db.store.remove(key);
+                NStorage.remove(key);
             } catch (err) {
-                this.util.log.warn(`NTableRequest.#syncPendingDeletions : échec d'envoi pour "${this.#table}".`, {
+                NLog.warn(`NTableRequest.#syncPendingDeletions : échec d'envoi pour "${this.#table}".`, {
                     error: err?.message || String(err)
                 });
             }
@@ -1088,7 +1093,7 @@ export class NTableRequest extends NObject {
             this.#onSyncApply = (ev) => this.#handleSyncApply(ev);
             this.#onSyncConfirmed = (ev) => {
                 this.#handleSyncConfirmed(ev).catch((err) => {
-                    this.util.log.warn(`NTableRequest : échec de confirmation locale pour "${this.#table}".`, {
+                    NLog.warn(`NTableRequest : échec de confirmation locale pour "${this.#table}".`, {
                         error: err?.message || String(err)
                     });
                 });

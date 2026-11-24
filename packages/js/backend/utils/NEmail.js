@@ -1,34 +1,28 @@
 /**
  * @file NEmail.js
  * @package @nlib/js-backend
- * @description Classe utilitaire pure pour la validation, la normalisation, l'extraction de composants,
+ * @description Classe utilitaire statique pour la validation, la normalisation, l'extraction de composants,
  * la comparaison, le masquage et le filtrage des adresses e-mail dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
-
 /**
  * @class NEmail
- * @extends NObject
- * @description Utilitaire de gestion et traitement des adresses e-mail.
+ * @description Utilitaire statique de gestion et traitement des adresses e-mail.
  *
  * @example <caption>Exemple 1 : Validation et normalisation</caption>
- * const emailUtil = new NEmail();
- * console.log(emailUtil.isValid('Contact@NLib.dev'));      // true
- * console.log(emailUtil.normalize('  Contact@NLib.DEV ')); // 'contact@nlib.dev'
+ * console.log(NEmail.isValid('Contact@NLib.dev'));      // true
+ * console.log(NEmail.normalize('  Contact@NLib.DEV ')); // 'contact@nlib.dev'
  *
  * @example <caption>Exemple 2 : Extraction des composants et sous-adressage (+tag)</caption>
- * const emailUtil = new NEmail();
- * console.log(emailUtil.parse('user+promo@mail.nlib.dev'));
+ * console.log(NEmail.parse('user+promo@mail.nlib.dev'));
  * // { local: 'user+promo', baseLocal: 'user', tag: 'promo', domain: 'mail.nlib.dev', tld: 'dev' }
  *
  * @example <caption>Exemple 3 : Masquage pour la confidentialité et extraction depuis un texte</caption>
- * const emailUtil = new NEmail();
- * console.log(emailUtil.mask('jean.dupont@gmail.com')); // 'je*******nt@gmail.com'
- * console.log(emailUtil.extractFromText('Écrivez à support@nlib.dev ou info@nlib.dev'));
+ * console.log(NEmail.mask('jean.dupont@gmail.com')); // 'je*******nt@gmail.com'
+ * console.log(NEmail.extractFromText('Écrivez à support@nlib.dev ou info@nlib.dev'));
  * // ['support@nlib.dev', 'info@nlib.dev']
  */
-export class NEmail extends NObject {
+export class NEmail {
 
     // =========================================================================
     // Méthodes publiques — Validation & Vérifications
@@ -43,16 +37,14 @@ export class NEmail extends NObject {
      * @returns {boolean} `true` si l'adresse e-mail est valide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Adresses e-mail valides</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isValid('user@nlib.dev'));           // true
-     * console.log(emailUtil.isValid('prenom.nom+tag@sub.co.uk')); // true
+     * console.log(NEmail.isValid('user@nlib.dev'));           // true
+     * console.log(NEmail.isValid('prenom.nom+tag@sub.co.uk')); // true
      *
      * @example <caption>Exemple 2 : Adresses e-mail invalides</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isValid('user..name@nlib.dev'));     // false
-     * console.log(emailUtil.isValid('user@domaine'));            // false
+     * console.log(NEmail.isValid('user..name@nlib.dev'));     // false
+     * console.log(NEmail.isValid('user@domaine'));            // false
      */
-    isValid(email) {
+    static isValid(email) {
         if (typeof email !== 'string') {
             return false;
         }
@@ -111,16 +103,14 @@ export class NEmail extends NObject {
      * @returns {boolean} `true` si le domaine est un fournisseur gratuit, sinon `false`.
      *
      * @example <caption>Exemple 1 : Fournisseurs gratuits</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isFreeProvider('jean@gmail.com'));   // true
-     * console.log(emailUtil.isFreeProvider('marc@outlook.fr'));  // true
+     * console.log(NEmail.isFreeProvider('jean@gmail.com'));   // true
+     * console.log(NEmail.isFreeProvider('marc@outlook.fr'));  // true
      *
      * @example <caption>Exemple 2 : Domaine professionnel</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isFreeProvider('contact@nlib.dev')); // false
+     * console.log(NEmail.isFreeProvider('contact@nlib.dev')); // false
      */
-    isFreeProvider(email, customProviders = []) {
-        const domain = this.getDomain(email);
+    static isFreeProvider(email, customProviders = []) {
+        const domain = NEmail.getDomain(email);
         if (!domain) {
             return false;
         }
@@ -149,18 +139,16 @@ export class NEmail extends NObject {
      * @returns {boolean} `true` si l'adresse utilise un domaine professionnel/personnalisé.
      *
      * @example <caption>Exemple 1 : Adresse professionnelle</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isBusiness('direction@nlib.dev')); // true
+     * console.log(NEmail.isBusiness('direction@nlib.dev')); // true
      *
      * @example <caption>Exemple 2 : Adresse grand public</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isBusiness('perso@gmail.com'));    // false
+     * console.log(NEmail.isBusiness('perso@gmail.com'));    // false
      */
-    isBusiness(email) {
-        if (!this.isValid(email)) {
+    static isBusiness(email) {
+        if (!NEmail.isValid(email)) {
             return false;
         }
-        return !this.isFreeProvider(email) && !this.isDisposable(email);
+        return !NEmail.isFreeProvider(email) && !NEmail.isDisposable(email);
     }
 
     /**
@@ -171,16 +159,14 @@ export class NEmail extends NObject {
      * @returns {boolean} `true` si le domaine est identifié comme temporaire/jetable.
      *
      * @example <caption>Exemple 1 : Détecter une adresse jetable</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isDisposable('test@yopmail.com'));     // true
-     * console.log(emailUtil.isDisposable('temp@mailinator.com'));  // true
+     * console.log(NEmail.isDisposable('test@yopmail.com'));     // true
+     * console.log(NEmail.isDisposable('temp@mailinator.com'));  // true
      *
      * @example <caption>Exemple 2 : Adresse légitime</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.isDisposable('contact@nlib.dev'));     // false
+     * console.log(NEmail.isDisposable('contact@nlib.dev'));     // false
      */
-    isDisposable(email, customBlacklist = []) {
-        const domain = this.getDomain(email);
+    static isDisposable(email, customBlacklist = []) {
+        const domain = NEmail.getDomain(email);
         if (!domain) {
             return false;
         }
@@ -209,16 +195,14 @@ export class NEmail extends NObject {
      * @returns {boolean} `true` si le domaine correspond, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier l'appartenance à un domaine</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.hasDomain('dev@nlib.dev', 'nlib.dev')); // true
+     * console.log(NEmail.hasDomain('dev@nlib.dev', 'nlib.dev')); // true
      *
      * @example <caption>Exemple 2 : Autoriser les sous-domaines</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.hasDomain('dev@ team.nlib.dev', 'nlib.dev', false)); // false
-     * console.log(emailUtil.hasDomain('dev@team.nlib.dev', 'nlib.dev', true));   // true
+     * console.log(NEmail.hasDomain('dev@ team.nlib.dev', 'nlib.dev', false)); // false
+     * console.log(NEmail.hasDomain('dev@team.nlib.dev', 'nlib.dev', true));   // true
      */
-    hasDomain(email, allowedDomains, allowSubdomains = false) {
-        const domain = this.getDomain(email);
+    static hasDomain(email, allowedDomains, allowSubdomains = false) {
+        const domain = NEmail.getDomain(email);
         if (!domain) {
             return false;
         }
@@ -253,18 +237,16 @@ export class NEmail extends NObject {
      * @returns {string} Adresse e-mail normalisée, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Normalisation standard</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.normalize('  Jean.Dupont@NLib.DEV  ')); // 'jean.dupont@nlib.dev'
+     * console.log(NEmail.normalize('  Jean.Dupont@NLib.DEV  ')); // 'jean.dupont@nlib.dev'
      *
      * @example <caption>Exemple 2 : Normalisation canonique (sans +tag ni points Gmail)</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.normalize('jean.dupont+promo@gmail.com', {
+     * console.log(NEmail.normalize('jean.dupont+promo@gmail.com', {
      *     stripPlusTag: true,
      *     stripGmailDots: true
      * })); // 'jeandupont@gmail.com'
      */
-    normalize(email, options = {}) {
-        if (!this.isValid(email)) {
+    static normalize(email, options = {}) {
+        if (!NEmail.isValid(email)) {
             return '';
         }
         const trimmed = email.trim().toLowerCase();
@@ -296,16 +278,14 @@ export class NEmail extends NObject {
      * @returns {boolean} `true` si les deux adresses sont équivalentes, sinon `false`.
      *
      * @example <caption>Exemple 1 : Comparaison insensible à la casse et aux espaces</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.equals('Contact@NLib.dev', '  contact@nlib.dev ')); // true
+     * console.log(NEmail.equals('Contact@NLib.dev', '  contact@nlib.dev ')); // true
      *
      * @example <caption>Exemple 2 : Comparaison en ignorant le +tag</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.equals('user+test@nlib.dev', 'user@nlib.dev', { stripPlusTag: true })); // true
+     * console.log(NEmail.equals('user+test@nlib.dev', 'user@nlib.dev', { stripPlusTag: true })); // true
      */
-    equals(emailA, emailB, options = {}) {
-        const normA = this.normalize(emailA, options);
-        const normB = this.normalize(emailB, options);
+    static equals(emailA, emailB, options = {}) {
+        const normA = NEmail.normalize(emailA, options);
+        const normB = NEmail.normalize(emailB, options);
         if (!normA || !normB) {
             return false;
         }
@@ -324,8 +304,7 @@ export class NEmail extends NObject {
      * @returns {{ email: string, local: string, baseLocal: string, tag: string|null, domain: string, tld: string }|null} Composants de l'e-mail ou `null`.
      *
      * @example <caption>Exemple 1 : Décomposer une adresse avec sous-adressage (+tag)</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.parse('Client+Facture@Boutique.fr'));
+     * console.log(NEmail.parse('Client+Facture@Boutique.fr'));
      * // {
      * //   email: 'client+facture@boutique.fr',
      * //   local: 'client+facture',
@@ -336,14 +315,13 @@ export class NEmail extends NObject {
      * // }
      *
      * @example <caption>Exemple 2 : Adresse invalide retourne null</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.parse('invalide@')); // null
+     * console.log(NEmail.parse('invalide@')); // null
      */
-    parse(email) {
-        if (!this.isValid(email)) {
+    static parse(email) {
+        if (!NEmail.isValid(email)) {
             return null;
         }
-        const normalized = this.normalize(email);
+        const normalized = NEmail.normalize(email);
         const [local, domain] = normalized.split('@');
         const plusIndex = local.indexOf('+');
         const baseLocal = plusIndex !== -1 ? local.slice(0, plusIndex) : local;
@@ -369,15 +347,13 @@ export class NEmail extends NObject {
      * @returns {string} Partie locale ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Extraire la partie locale</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.getLocalPart('admin+alerte@nlib.dev')); // 'admin+alerte'
+     * console.log(NEmail.getLocalPart('admin+alerte@nlib.dev')); // 'admin+alerte'
      *
      * @example <caption>Exemple 2 : Extraire sans le +tag</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.getLocalPart('admin+alerte@nlib.dev', true)); // 'admin'
+     * console.log(NEmail.getLocalPart('admin+alerte@nlib.dev', true)); // 'admin'
      */
-    getLocalPart(email, stripPlusTag = false) {
-        const parsed = this.parse(email);
+    static getLocalPart(email, stripPlusTag = false) {
+        const parsed = NEmail.parse(email);
         if (!parsed) {
             return '';
         }
@@ -391,15 +367,13 @@ export class NEmail extends NObject {
      * @returns {string} Domaine ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Extraire le domaine</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.getDomain('contact@NLib.dev')); // 'nlib.dev'
+     * console.log(NEmail.getDomain('contact@NLib.dev')); // 'nlib.dev'
      *
      * @example <caption>Exemple 2 : E-mail invalide</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.getDomain('sans-domaine')); // ''
+     * console.log(NEmail.getDomain('sans-domaine')); // ''
      */
-    getDomain(email) {
-        const parsed = this.parse(email);
+    static getDomain(email) {
+        const parsed = NEmail.parse(email);
         return parsed ? parsed.domain : '';
     }
 
@@ -410,15 +384,13 @@ export class NEmail extends NObject {
      * @returns {string} Extension TLD ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Extraire le TLD</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.getTld('info@entreprise.sn')); // 'sn'
+     * console.log(NEmail.getTld('info@entreprise.sn')); // 'sn'
      *
      * @example <caption>Exemple 2 : Domaine invalide</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.getTld('info@entreprise')); // ''
+     * console.log(NEmail.getTld('info@entreprise')); // ''
      */
-    getTld(email) {
-        const parsed = this.parse(email);
+    static getTld(email) {
+        const parsed = NEmail.parse(email);
         return parsed ? parsed.tld : '';
     }
 
@@ -439,15 +411,13 @@ export class NEmail extends NObject {
      * @returns {string} Adresse e-mail masquée, ou `''` si invalide.
      *
      * @example <caption>Exemple 1 : Masquage standard de la partie locale</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.mask('contact@nlib.dev')); // 'co****t@nlib.dev'
+     * console.log(NEmail.mask('contact@nlib.dev')); // 'co****t@nlib.dev'
      *
      * @example <caption>Exemple 2 : Masquage incluant le domaine</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.mask('contact@nlib.dev', { maskDomain: true })); // 'co****t@n***.dev'
+     * console.log(NEmail.mask('contact@nlib.dev', { maskDomain: true })); // 'co****t@n***.dev'
      */
-    mask(email, options = {}) {
-        const parsed = this.parse(email);
+    static mask(email, options = {}) {
+        const parsed = NEmail.parse(email);
         if (!parsed) {
             return '';
         }
@@ -492,16 +462,14 @@ export class NEmail extends NObject {
      * @returns {string} Adresse formatée, ou `''` si l'e-mail est invalide.
      *
      * @example <caption>Exemple 1 : Avec nom d'affichage</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.formatDisplay('support@nlib.dev', 'Support NLib'));
+     * console.log(NEmail.formatDisplay('support@nlib.dev', 'Support NLib'));
      * // 'Support NLib <support@nlib.dev>'
      *
      * @example <caption>Exemple 2 : Sans nom d'affichage</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.formatDisplay('  Support@NLib.dev ')); // 'support@nlib.dev'
+     * console.log(NEmail.formatDisplay('  Support@NLib.dev ')); // 'support@nlib.dev'
      */
-    formatDisplay(email, displayName = '') {
-        const normalized = this.normalize(email);
+    static formatDisplay(email, displayName = '') {
+        const normalized = NEmail.normalize(email);
         if (!normalized) {
             return '';
         }
@@ -522,16 +490,14 @@ export class NEmail extends NObject {
      * @returns {string[]} Tableau des adresses e-mail extraites.
      *
      * @example <caption>Exemple 1 : Extraire les e-mails d'une phrase</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.extractFromText('Contactez dev@nlib.dev ou sales@nlib.dev.'));
+     * console.log(NEmail.extractFromText('Contactez dev@nlib.dev ou sales@nlib.dev.'));
      * // ['dev@nlib.dev', 'sales@nlib.dev']
      *
      * @example <caption>Exemple 2 : Dédoublonnage automatique</caption>
-     * const emailUtil = new NEmail();
-     * console.log(emailUtil.extractFromText('Écrire à INFO@nlib.dev et info@nlib.dev'));
+     * console.log(NEmail.extractFromText('Écrire à INFO@nlib.dev et info@nlib.dev'));
      * // ['info@nlib.dev']
      */
-    extractFromText(text, unique = true) {
+    static extractFromText(text, unique = true) {
         if (typeof text !== 'string' || text.length === 0) {
             return [];
         }
@@ -541,8 +507,8 @@ export class NEmail extends NObject {
 
         for (let i = 0; i < candidates.length; i++) {
             const candidate = candidates[i].replace(/\.+$/, '');
-            if (this.isValid(candidate)) {
-                const normalized = this.normalize(candidate);
+            if (NEmail.isValid(candidate)) {
+                const normalized = NEmail.normalize(candidate);
                 if (!unique || !seen.has(normalized)) {
                     seen.add(normalized);
                     results.push(normalized);

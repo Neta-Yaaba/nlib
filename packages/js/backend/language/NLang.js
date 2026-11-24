@@ -1,5 +1,5 @@
 /**
- * @file NLanguage.js
+ * @file NLang.js
  * @package @nlib/js-backend
  * @description Moteur central d'internationalisation (i18n) de NLib, indépendant de l'environnement d'exécution.
  * Hérite de `NObject` et utilise l'allocation paresseuse pour ses dictionnaires, caches et collections internes.
@@ -9,15 +9,16 @@
  */
 
 import { NObject } from '../core/NObject.js';
+import { NEvent } from '../core/NEvent.js';
+import { NLog } from '../log/NLog.js';
+import { NIndexedDB } from '../database/NIndexedDB.js';
 
 /**
- * @class NLanguage
- * @extends NObject
- * @description Moteur d'internationalisation (i18n) de NLib.
+ * @class NLang
+  * @description Moteur d'internationalisation (i18n) de NLib.
  *
  * @example <caption>Exemple 1 : Initialisation avec dictionnaires en mémoire et interpolation</caption>
- * const lang = new NLanguage();
- * await lang.init({
+ *  * await lang.init({
  *     language: 'fr',
  *     fallback: 'en',
  *     languages: {
@@ -35,10 +36,11 @@ import { NObject } from '../core/NObject.js';
  * console.log(lang.plural('messages', { count: 3 })); // '3 messages'
  * console.log(lang.get('auth.login')); // 'Connexion'
  */
-export class NLanguage extends NObject {
+export class NLang {
 
     // =========================================================================
-    // Propriétés privées (allocation paresseuse)
+    // Propriétés privées statiques (allocation paresseuse)
+    // =========================================================================
     // =========================================================================
 
     /**
@@ -46,121 +48,194 @@ export class NLanguage extends NObject {
      * @type {Object|null}
      * @private
      */
-    #config = null;
+    /** @type {NEvent|null} */
+    static #event = null;
+
+    static #config = null;
 
     /**
      * Langue active normalisée (ex: `'fr'`, `'fr-FR'`).
      * @type {string}
      * @private
      */
-    #currentLanguage = 'fr';
+    static #currentLanguage = 'fr';
 
     /**
      * Langue de secours normalisée (ou `null`).
      * @type {string|null}
      * @private
      */
-    #fallbackLanguage = 'en';
+    static #fallbackLanguage = 'en';
 
     /**
      * Langues connues (alloué paresseusement au premier enregistrement).
      * @type {Set<string>|null}
      * @private
      */
-    #knownLanguages = null;
+    static #knownLanguages = null;
 
     /**
      * Dictionnaires structurés bruts indexés par code de langue normalisé (alloué paresseusement).
      * @type {Map<string, Object>|null}
      * @private
      */
-    #dictionaries = null;
+    static #dictionaries = null;
 
     /**
      * Index aplati (`Map<dottedKey, string>`) par langue pour une recherche O(1) (alloué paresseusement).
      * @type {Map<string, Map<string, string>>|null}
      * @private
      */
-    #flatDictionaries = null;
+    static #flatDictionaries = null;
 
     /**
      * Promesses de chargement en cours par code de langue (alloué paresseusement).
      * @type {Map<string, Promise<boolean>>|null}
      * @private
      */
-    #loadingPromises = null;
+    static #loadingPromises = null;
 
     /**
      * Compteur de génération par langue pour invalider les chargements obsolètes (alloué paresseusement).
      * @type {Map<string, number>|null}
      * @private
      */
-    #loadGenerations = null;
+    static #loadGenerations = null;
 
     /**
      * Compteur global de génération incrémenté lors de la destruction de l'instance.
      * @type {number}
      * @private
      */
-    #instanceGeneration = 0;
+    static #instanceGeneration = 0;
 
     /**
      * Cache des instances `Intl.PluralRules` par code de langue (alloué paresseusement).
      * @type {Map<string, Intl.PluralRules|null>|null}
      * @private
      */
-    #pluralRulesCache = null;
+    static #pluralRulesCache = null;
 
     /**
      * Collecte dédupliquée des expressions manquantes (allouée paresseusement).
      * @type {Map<string, Object>|null}
      * @private
      */
-    #missingEntries = null;
+    static #missingEntries = null;
 
     /**
      * Fonction de chargement asynchrone injectée (`(langCode) => Promise<Object|string>`).
      * @type {Function|null}
      * @private
      */
-    #loader = null;
-
-    // =========================================================================
-    // Constructeur
-    // =========================================================================
+    static #loader = null;
 
     /**
-     * Crée une nouvelle instance de `NLanguage`.
-     *
-     * @constructor
-     * @param {Object} [options={}] - Options de configuration initiale.
-     *
-     * @example <caption>Exemple 1 : Instanciation simple suivie de init()</caption>
-     * const language = new NLanguage();
-     * await language.init({ language: 'fr', fallback: 'en' });
-     *
-     * @example <caption>Exemple 2 : Instanciation avec chargeur asynchrone</caption>
-     * const language = new NLanguage({
-     *     loader: async (code) => (await fetch(`/lang/${code}.json`)).json()
-     * });
+     * Active la persistance des dictionnaires chargés et de la langue active dans `NIndexedDB`.
+     * @type {boolean}
+     * @private
      */
-    constructor(options = {}) {
-        const opts = (options && typeof options === 'object' && !Array.isArray(options)) ? options : {};
-        super({ state: opts.state });
+    static #persist = true;
 
-        const configInput = { ...opts };
-        delete configInput.state;
+    /**
+     * Nom du magasin `NIndexedDB` utilisé pour stocker les langues.
+     * @type {string}
+     * @private
+     */
+    static #idbStoreName = 'ntable';
 
-        this.#config = this.#validateAndNormalizeConfig(configInput);
-        this.#currentLanguage = this.#config.language;
-        this.#fallbackLanguage = this.#config.fallback;
-        this.#loader = this.#config.loader;
-
-        if (opts.languages && typeof opts.languages === 'object') {
-            for (const [code, dict] of Object.entries(opts.languages)) {
-                this.addLanguage(code, dict);
-            }
+    /**
+     * Retourne l'émetteur d'événements interne de `NLang`.
+     * @private
+     * @returns {NEvent}
+     */
+    static #ensureEvent() {
+        if (!NLang.#event) {
+            NLang.#event = new NEvent();
         }
+        return NLang.#event;
+    }
+
+    /**
+     * Retourne la configuration active en l'initialisant par défaut si nécessaire.
+     * @private
+     * @returns {Object}
+     */
+    static #ensureConfig() {
+        if (!NLang.#config) {
+            NLang.#config = NLang.#validateAndNormalizeConfig({});
+        }
+        return NLang.#config;
+    }
+
+    /**
+     * Abonne un écouteur à un événement de `NLang`.
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {Function} handler - Fonction de rappel.
+     * @param {Object} [options={}] - Options d'écoute.
+     * @returns {Function} Fonction de désabonnement.
+     *
+     * @example <caption>Exemple 1 : Écouter le changement de langue</caption>
+     * const off = NLang.on('languageChanged', ({ current }) => console.log(current));
+     *
+     * @example <caption>Exemple 2 : Écouter les traductions manquantes</caption>
+     * NLang.on('missingTranslation', (entry) => console.warn(entry));
+     */
+    static on(event, handler, options = {}) {
+        return NLang.#ensureEvent().on(event, handler, options);
+    }
+
+    /**
+     * Abonne un écouteur à un événement de `NLang` pour une seule exécution.
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {Function} handler - Fonction de rappel.
+     * @returns {Function} Fonction de désabonnement.
+     *
+     * @example <caption>Exemple 1 : Attendre le premier changement de langue</caption>
+     * NLang.once('languageChanged', ({ current }) => console.log(current));
+     *
+     * @example <caption>Exemple 2 : Attendre le premier chargement de langue</caption>
+     * NLang.once('languageLoaded', ({ language }) => console.log(language));
+     */
+    static once(event, handler) {
+        return NLang.#ensureEvent().once(event, handler);
+    }
+
+    /**
+     * Désabonne un écouteur d'un événement de `NLang`.
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {Function} handler - Fonction de rappel à retirer.
+     * @returns {typeof NLang}
+     *
+     * @example <caption>Exemple 1 : Retirer un écouteur</caption>
+     * NLang.off('languageChanged', handler);
+     *
+     * @example <caption>Exemple 2 : Nettoyage d'un écouteur d'erreur</caption>
+     * NLang.off('error', onError);
+     */
+    static off(event, handler) {
+        NLang.#ensureEvent().off(event, handler);
+        return NLang;
+    }
+
+    /**
+     * Émet un événement sur le bus interne de `NLang`.
+     *
+     * @param {string} event - Nom de l'événement.
+     * @param {*} [data] - Charge utile transmise aux écouteurs.
+     * @returns {boolean}
+     *
+     * @example <caption>Exemple 1 : Émettre un événement personnalisé</caption>
+     * NLang.emit('languageChanged', { previous: 'fr', current: 'en' });
+     *
+     * @example <caption>Exemple 2 : Émettre un avertissement</caption>
+     * NLang.emit('missingTranslation', { key: 'hello', language: 'fr' });
+     */
+    static emit(event, data) {
+        return NLang.#ensureEvent().emit(event, data);
     }
 
     // =========================================================================
@@ -185,8 +260,7 @@ export class NLanguage extends NObject {
      * @returns {Promise<this>} L'instance courante initialisée.
      *
      * @example <caption>Exemple 1 : Initialisation standard avec dictionnaires</caption>
-     * const language = new NLanguage();
-     * await language.init({
+     *      * await language.init({
      *     language: 'fr',
      *     fallback: 'en',
      *     languages: { fr: { save: 'Enregistrer' }, en: { save: 'Save' } }
@@ -199,9 +273,9 @@ export class NLanguage extends NObject {
      *     loader: async (code) => ({ hello: code === 'fr' ? 'Bonjour' : 'Hello' })
      * });
      */
-    async init(options = {}) {
+    static async init(options = {}) {
         const merged = {
-            ...this.#config,
+            ...NLang.#ensureConfig(),
             ...(options && typeof options === 'object' ? options : {})
         };
         if (options && typeof options === 'object' && !('languages' in options)) {
@@ -209,41 +283,47 @@ export class NLanguage extends NObject {
         }
         delete merged.state;
 
-        this.#config = this.#validateAndNormalizeConfig(merged);
-        this.#currentLanguage = this.#config.language;
-        this.#fallbackLanguage = this.#config.fallback;
-        this.#loader = this.#config.loader;
+        NLang.#config = NLang.#validateAndNormalizeConfig(merged);
+        NLang.#currentLanguage = NLang.#ensureConfig().language;
+        NLang.#fallbackLanguage = NLang.#ensureConfig().fallback;
+        NLang.#loader = NLang.#ensureConfig().loader;
+        NLang.#persist = NLang.#ensureConfig().persist;
+        NLang.#idbStoreName = NLang.#ensureConfig().storeName;
 
-        const known = this.#ensureKnownLanguages();
-        known.add(this.#currentLanguage);
-        if (this.#fallbackLanguage) {
-            known.add(this.#fallbackLanguage);
+        if ((!options || options.language === undefined) && NLang.#persist) {
+            const savedLang = await NLang.#loadCurrentLanguageFromIdb();
+            if (savedLang) {
+                NLang.#currentLanguage = savedLang;
+            }
+        }
+
+        const known = NLang.#ensureKnownLanguages();
+        known.add(NLang.#currentLanguage);
+        if (NLang.#fallbackLanguage) {
+            known.add(NLang.#fallbackLanguage);
         }
 
         if (options && typeof options === 'object' && options.languages && typeof options.languages === 'object') {
             for (const [code, dict] of Object.entries(options.languages)) {
-                this.addLanguage(code, dict);
+                NLang.addLanguage(code, dict);
             }
         }
 
-        if (this.#loader) {
-            if (!this.#flatDictionaries?.has(this.#currentLanguage)) {
-                await this.loadLanguage(this.#currentLanguage);
-            }
-            if (
-                this.#fallbackLanguage &&
-                this.#fallbackLanguage !== this.#currentLanguage &&
-                !this.#flatDictionaries?.has(this.#fallbackLanguage)
-            ) {
-                try {
-                    await this.loadLanguage(this.#fallbackLanguage);
-                } catch (err) {
-                    this.util?.log?.warn?.(`NLanguage.init: Échec du chargement de la langue de secours "${this.#fallbackLanguage}".`, err);
-                }
+        if (!NLang.#flatDictionaries?.has(NLang.#currentLanguage)) {
+            await NLang.loadLanguage(NLang.#currentLanguage);
+        }
+        if (
+            NLang.#fallbackLanguage &&
+            NLang.#fallbackLanguage !== NLang.#currentLanguage &&
+            !NLang.#flatDictionaries?.has(NLang.#fallbackLanguage)
+        ) {
+            const fbOk = await NLang.loadLanguage(NLang.#fallbackLanguage);
+            if (!fbOk && NLang.#loader) {
+                NLog.warn(`NLang.init: Échec du chargement de la langue de secours "${NLang.#fallbackLanguage}".`);
             }
         }
 
-        return this;
+        return NLang;
     }
 
     /**
@@ -257,8 +337,8 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Vérifier le mode de journalisation</caption>
      * console.log(language.getConfig().logMissing);
      */
-    getConfig() {
-        return this.#config;
+    static getConfig() {
+        return NLang.#ensureConfig();
     }
 
     // =========================================================================
@@ -277,8 +357,8 @@ export class NLanguage extends NObject {
      * await language.setLanguage('en');
      * console.log(language.getLanguage()); // 'en'
      */
-    getLanguage() {
-        return this.#currentLanguage;
+    static getLanguage() {
+        return NLang.#currentLanguage;
     }
 
     /**
@@ -292,8 +372,8 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Tester si un fallback est défini</caption>
      * if (language.getFallbackLanguage()) { console.log('Fallback actif'); }
      */
-    getFallbackLanguage() {
-        return this.#fallbackLanguage;
+    static getFallbackLanguage() {
+        return NLang.#fallbackLanguage;
     }
 
     /**
@@ -307,8 +387,8 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Vérifier le nombre de langues</caption>
      * console.log(language.getLanguages().length);
      */
-    getLanguages() {
-        return this.#knownLanguages ? Array.from(this.#knownLanguages) : [];
+    static getLanguages() {
+        return NLang.#knownLanguages ? Array.from(NLang.#knownLanguages) : [];
     }
 
     /**
@@ -323,10 +403,10 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Vérifier un code inexistant</caption>
      * console.log(language.hasLanguage('zz')); // false
      */
-    hasLanguage(code) {
-        const norm = this.#normalizeLanguageCode(code);
+    static hasLanguage(code) {
+        const norm = NLang.#normalizeLanguageCode(code);
         if (!norm) return false;
-        return Boolean(this.#knownLanguages?.has(norm) || this.#flatDictionaries?.has(norm));
+        return Boolean(NLang.#knownLanguages?.has(norm) || NLang.#flatDictionaries?.has(norm));
     }
 
     /**
@@ -344,46 +424,52 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Enrichir une langue existante sans écraser</caption>
      * language.addLanguage('fr', { auth: { login: 'Connexion' } }, { merge: true });
      */
-    addLanguage(code, dictionary = {}, options = {}) {
-        const norm = this.#normalizeLanguageCode(code);
+    static addLanguage(code, dictionary = {}, options = {}) {
+        const norm = NLang.#normalizeLanguageCode(code);
         if (!norm) {
-            throw new Error(`NLanguage.addLanguage: Code de langue invalide "${code}".`);
+            const message = `NLang.addLanguage: Code de langue invalide "${code}".`;
+            NLog.error(message);
+            NLang.emit('error', { code: 'INVALID_LANGUAGE', message });
+            return NLang;
         }
-        if (!this.#isPlainObject(dictionary)) {
-            throw new Error(`NLanguage.addLanguage: Le dictionnaire pour "${norm}" doit être un objet.`);
+        if (!NLang.#isPlainObject(dictionary)) {
+            const message = `NLang.addLanguage: Le dictionnaire pour "${norm}" doit être un objet.`;
+            NLog.error(message);
+            NLang.emit('error', { code: 'INVALID_DICTIONARY', language: norm, message });
+            return NLang;
         }
 
-        const dictionaries = this.#ensureDictionaries();
-        const flatDictionaries = this.#ensureFlatDictionaries();
+        const dictionaries = NLang.#ensureDictionaries();
+        const flatDictionaries = NLang.#ensureFlatDictionaries();
         const merge = Boolean(options?.merge);
         const existingStruct = merge && dictionaries.has(norm)
             ? dictionaries.get(norm)
             : {};
         const mergedStruct = merge
-            ? this.#deepMerge(existingStruct, dictionary)
-            : this.#deepMerge({}, dictionary);
+            ? NLang.#deepMerge(existingStruct, dictionary)
+            : NLang.#deepMerge({}, dictionary);
 
         const flatMap = new Map();
-        this.#flattenDictionary(mergedStruct, '', flatMap);
+        NLang.#flattenDictionary(mergedStruct, '', flatMap);
 
-        this.#ensureKnownLanguages().add(norm);
+        NLang.#ensureKnownLanguages().add(norm);
         dictionaries.set(norm, mergedStruct);
         flatDictionaries.set(norm, flatMap);
 
-        this.emit('languageAdded', {
+        NLang.emit('languageAdded', {
             language: norm,
             merged: merge,
             keyCount: flatMap.size
         });
 
-        return this;
+        return NLang;
     }
 
     /**
      * Supprime une langue et ses traductions si elle n'est pas protégée.
      *
      * @param {string} code - Code de langue à supprimer.
-     * @returns {boolean} `true` si supprimée, `false` si absente.
+     * @returns {boolean} `true` si supprimée, `false` si absente ou protégée.
      *
      * @example <caption>Exemple 1 : Supprimer une langue temporaire</caption>
      * language.addLanguage('es', { save: 'Guardar' });
@@ -392,30 +478,37 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Tentative sur une langue inexistante</caption>
      * console.log(language.removeLanguage('de')); // false
      */
-    removeLanguage(code) {
-        const norm = this.#normalizeLanguageCode(code);
+    static removeLanguage(code) {
+        const norm = NLang.#normalizeLanguageCode(code);
         if (!norm) {
-            throw new Error(`NLanguage.removeLanguage: Code de langue invalide "${code}".`);
+            const message = `NLang.removeLanguage: Code de langue invalide "${code}".`;
+            NLog.error(message);
+            NLang.emit('error', { code: 'INVALID_LANGUAGE', message });
+            return false;
         }
         if (
-            norm === this.#currentLanguage ||
-            norm === this.#fallbackLanguage ||
-            this.#config.protectedLanguages.includes(norm)
+            norm === NLang.#currentLanguage ||
+            norm === NLang.#fallbackLanguage ||
+            NLang.#ensureConfig().protectedLanguages.includes(norm)
         ) {
-            throw new Error(`NLanguage.removeLanguage: La langue "${norm}" est protégée et ne peut pas être supprimée.`);
+            const message = `NLang.removeLanguage: La langue "${norm}" est protégée et ne peut pas être supprimée.`;
+            NLog.warn(message);
+            NLang.emit('error', { code: 'PROTECTED_LANGUAGE', language: norm, message });
+            return false;
         }
 
-        const existed = Boolean(this.#knownLanguages?.has(norm) || this.#flatDictionaries?.has(norm));
+        const existed = Boolean(NLang.#knownLanguages?.has(norm) || NLang.#flatDictionaries?.has(norm));
         if (!existed) {
             return false;
         }
 
-        this.#knownLanguages?.delete(norm);
-        this.#dictionaries?.delete(norm);
-        this.#flatDictionaries?.delete(norm);
-        this.#pluralRulesCache?.delete(norm);
+        NLang.#knownLanguages?.delete(norm);
+        NLang.#dictionaries?.delete(norm);
+        NLang.#flatDictionaries?.delete(norm);
+        NLang.#pluralRulesCache?.delete(norm);
+        NLang.#removeDictionaryFromIdb(norm);
 
-        this.emit('languageRemoved', { language: norm });
+        NLang.emit('languageRemoved', { language: norm });
         return true;
     }
 
@@ -434,41 +527,65 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Recharger de force depuis le chargeur</caption>
      * await language.loadLanguage('en', { force: true });
      */
-    async loadLanguage(code, options = {}) {
-        if (this.isDestroyed) {
+    static async loadLanguage(code, options = {}) {
+        const norm = NLang.#normalizeLanguageCode(code);
+        if (!norm) {
+            const message = `NLang.loadLanguage: Code de langue invalide "${code}".`;
+            NLog.error(message);
+            NLang.emit('error', { code: 'INVALID_LANGUAGE', message });
             return false;
         }
 
-        const norm = this.#normalizeLanguageCode(code);
-        if (!norm) {
-            throw new Error(`NLanguage.loadLanguage: Code de langue invalide "${code}".`);
-        }
-
         const force = Boolean(options?.force);
-        if (!force && this.#flatDictionaries?.has(norm)) {
+        if (!force && NLang.#flatDictionaries?.has(norm)) {
             return true;
         }
 
-        if (this.#loadingPromises?.has(norm)) {
-            return await this.#loadingPromises.get(norm);
+        if (NLang.#loadingPromises?.has(norm)) {
+            return await NLang.#loadingPromises.get(norm);
         }
 
-        if (typeof this.#loader !== 'function') {
-            if (this.#flatDictionaries?.has(norm)) {
-                return true;
-            }
-            throw new Error(`NLanguage.loadLanguage: Aucun chargeur configuré pour charger "${norm}".`);
-        }
+        const instanceGen = NLang.#instanceGeneration;
+        const langGen = NLang.#loadGenerations?.get(norm) ?? 0;
+        const loadingPromises = NLang.#ensureLoadingPromises();
 
-        const instanceGen = this.#instanceGeneration;
-        const langGen = this.#loadGenerations?.get(norm) ?? 0;
-        const loadingPromises = this.#ensureLoadingPromises();
         const task = (async () => {
-            const raw = await this.#loader(norm);
+            if (!force && NLang.#persist) {
+                const cached = await NLang.#loadDictionaryFromIdb(norm);
+                if (
+                    instanceGen !== NLang.#instanceGeneration ||
+                    (NLang.#loadGenerations?.get(norm) ?? 0) !== langGen
+                ) {
+                    return false;
+                }
+                if (cached && NLang.#isPlainObject(cached)) {
+                    NLang.addLanguage(norm, cached, { merge: false });
+                    NLang.emit('languageLoaded', {
+                        language: norm,
+                        keyCount: NLang.#flatDictionaries?.get(norm)?.size ?? 0,
+                        fromCache: true
+                    });
+                    return true;
+                }
+            }
+
+            if (typeof NLang.#loader !== 'function') {
+                return NLang.#flatDictionaries?.has(norm) ?? false;
+            }
+
+            let raw;
+            try {
+                raw = await NLang.#loader(norm);
+            } catch (err) {
+                const message = `NLang.loadLanguage: Échec du chargement pour "${norm}" (${err?.message || err}).`;
+                NLog.error(message, err);
+                NLang.emit('error', { code: 'LOAD_ERROR', language: norm, message, error: err });
+                return false;
+            }
+
             if (
-                this.isDestroyed ||
-                instanceGen !== this.#instanceGeneration ||
-                (this.#loadGenerations?.get(norm) ?? 0) !== langGen
+                instanceGen !== NLang.#instanceGeneration ||
+                (NLang.#loadGenerations?.get(norm) ?? 0) !== langGen
             ) {
                 return false;
             }
@@ -478,25 +595,34 @@ export class NLanguage extends NObject {
                 try {
                     parsed = JSON.parse(raw);
                 } catch (err) {
-                    throw new Error(`NLanguage.loadLanguage: JSON invalide pour "${norm}" (${err?.message || err}).`);
+                    const message = `NLang.loadLanguage: JSON invalide pour "${norm}" (${err?.message || err}).`;
+                    NLog.error(message, err);
+                    NLang.emit('error', { code: 'INVALID_JSON', language: norm, message, error: err });
+                    return false;
                 }
             }
-            if (!this.#isPlainObject(parsed)) {
-                throw new Error(`NLanguage.loadLanguage: Dictionnaire invalide reçu pour "${norm}".`);
+            if (!NLang.#isPlainObject(parsed)) {
+                const message = `NLang.loadLanguage: Dictionnaire invalide reçu pour "${norm}".`;
+                NLog.error(message);
+                NLang.emit('error', { code: 'INVALID_DICTIONARY', language: norm, message });
+                return false;
             }
 
             if (
-                this.isDestroyed ||
-                instanceGen !== this.#instanceGeneration ||
-                (this.#loadGenerations?.get(norm) ?? 0) !== langGen
+                instanceGen !== NLang.#instanceGeneration ||
+                (NLang.#loadGenerations?.get(norm) ?? 0) !== langGen
             ) {
                 return false;
             }
 
-            this.addLanguage(norm, parsed, { merge: false });
-            this.emit('languageLoaded', {
+            NLang.addLanguage(norm, parsed, { merge: false });
+            if (NLang.#persist) {
+                await NLang.#saveDictionaryToIdb(norm, parsed);
+            }
+            NLang.emit('languageLoaded', {
                 language: norm,
-                keyCount: this.#flatDictionaries?.get(norm)?.size ?? 0
+                keyCount: NLang.#flatDictionaries?.get(norm)?.size ?? 0,
+                fromCache: false
             });
             return true;
         })();
@@ -508,8 +634,8 @@ export class NLanguage extends NObject {
             if (loadingPromises.get(norm) === task) {
                 loadingPromises.delete(norm);
             }
-            if (this.#loadingPromises && this.#loadingPromises.size === 0) {
-                this.#loadingPromises = null;
+            if (NLang.#loadingPromises && NLang.#loadingPromises.size === 0) {
+                NLang.#loadingPromises = null;
             }
         }
     }
@@ -526,26 +652,26 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Décharger une langue non chargée</caption>
      * console.log(language.unloadLanguage('de')); // false
      */
-    unloadLanguage(code) {
-        const norm = this.#normalizeLanguageCode(code);
+    static unloadLanguage(code) {
+        const norm = NLang.#normalizeLanguageCode(code);
         if (!norm) {
             return false;
         }
-        if (!this.#loadGenerations) {
-            this.#loadGenerations = new Map();
+        if (!NLang.#loadGenerations) {
+            NLang.#loadGenerations = new Map();
         }
-        this.#loadGenerations.set(norm, (this.#loadGenerations.get(norm) ?? 0) + 1);
-        this.#loadingPromises?.delete(norm);
-        if (this.#loadingPromises && this.#loadingPromises.size === 0) {
-            this.#loadingPromises = null;
+        NLang.#loadGenerations.set(norm, (NLang.#loadGenerations.get(norm) ?? 0) + 1);
+        NLang.#loadingPromises?.delete(norm);
+        if (NLang.#loadingPromises && NLang.#loadingPromises.size === 0) {
+            NLang.#loadingPromises = null;
         }
 
-        if (!this.#flatDictionaries?.has(norm)) {
+        if (!NLang.#flatDictionaries?.has(norm)) {
             return false;
         }
-        this.#dictionaries?.delete(norm);
-        this.#flatDictionaries.delete(norm);
-        this.#pluralRulesCache?.delete(norm);
+        NLang.#dictionaries?.delete(norm);
+        NLang.#flatDictionaries.delete(norm);
+        NLang.#pluralRulesCache?.delete(norm);
         return true;
     }
 
@@ -563,34 +689,43 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Passer en français</caption>
      * await language.setLanguage('fr');
      */
-    async setLanguage(code) {
-        const norm = this.#normalizeLanguageCode(code);
+    static async setLanguage(code) {
+        const norm = NLang.#normalizeLanguageCode(code);
         if (!norm) {
-            throw new Error(`NLanguage.setLanguage: Code de langue invalide "${code}".`);
+            const message = `NLang.setLanguage: Code de langue invalide "${code}".`;
+            NLog.error(message);
+            NLang.emit('error', { code: 'INVALID_LANGUAGE', message });
+            return NLang;
         }
 
-        if (!this.#flatDictionaries?.has(norm)) {
-            if (typeof this.#loader === 'function') {
-                await this.loadLanguage(norm);
-            } else if (!this.#knownLanguages?.has(norm)) {
-                throw new Error(`NLanguage.setLanguage: La langue "${norm}" est inexistante.`);
+        if (!NLang.#flatDictionaries?.has(norm)) {
+            const loaded = await NLang.loadLanguage(norm);
+            if (!loaded && !NLang.#knownLanguages?.has(norm)) {
+                const message = `NLang.setLanguage: La langue "${norm}" est inexistante ou n'a pas pu être chargée.`;
+                NLog.warn(message);
+                NLang.emit('error', { code: 'LANGUAGE_NOT_FOUND', language: norm, message });
+                return NLang;
             }
         }
 
-        if (this.#currentLanguage === norm) {
-            return this;
+        if (NLang.#currentLanguage === norm) {
+            return NLang;
         }
 
-        const previousLanguage = this.#currentLanguage;
-        this.#currentLanguage = norm;
-        this.#ensureKnownLanguages().add(norm);
+        const previousLanguage = NLang.#currentLanguage;
+        NLang.#currentLanguage = norm;
+        NLang.#ensureKnownLanguages().add(norm);
 
-        this.emit('languageChanged', {
+        if (NLang.#persist) {
+            await NLang.#saveCurrentLanguageToIdb(norm);
+        }
+
+        NLang.emit('languageChanged', {
             previousLanguage,
             language: norm
         });
 
-        return this;
+        return NLang;
     }
 
     // =========================================================================
@@ -612,37 +747,37 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Interpolation de paramètres</caption>
      * const msg = language.get('welcome', { name: 'Madi' });
      */
-    get(key, params = {}, options = {}) {
+    static get(key, params = {}, options = {}) {
         const opts = (options && typeof options === 'object') ? options : {};
-        const missingBehavior = opts.missingBehavior || this.#config.missingBehavior;
+        const missingBehavior = opts.missingBehavior || NLang.#ensureConfig().missingBehavior;
 
         if (typeof key !== 'string' || !key.trim()) {
-            this.#recordMissing(this.#currentLanguage, String(key ?? ''), 'invalid_key', null);
+            NLang.#recordMissing(NLang.#currentLanguage, String(key ?? ''), 'invalid_key', null);
             return missingBehavior === 'empty' ? '' : String(key ?? '');
         }
 
         const cleanKey = key.trim();
         const targetLang = opts.language
-            ? (this.#normalizeLanguageCode(opts.language) || this.#currentLanguage)
-            : this.#currentLanguage;
+            ? (NLang.#normalizeLanguageCode(opts.language) || NLang.#currentLanguage)
+            : NLang.#currentLanguage;
         const fallbackLang = opts.fallback !== undefined
-            ? (opts.fallback ? this.#normalizeLanguageCode(opts.fallback) : null)
-            : this.#fallbackLanguage;
+            ? (opts.fallback ? NLang.#normalizeLanguageCode(opts.fallback) : null)
+            : NLang.#fallbackLanguage;
 
-        const currentMap = this.#flatDictionaries?.get(targetLang);
+        const currentMap = NLang.#flatDictionaries?.get(targetLang);
         if (currentMap && currentMap.has(cleanKey)) {
-            return this.#interpolate(currentMap.get(cleanKey), params, cleanKey, targetLang);
+            return NLang.#interpolate(currentMap.get(cleanKey), params, cleanKey, targetLang);
         }
 
         if (fallbackLang && fallbackLang !== targetLang) {
-            const fallbackMap = this.#flatDictionaries?.get(fallbackLang);
+            const fallbackMap = NLang.#flatDictionaries?.get(fallbackLang);
             if (fallbackMap && fallbackMap.has(cleanKey)) {
-                this.#recordMissing(targetLang, cleanKey, 'fallback_used', fallbackLang);
-                return this.#interpolate(fallbackMap.get(cleanKey), params, cleanKey, fallbackLang);
+                NLang.#recordMissing(targetLang, cleanKey, 'fallback_used', fallbackLang);
+                return NLang.#interpolate(fallbackMap.get(cleanKey), params, cleanKey, fallbackLang);
             }
         }
 
-        this.#recordMissing(targetLang, cleanKey, 'missing_all', null);
+        NLang.#recordMissing(targetLang, cleanKey, 'missing_all', null);
         return missingBehavior === 'empty' ? '' : cleanKey;
     }
 
@@ -662,12 +797,12 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Pluralisation avec nom de compteur personnalisé</caption>
      * language.plural('items', { total: 2 }, { countParam: 'total' });
      */
-    plural(key, params = {}, options = {}) {
+    static plural(key, params = {}, options = {}) {
         const opts = (options && typeof options === 'object') ? options : {};
-        const missingBehavior = opts.missingBehavior || this.#config.missingBehavior;
+        const missingBehavior = opts.missingBehavior || NLang.#ensureConfig().missingBehavior;
 
         if (typeof key !== 'string' || !key.trim()) {
-            this.#recordMissing(this.#currentLanguage, String(key ?? ''), 'invalid_key', null);
+            NLang.#recordMissing(NLang.#currentLanguage, String(key ?? ''), 'invalid_key', null);
             return missingBehavior === 'empty' ? '' : String(key ?? '');
         }
 
@@ -680,44 +815,44 @@ export class NLanguage extends NObject {
         const hasValidNumber = rawCount !== undefined && rawCount !== null && rawCount !== '' && Number.isFinite(num);
 
         const targetLang = opts.language
-            ? (this.#normalizeLanguageCode(opts.language) || this.#currentLanguage)
-            : this.#currentLanguage;
+            ? (NLang.#normalizeLanguageCode(opts.language) || NLang.#currentLanguage)
+            : NLang.#currentLanguage;
         const fallbackLang = opts.fallback !== undefined
-            ? (opts.fallback ? this.#normalizeLanguageCode(opts.fallback) : null)
-            : this.#fallbackLanguage;
+            ? (opts.fallback ? NLang.#normalizeLanguageCode(opts.fallback) : null)
+            : NLang.#fallbackLanguage;
 
-        const category = hasValidNumber ? this.#selectPluralCategory(targetLang, num) : 'other';
-        const currentMap = this.#flatDictionaries?.get(targetLang);
+        const category = hasValidNumber ? NLang.#selectPluralCategory(targetLang, num) : 'other';
+        const currentMap = NLang.#flatDictionaries?.get(targetLang);
 
         if (currentMap) {
             const exactKey = `${cleanKey}.${category}`;
             const otherKey = `${cleanKey}.other`;
             if (currentMap.has(exactKey)) {
-                return this.#interpolate(currentMap.get(exactKey), params, exactKey, targetLang);
+                return NLang.#interpolate(currentMap.get(exactKey), params, exactKey, targetLang);
             }
             if (category !== 'other' && currentMap.has(otherKey)) {
-                return this.#interpolate(currentMap.get(otherKey), params, otherKey, targetLang);
+                return NLang.#interpolate(currentMap.get(otherKey), params, otherKey, targetLang);
             }
         }
 
         if (fallbackLang && fallbackLang !== targetLang) {
-            const fallbackMap = this.#flatDictionaries?.get(fallbackLang);
+            const fallbackMap = NLang.#flatDictionaries?.get(fallbackLang);
             if (fallbackMap) {
-                const fbCategory = hasValidNumber ? this.#selectPluralCategory(fallbackLang, num) : 'other';
+                const fbCategory = hasValidNumber ? NLang.#selectPluralCategory(fallbackLang, num) : 'other';
                 const fbExactKey = `${cleanKey}.${fbCategory}`;
                 const fbOtherKey = `${cleanKey}.other`;
                 if (fallbackMap.has(fbExactKey)) {
-                    this.#recordMissing(targetLang, `${cleanKey}.${category}`, 'fallback_used', fallbackLang);
-                    return this.#interpolate(fallbackMap.get(fbExactKey), params, fbExactKey, fallbackLang);
+                    NLang.#recordMissing(targetLang, `${cleanKey}.${category}`, 'fallback_used', fallbackLang);
+                    return NLang.#interpolate(fallbackMap.get(fbExactKey), params, fbExactKey, fallbackLang);
                 }
                 if (fallbackMap.has(fbOtherKey)) {
-                    this.#recordMissing(targetLang, `${cleanKey}.${category}`, 'fallback_used', fallbackLang);
-                    return this.#interpolate(fallbackMap.get(fbOtherKey), params, fbOtherKey, fallbackLang);
+                    NLang.#recordMissing(targetLang, `${cleanKey}.${category}`, 'fallback_used', fallbackLang);
+                    return NLang.#interpolate(fallbackMap.get(fbOtherKey), params, fbOtherKey, fallbackLang);
                 }
             }
         }
 
-        this.#recordMissing(targetLang, `${cleanKey}.${category}`, 'missing_plural', null);
+        NLang.#recordMissing(targetLang, `${cleanKey}.${category}`, 'missing_plural', null);
         return missingBehavior === 'empty' ? '' : cleanKey;
     }
 
@@ -737,9 +872,9 @@ export class NLanguage extends NObject {
      * @example <caption>Exemple 2 : Filtrer les clés absentes de toutes les langues</caption>
      * const critical = language.getMissing().filter((m) => m.type === 'missing_all');
      */
-    getMissing() {
-        if (!this.#missingEntries) return [];
-        return Array.from(this.#missingEntries.values()).map((entry) => ({ ...entry }));
+    static getMissing() {
+        if (!NLang.#missingEntries) return [];
+        return Array.from(NLang.#missingEntries.values()).map((entry) => ({ ...entry }));
     }
 
     /**
@@ -754,12 +889,12 @@ export class NLanguage extends NObject {
      * language.clearMissing();
      * console.log(language.getMissing().length); // 0
      */
-    clearMissing() {
-        if (this.#missingEntries) {
-            this.#missingEntries.clear();
-            this.#missingEntries = null;
+    static clearMissing() {
+        if (NLang.#missingEntries) {
+            NLang.#missingEntries.clear();
+            NLang.#missingEntries = null;
         }
-        return this;
+        return NLang;
     }
 
     /**
@@ -777,14 +912,14 @@ export class NLanguage extends NObject {
      * const report = language.checkTranslations(['save', 'cancel', 'auth.login']);
      * console.log(report.missingEverywhere, report.unusedKeys);
      */
-    checkTranslations(referenceKeys = null) {
-        const langs = this.#dictionaries ? Array.from(this.#dictionaries.keys()) : [];
+    static checkTranslations(referenceKeys = null) {
+        const langs = NLang.#dictionaries ? Array.from(NLang.#dictionaries.keys()) : [];
         const keyKindsByLang = new Map();
         const allKeys = new Set();
 
         for (const lang of langs) {
             const kinds = new Map();
-            this.#collectKeyKinds(this.#dictionaries.get(lang), '', kinds);
+            NLang.#collectKeyKinds(NLang.#dictionaries.get(lang), '', kinds);
             keyKindsByLang.set(lang, kinds);
             for (const [k, kind] of kinds.entries()) {
                 if (kind !== 'object') {
@@ -801,7 +936,7 @@ export class NLanguage extends NObject {
 
         const missingByLanguage = {};
         for (const lang of langs) {
-            const flat = this.#flatDictionaries?.get(lang);
+            const flat = NLang.#flatDictionaries?.get(lang);
             const missing = [];
             for (const k of allKeys) {
                 if (!flat || !flat.has(k)) {
@@ -815,7 +950,7 @@ export class NLanguage extends NObject {
 
         const missingEverywhere = [];
         for (const k of allKeys) {
-            const presentSomewhere = langs.some((lang) => this.#flatDictionaries?.get(lang)?.has(k));
+            const presentSomewhere = langs.some((lang) => NLang.#flatDictionaries?.get(lang)?.has(k));
             if (!presentSomewhere) {
                 missingEverywhere.push(k);
             }
@@ -846,7 +981,7 @@ export class NLanguage extends NObject {
         const unusedKeys = [];
         if (hasRef) {
             for (const lang of langs) {
-                const flat = this.#flatDictionaries?.get(lang);
+                const flat = NLang.#flatDictionaries?.get(lang);
                 if (!flat) continue;
                 for (const k of flat.keys()) {
                     if (!refSet.has(k) && !unusedKeys.includes(k)) {
@@ -880,111 +1015,122 @@ export class NLanguage extends NObject {
      *
      * @returns {void}
      *
-     * @example <caption>Exemple 1 : Détruire l'instance NLanguage</caption>
+     * @example <caption>Exemple 1 : Détruire l'instance NLang</caption>
      * lang.destroy();
      * console.log(lang.isDestroyed); // true
      *
      * @example <caption>Exemple 2 : Nettoyage avant fermeture</caption>
      * if (!lang.isDestroyed) lang.destroy();
      */
-    destroy() {
-        this.#instanceGeneration += 1;
-        this.#loadGenerations?.clear();
-        this.#loadGenerations = null;
-        this.#knownLanguages?.clear();
-        this.#knownLanguages = null;
-        this.#dictionaries?.clear();
-        this.#dictionaries = null;
-        this.#flatDictionaries?.clear();
-        this.#flatDictionaries = null;
-        this.#loadingPromises?.clear();
-        this.#loadingPromises = null;
-        this.#pluralRulesCache?.clear();
-        this.#pluralRulesCache = null;
-        this.#missingEntries?.clear();
-        this.#missingEntries = null;
-        this.#loader = null;
-        super.destroy();
+    static destroy() {
+        NLang.#instanceGeneration += 1;
+        NLang.#loadGenerations?.clear();
+        NLang.#loadGenerations = null;
+        NLang.#knownLanguages?.clear();
+        NLang.#knownLanguages = null;
+        NLang.#dictionaries?.clear();
+        NLang.#dictionaries = null;
+        NLang.#flatDictionaries?.clear();
+        NLang.#flatDictionaries = null;
+        NLang.#loadingPromises?.clear();
+        NLang.#loadingPromises = null;
+        NLang.#pluralRulesCache?.clear();
+        NLang.#pluralRulesCache = null;
+        NLang.#missingEntries?.clear();
+        NLang.#missingEntries = null;
+        NLang.#loader = null;
+        NLang.#config = null;
+        NLang.#currentLanguage = 'fr';
+        NLang.#fallbackLanguage = 'en';
+        NLang.#persist = true;
+        NLang.#idbStoreName = 'ntable';
+        NLang.#event?.removeAllListeners?.();
+        NLang.#event = null;
     }
 
     // =========================================================================
     // Méthodes privées internes (Lazy Allocators & Helpers)
     // =========================================================================
 
-    #ensureKnownLanguages() {
-        if (!this.#knownLanguages) this.#knownLanguages = new Set();
-        return this.#knownLanguages;
+    static #ensureKnownLanguages() {
+        if (!NLang.#knownLanguages) NLang.#knownLanguages = new Set();
+        return NLang.#knownLanguages;
     }
 
-    #ensureDictionaries() {
-        if (!this.#dictionaries) this.#dictionaries = new Map();
-        return this.#dictionaries;
+    static #ensureDictionaries() {
+        if (!NLang.#dictionaries) NLang.#dictionaries = new Map();
+        return NLang.#dictionaries;
     }
 
-    #ensureFlatDictionaries() {
-        if (!this.#flatDictionaries) this.#flatDictionaries = new Map();
-        return this.#flatDictionaries;
+    static #ensureFlatDictionaries() {
+        if (!NLang.#flatDictionaries) NLang.#flatDictionaries = new Map();
+        return NLang.#flatDictionaries;
     }
 
-    #ensureLoadingPromises() {
-        if (!this.#loadingPromises) this.#loadingPromises = new Map();
-        return this.#loadingPromises;
+    static #ensureLoadingPromises() {
+        if (!NLang.#loadingPromises) NLang.#loadingPromises = new Map();
+        return NLang.#loadingPromises;
     }
 
-    #ensurePluralRulesCache() {
-        if (!this.#pluralRulesCache) this.#pluralRulesCache = new Map();
-        return this.#pluralRulesCache;
+    static #ensurePluralRulesCache() {
+        if (!NLang.#pluralRulesCache) NLang.#pluralRulesCache = new Map();
+        return NLang.#pluralRulesCache;
     }
 
-    #ensureMissingEntries() {
-        if (!this.#missingEntries) this.#missingEntries = new Map();
-        return this.#missingEntries;
+    static #ensureMissingEntries() {
+        if (!NLang.#missingEntries) NLang.#missingEntries = new Map();
+        return NLang.#missingEntries;
     }
 
     /**
      * Valide et normalise les options de configuration en retournant un objet figé.
      * @private
      */
-    #validateAndNormalizeConfig(rawOptions) {
+    static #validateAndNormalizeConfig(rawOptions) {
         const opts = (rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions)) ? rawOptions : {};
         const allowedKeys = new Set([
             'language', 'fallback', 'missingBehavior', 'preserveUnknownParams',
-            'logMissing', 'logMissingParameters', 'protectedLanguages', 'loader', 'languages'
+            'logMissing', 'logMissingParameters', 'protectedLanguages', 'loader', 'languages',
+            'persist', 'storeName'
         ]);
         for (const key of Object.keys(opts)) {
             if (!allowedKeys.has(key)) {
-                throw new Error(`NLanguage: Option de configuration inconnue "${key}".`);
+                NLog.warn(`NLang: Option de configuration inconnue "${key}".`);
             }
         }
 
-        const language = opts.language !== undefined
-            ? this.#normalizeLanguageCode(opts.language)
+        let language = opts.language !== undefined
+            ? NLang.#normalizeLanguageCode(opts.language)
             : 'fr';
         if (!language) {
-            throw new Error(`NLanguage: Code de langue initiale invalide "${opts.language}".`);
+            NLog.warn(`NLang: Code de langue initiale invalide "${opts.language}", repli sur "fr".`);
+            language = 'fr';
         }
 
         let fallback = 'en';
         if (opts.fallback === null) {
             fallback = null;
         } else if (opts.fallback !== undefined) {
-            fallback = this.#normalizeLanguageCode(opts.fallback);
+            fallback = NLang.#normalizeLanguageCode(opts.fallback);
             if (!fallback) {
-                throw new Error(`NLanguage: Code de langue de secours invalide "${opts.fallback}".`);
+                NLog.warn(`NLang: Code de langue de secours invalide "${opts.fallback}", repli sur "en".`);
+                fallback = 'en';
             }
         }
 
-        const missingBehavior = opts.missingBehavior ?? 'key';
+        let missingBehavior = opts.missingBehavior ?? 'key';
         if (missingBehavior !== 'key' && missingBehavior !== 'empty') {
-            throw new Error(`NLanguage: missingBehavior invalide "${missingBehavior}" ('key' ou 'empty' attendu).`);
+            NLog.warn(`NLang: missingBehavior invalide "${missingBehavior}", repli sur "key".`);
+            missingBehavior = 'key';
         }
 
         const protectedLanguages = [];
         if (Array.isArray(opts.protectedLanguages)) {
             for (const code of opts.protectedLanguages) {
-                const norm = this.#normalizeLanguageCode(code);
+                const norm = NLang.#normalizeLanguageCode(code);
                 if (!norm) {
-                    throw new Error(`NLanguage: Code de langue protégée invalide "${code}".`);
+                    NLog.warn(`NLang: Code de langue protégée invalide "${code}" ignoré.`);
+                    continue;
                 }
                 if (!protectedLanguages.includes(norm)) {
                     protectedLanguages.push(norm);
@@ -992,9 +1138,16 @@ export class NLanguage extends NObject {
             }
         }
 
-        if (opts.loader !== undefined && opts.loader !== null && typeof opts.loader !== 'function') {
-            throw new Error('NLanguage: loader doit être une fonction.');
+        let loader = null;
+        if (typeof opts.loader === 'function') {
+            loader = opts.loader;
+        } else if (opts.loader !== undefined && opts.loader !== null) {
+            NLog.warn('NLang: loader doit être une fonction.');
         }
+
+        const storeName = (typeof opts.storeName === 'string' && opts.storeName.trim())
+            ? opts.storeName.trim()
+            : 'ntable';
 
         return Object.freeze({
             language,
@@ -1004,7 +1157,9 @@ export class NLanguage extends NObject {
             logMissing: Boolean(opts.logMissing),
             logMissingParameters: Boolean(opts.logMissingParameters),
             protectedLanguages: Object.freeze(protectedLanguages),
-            loader: opts.loader || null
+            loader,
+            persist: opts.persist !== undefined ? Boolean(opts.persist) : true,
+            storeName
         });
     }
 
@@ -1012,7 +1167,7 @@ export class NLanguage extends NObject {
      * Valide et normalise un code de langue selon les conventions BCP 47.
      * @private
      */
-    #normalizeLanguageCode(code) {
+    static #normalizeLanguageCode(code) {
         if (typeof code !== 'string') return null;
         const cleaned = code.trim().replace(/_/g, '-');
         if (!/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(cleaned)) {
@@ -1047,7 +1202,7 @@ export class NLanguage extends NObject {
      * Vérifie si une valeur est un objet simple (prototype `Object.prototype` ou `null`).
      * @private
      */
-    #isPlainObject(value) {
+    static #isPlainObject(value) {
         if (value === null || typeof value !== 'object') {
             return false;
         }
@@ -1060,15 +1215,15 @@ export class NLanguage extends NObject {
      * et en ignorant les clés dangereuses (`__proto__`, `constructor`, `prototype`).
      * @private
      */
-    #deepMerge(target, source) {
+    static #deepMerge(target, source) {
         const out = {};
-        if (this.#isPlainObject(target)) {
+        if (NLang.#isPlainObject(target)) {
             for (const k of Object.keys(target)) {
                 if (k === '__proto__' || k === 'constructor' || k === 'prototype') {
                     continue;
                 }
                 const v = target[k];
-                out[k] = this.#isPlainObject(v) ? this.#deepMerge({}, v) : v;
+                out[k] = NLang.#isPlainObject(v) ? NLang.#deepMerge({}, v) : v;
             }
         }
         for (const k of Object.keys(source)) {
@@ -1076,10 +1231,10 @@ export class NLanguage extends NObject {
                 continue;
             }
             const v = source[k];
-            if (this.#isPlainObject(v) && this.#isPlainObject(out[k])) {
-                out[k] = this.#deepMerge(out[k], v);
-            } else if (this.#isPlainObject(v)) {
-                out[k] = this.#deepMerge({}, v);
+            if (NLang.#isPlainObject(v) && NLang.#isPlainObject(out[k])) {
+                out[k] = NLang.#deepMerge(out[k], v);
+            } else if (NLang.#isPlainObject(v)) {
+                out[k] = NLang.#deepMerge({}, v);
             } else {
                 out[k] = v;
             }
@@ -1092,22 +1247,23 @@ export class NLanguage extends NObject {
      * tout en détectant les collisions de clés.
      * @private
      */
-    #flattenDictionary(obj, prefix, targetMap) {
+    static #flattenDictionary(obj, prefix, targetMap) {
         for (const k of Object.keys(obj)) {
             if (k === '__proto__' || k === 'constructor' || k === 'prototype') {
                 continue;
             }
             const v = obj[k];
             const fullKey = prefix ? `${prefix}.${k}` : k;
-            if (this.#isPlainObject(v)) {
-                this.#flattenDictionary(v, fullKey, targetMap);
+            if (NLang.#isPlainObject(v)) {
+                NLang.#flattenDictionary(v, fullKey, targetMap);
             } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
                 if (targetMap.has(fullKey)) {
-                    throw new Error(`NLanguage: Collision de clé détectée pour "${fullKey}".`);
+                    NLog.warn(`NLang: Collision de clé détectée pour "${fullKey}".`);
+                    NLang.emit('error', { code: 'KEY_COLLISION', key: fullKey, message: `Collision de clé détectée pour "${fullKey}".` });
                 }
                 targetMap.set(fullKey, String(v));
             } else {
-                throw new Error(`NLanguage: Valeur de traduction invalide pour "${fullKey}" (chaîne ou objet imbriqué attendu).`);
+                NLog.warn(`NLang: Valeur de traduction invalide pour "${fullKey}".`);
             }
         }
     }
@@ -1116,13 +1272,13 @@ export class NLanguage extends NObject {
      * Collecte les types de chaque clé (feuille ou objet) pour `checkTranslations()`.
      * @private
      */
-    #collectKeyKinds(obj, prefix, kindsMap) {
-        if (!this.#isPlainObject(obj)) return;
+    static #collectKeyKinds(obj, prefix, kindsMap) {
+        if (!NLang.#isPlainObject(obj)) return;
         for (const [k, v] of Object.entries(obj)) {
             const fullKey = prefix ? `${prefix}.${k}` : k;
-            if (this.#isPlainObject(v)) {
+            if (NLang.#isPlainObject(v)) {
                 kindsMap.set(fullKey, 'object');
-                this.#collectKeyKinds(v, fullKey, kindsMap);
+                NLang.#collectKeyKinds(v, fullKey, kindsMap);
             } else {
                 kindsMap.set(fullKey, typeof v);
             }
@@ -1133,7 +1289,7 @@ export class NLanguage extends NObject {
      * Remplace en une seule passe les paramètres `{param}` dans une chaîne traduite.
      * @private
      */
-    #interpolate(template, params, key, language) {
+    static #interpolate(template, params, key, language) {
         if (typeof template !== 'string' || !template.includes('{')) {
             return template;
         }
@@ -1142,20 +1298,20 @@ export class NLanguage extends NObject {
             const hasKey = Object.prototype.hasOwnProperty.call(p, paramName);
             const val = hasKey ? p[paramName] : undefined;
             if (val === undefined || val === null) {
-                if (this.#config.logMissingParameters) {
-                    this.util?.log?.warn?.(`NLanguage: Paramètre manquant "{${paramName}}" pour "${key}" (${language}).`);
+                if (NLang.#ensureConfig().logMissingParameters) {
+                    NLog.warn(`NLang: Paramètre manquant "{${paramName}}" pour "${key}" (${language}).`);
                 }
-                this.emit('missingParameter', {
+                NLang.emit('missingParameter', {
                     key,
                     language,
                     parameter: paramName
                 });
-                return this.#config.preserveUnknownParams ? match : '';
+                return NLang.#ensureConfig().preserveUnknownParams ? match : '';
             }
             if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
                 return String(val);
             }
-            return this.#config.preserveUnknownParams ? match : '';
+            return NLang.#ensureConfig().preserveUnknownParams ? match : '';
         });
     }
 
@@ -1163,11 +1319,11 @@ export class NLanguage extends NObject {
      * Sélectionne la catégorie plurielle CLDR via `Intl.PluralRules` avec cache paresseux.
      * @private
      */
-    #selectPluralCategory(language, count) {
+    static #selectPluralCategory(language, count) {
         if (typeof Intl === 'undefined' || typeof Intl.PluralRules !== 'function') {
             return count === 1 ? 'one' : 'other';
         }
-        const cache = this.#ensurePluralRulesCache();
+        const cache = NLang.#ensurePluralRulesCache();
         let rules = cache.get(language);
         if (rules === undefined) {
             try {
@@ -1184,8 +1340,8 @@ export class NLanguage extends NObject {
      * Enregistre une expression manquante sans doublon et émet `'missingTranslation'`.
      * @private
      */
-    #recordMissing(language, key, type, fallbackUsed) {
-        const missing = this.#ensureMissingEntries();
+    static #recordMissing(language, key, type, fallbackUsed) {
+        const missing = NLang.#ensureMissingEntries();
         const dedupKey = `${language}::${key}::${type}`;
         if (!missing.has(dedupKey)) {
             const entry = {
@@ -1196,12 +1352,132 @@ export class NLanguage extends NObject {
                 timestamp: Date.now()
             };
             missing.set(dedupKey, entry);
-            if (this.#config.logMissing) {
-                this.util?.log?.warn?.(`NLanguage: Traduction manquante "${key}" pour "${language}" (${type}).`, entry);
+            if (NLang.#ensureConfig().logMissing) {
+                NLog.warn(`NLang: Traduction manquante "${key}" pour "${language}" (${type}).`, entry);
             }
-            this.emit('missingTranslation', entry);
+            NLang.emit('missingTranslation', entry);
+        }
+    }
+
+    /**
+     * Sauvegarde un dictionnaire de langue dans `NIndexedDB`.
+     * @private
+     * @param {string} code - Code de langue normalisé.
+     * @param {Object} dictionary - Dictionnaire structuré.
+     * @returns {Promise<boolean>}
+     */
+    static async #saveDictionaryToIdb(code, dictionary) {
+        const idb = NIndexedDB.instance;
+        if (!NLang.#persist || !idb?.isAvailable) {
+            return false;
+        }
+        try {
+            const res = await idb.put(
+                NLang.#idbStoreName,
+                { id: `__nlang_dict__:${code}`, code, dictionary, updatedAt: Date.now() },
+                { encryptData: false, encryptKey: false }
+            );
+            return Boolean(res?.ok);
+        } catch (err) {
+            NLog.warn(`NLang: Échec de sauvegarde IndexedDB pour "${code}".`, err);
+            return false;
+        }
+    }
+
+    /**
+     * Charge un dictionnaire de langue depuis `NIndexedDB`.
+     * @private
+     * @param {string} code - Code de langue normalisé.
+     * @returns {Promise<Object|null>}
+     */
+    static async #loadDictionaryFromIdb(code) {
+        const idb = NIndexedDB.instance;
+        if (!NLang.#persist || !idb?.isAvailable) {
+            return null;
+        }
+        try {
+            const res = await idb.get(
+                NLang.#idbStoreName,
+                `__nlang_dict__:${code}`,
+                { encryptData: false, encryptKey: false }
+            );
+            const dict = res?.ok ? res.data?.dictionary : null;
+            return NLang.#isPlainObject(dict) ? dict : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Supprime un dictionnaire de langue de `NIndexedDB`.
+     * @private
+     * @param {string} code - Code de langue normalisé.
+     * @returns {Promise<boolean>}
+     */
+    static async #removeDictionaryFromIdb(code) {
+        const idb = NIndexedDB.instance;
+        if (!NLang.#persist || !idb?.isAvailable) {
+            return false;
+        }
+        try {
+            const res = await idb.delete(
+                NLang.#idbStoreName,
+                `__nlang_dict__:${code}`,
+                { encryptData: false, encryptKey: false }
+            );
+            return Boolean(res?.ok);
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Sauvegarde le code de la langue active dans `NIndexedDB`.
+     * @private
+     * @param {string} code - Code de langue normalisé.
+     * @returns {Promise<boolean>}
+     */
+    static async #saveCurrentLanguageToIdb(code) {
+        const idb = NIndexedDB.instance;
+        if (!NLang.#persist || !idb?.isAvailable) {
+            return false;
+        }
+        try {
+            const res = await idb.put(
+                NLang.#idbStoreName,
+                { id: '__nlang_current__', language: code, updatedAt: Date.now() },
+                { encryptData: false, encryptKey: false }
+            );
+            return Boolean(res?.ok);
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Restaure le code de la langue active depuis `NIndexedDB`.
+     * @private
+     * @returns {Promise<string|null>}
+     */
+    static async #loadCurrentLanguageFromIdb() {
+        const idb = NIndexedDB.instance;
+        if (!NLang.#persist || !idb?.isAvailable) {
+            return null;
+        }
+        try {
+            const res = await idb.get(
+                NLang.#idbStoreName,
+                '__nlang_current__',
+                { encryptData: false, encryptKey: false }
+            );
+            const raw = res?.ok ? res.data?.language : null;
+            return raw ? NLang.#normalizeLanguageCode(raw) : null;
+        } catch {
+            return null;
         }
     }
 }
 
-export default NLanguage;
+NObject.registerLang(NLang);
+
+export default NLang;

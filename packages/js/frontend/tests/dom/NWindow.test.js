@@ -20,7 +20,7 @@ describe('NWindow (dom/NWindow.js)', () => {
         assert.equal(win1.setInitialUrl('https://app.example.com/start'), win1);
         assert.equal(win1.getInitialUrl(), 'https://app.example.com/start');
 
-        win1.util.config.remove('baseUrl');
+        win1.config.remove('baseUrl');
         win1.destroy();
         assert.equal(NWindow.instance(), null);
     });
@@ -201,5 +201,134 @@ describe('NWindow (dom/NWindow.js)', () => {
         assert.deepEqual(events, [`redirect:${base}/login`, 'denied:forbidden']);
 
         win.destroy();
+    });
+
+    it('appelle async initWorker(null) puis initLanguage(null, workerIsInit) de manière synchrone', async () => {
+        const flushMicrotasks = async (ticks = 6) => {
+            for (let i = 0; i < ticks; i++) await Promise.resolve();
+        };
+        const calls = [];
+        class WorkerAppWindow extends NWindow {
+            async initWorker(options = null) {
+                calls.push(['worker', options]);
+                return await super.initWorker(options);
+            }
+            initLanguage(options = null, workerIsInit = false) {
+                calls.push(['lang', options, workerIsInit]);
+                return super.initLanguage({
+                    language: 'fr',
+                    fallback: null,
+                    persist: false,
+                    languages: { fr: { hello: 'Bonjour' } }
+                }, workerIsInit);
+            }
+        }
+
+        const win1 = new WorkerAppWindow({ withWorker: false });
+        try {
+            await flushMicrotasks();
+            assert.deepEqual(calls, [['lang', null, false]]);
+        } finally {
+            win1.destroy();
+        }
+
+        calls.length = 0;
+        const win2 = new WorkerAppWindow({ withWorker: true });
+        try {
+            await flushMicrotasks();
+            assert.deepEqual(calls, [['worker', null], ['lang', null, true]]);
+            assert.equal(win2.lang.get('hello'), 'Bonjour');
+        } finally {
+            win2.destroy();
+        }
+    });
+
+    it('appelle async initDatabase(null, workerIsInit) dans le constructeur', async () => {
+        const flushMicrotasks = async (ticks = 6) => {
+            for (let i = 0; i < ticks; i++) await Promise.resolve();
+        };
+        const dbCalls = [];
+        class DbAppWindow extends NWindow {
+            async initWorker(options = null) {
+                return true;
+            }
+            async initDatabase(options = null, workerIsInit = false) {
+                dbCalls.push([options, workerIsInit]);
+                return await super.initDatabase(options, workerIsInit);
+            }
+        }
+
+        const win1 = new DbAppWindow();
+        try {
+            await flushMicrotasks();
+            assert.deepEqual(dbCalls, [[null, false]]);
+            assert.equal(await win1.initDatabase(null, false), true);
+        } finally {
+            win1.destroy();
+        }
+
+        dbCalls.length = 0;
+        const win2 = new DbAppWindow({ withWorker: true });
+        try {
+            await flushMicrotasks();
+            assert.deepEqual(dbCalls, [[null, true]]);
+        } finally {
+            win2.destroy();
+        }
+    });
+
+    it('appelle async initService(null) lorsque withService vaut true et expose getService()', async () => {
+        const flushMicrotasks = async (ticks = 6) => {
+            for (let i = 0; i < ticks; i++) await Promise.resolve();
+        };
+        const svcCalls = [];
+        class ServiceAppWindow extends NWindow {
+            async initService(options = null) {
+                svcCalls.push(options);
+                return await super.initService({ id: 'test_svc', persistLastId: false });
+            }
+        }
+
+        const win1 = new ServiceAppWindow({ withService: false });
+        try {
+            await flushMicrotasks();
+            assert.deepEqual(svcCalls, []);
+            assert.equal(win1.getService(), null);
+        } finally {
+            win1.destroy();
+        }
+
+        const win2 = new ServiceAppWindow({ withService: true });
+        try {
+            await flushMicrotasks();
+            assert.deepEqual(svcCalls, [null]);
+            assert.notEqual(win2.getService(), null);
+            assert.equal(win2.getService().serviceId, 'test_svc');
+        } finally {
+            win2.destroy();
+        }
+    });
+
+    it('appelle async initServiceWorker(null) dans le constructeur et expose getServiceWorker()', async () => {
+        const flushMicrotasks = async (ticks = 6) => {
+            for (let i = 0; i < ticks; i++) await Promise.resolve();
+        };
+        const swCalls = [];
+        class SwAppWindow extends NWindow {
+            async initServiceWorker(options = null) {
+                swCalls.push(options);
+                return await super.initServiceWorker({ entryPoint: '/index.html', cacheName: 'test-sw-v1' });
+            }
+        }
+
+        const win = new SwAppWindow();
+        try {
+            await flushMicrotasks();
+            assert.equal(swCalls.length >= 1, true);
+            assert.equal(swCalls[0], null);
+            assert.notEqual(win.getServiceWorker(), null);
+        } finally {
+            win.destroy();
+        }
     });
 });

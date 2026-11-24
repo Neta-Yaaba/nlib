@@ -9,7 +9,7 @@
  */
 
 import { NObject } from '../core/NObject.js';
-import { NUtil } from '../utils/NUtil.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * Options de contexte et de durée de vie pour les opérations NStorage.
@@ -20,33 +20,31 @@ import { NUtil } from '../utils/NUtil.js';
 
 /**
  * @class NStorage
- * @extends NObject
  * @description Gestionnaire de stockage clé/valeur basé sur `localStorage` / `sessionStorage` avec support des contextes et du TTL.
  *
  * @example <caption>Exemple 1 : Utilisation standard avec typage automatique et objets</caption>
- * const storage = new NStorage();
- * storage.set('user', { id: 1, name: 'Alice', role: 'admin' });
+  * NStorage.set('user', { id: 1, name: 'Alice', role: 'admin' });
  * const user = storage.get('user');
  * console.log(user?.name); // 'Alice'
  *
  * @example <caption>Exemple 2 : Cloisonnement par contexte applicatif (app, admin, site) sur un même domaine</caption>
- * const adminStorage = new NStorage({ context: 'admin' });
- * const siteStorage = new NStorage({ context: 'site' });
+ * const adminStorage = NStorage.withContext('admin');
+ * const siteStorage = NStorage.withContext('site');
  * adminStorage.set('theme', 'dark');  // Stocké sous 'admin:theme'
  * siteStorage.set('theme', 'light');  // Stocké sous 'site:theme'
  * console.log(adminStorage.getString('theme')); // 'dark'
  * console.log(siteStorage.getString('theme'));  // 'light'
  *
  * @example <caption>Exemple 3 : Dérivation fluide avec withContext et TTL</caption>
- * const baseStore = new NStorage({ prefix: 'my_pos:', ttl: 3600 });
+ * NStorage.configure({ prefix: 'my_pos:', ttl: 3600 });
  * const appStore = baseStore.withContext('app');
  * appStore.set('jwt', 'token_sec_123');
  * console.log(appStore.getString('jwt')); // 'token_sec_123'
  */
-export class NStorage extends NObject {
+export class NStorage {
 
     // =========================================================================
-    // Propriétés d'instance privées
+    // Propriétés privées statiques
     // =========================================================================
 
     /**
@@ -54,85 +52,81 @@ export class NStorage extends NObject {
      * @type {'localStorage'|'sessionStorage'|null}
      * @private
      */
-    #driver = null;
+    static #driver = null;
 
     /**
      * Adaptateur sous-jacent (Storage navigateur native : localStorage ou sessionStorage).
      * @type {Storage|null}
      * @private
      */
-    #adapter = null;
+    static #adapter = null;
 
     /**
      * Préfixe technique optionnel appliqué à toutes les clés pour éviter les collisions globales.
      * @type {string}
      * @private
      */
-    #prefix = '';
+    static #prefix = '';
 
     /**
      * Contexte applicatif pour distinguer les données d'un même domaine (ex: 'app', 'admin', 'site').
      * @type {string}
      * @private
      */
-    #context = '';
+    static #context = '';
 
     /**
      * Durée de vie par défaut en secondes (0 = pas d'expiration).
      * @type {number}
      * @private
      */
-    #defaultTtl = 0;
+    static #defaultTtl = 0;
+
+    /** @type {boolean} */
+    static #initialized = false;
 
     // =========================================================================
-    // Constructeur
+    // Configuration & Getters / Setters
     // =========================================================================
 
     /**
-     * Crée une nouvelle instance de `NStorage`.
+     * Configure les options globales de `NStorage` et initialise le pilote demandé.
      *
-     * @constructor
      * @param {Object} [options={}] - Options de configuration du stockage.
      * @param {'auto'|'localStorage'|'sessionStorage'} [options.driver='auto'] - Pilote demandé.
      * @param {string} [options.prefix=''] - Préfixe technique global ajouté devant toutes les clés.
      * @param {string} [options.context=''] - Contexte applicatif (ex: 'app', 'admin', 'site').
      * @param {number} [options.ttl=0] - Durée de validité par défaut en secondes (0 = sans expiration).
+     * @returns {typeof NStorage}
      *
-     * @example <caption>Exemple 1 : Instanciation par défaut en détection automatique</caption>
-     * const storage = new NStorage();
-     * console.log(storage.driver);
+     * @example <caption>Exemple 1 : Configurer un préfixe et un contexte</caption>
+     * NStorage.configure({ prefix: 'my_pos:', context: 'admin', ttl: 3600 });
      *
-     * @example <caption>Exemple 2 : Stockage préfixé avec contexte applicatif</caption>
-     * const adminCache = new NStorage({
-     *     prefix: 'my_pos:',
-     *     context: 'admin',
-     *     driver: 'localStorage',
-     *     ttl: 3600
-     * });
+     * @example <caption>Exemple 2 : Forcer sessionStorage</caption>
+     * NStorage.configure({ driver: 'sessionStorage' });
      */
-    constructor(options = {}) {
-        super(options);
+    static configure(options = {}) {
         const opts = options && typeof options === 'object' ? options : {};
-
-        if (typeof opts.prefix === 'string') {
-            this.#prefix = opts.prefix;
-        }
-
-        if (typeof opts.context === 'string' && opts.context.trim()) {
-            this.#context = opts.context.trim();
-        }
-
-        if (typeof opts.ttl === 'number' && Number.isFinite(opts.ttl) && opts.ttl > 0) {
-            this.#defaultTtl = Math.floor(opts.ttl);
-        }
-
-        this.#initDriver(opts.driver || 'auto');
+        NStorage.#prefix = typeof opts.prefix === 'string' ? opts.prefix : '';
+        NStorage.#context = (typeof opts.context === 'string' && opts.context.trim()) ? opts.context.trim() : '';
+        NStorage.#defaultTtl = (typeof opts.ttl === 'number' && Number.isFinite(opts.ttl) && opts.ttl > 0)
+            ? Math.floor(opts.ttl)
+            : 0;
+        NStorage.#initDriver(opts.driver || 'auto');
+        NStorage.#initialized = true;
+        return NStorage;
     }
 
-    // =========================================================================
-    // Getters & Setters
-    // =========================================================================
-
+    /**
+     * Initialise le pilote de stockage par défaut lors du premier accès.
+     * @private
+     */
+    static #ensureDriver() {
+        if (!NStorage.#initialized) {
+            NStorage.#initDriver('auto');
+            NStorage.#initialized = true;
+        }
+    }
     /**
      * Retourne le nom du pilote de stockage actuellement actif (`'localStorage'`, `'sessionStorage'` ou `null`).
      * @type {'localStorage'|'sessionStorage'|null}
@@ -145,8 +139,9 @@ export class NStorage extends NObject {
      *     console.log('Stockage de session actif');
      * }
      */
-    get driver() {
-        return this.#driver;
+    static get driver() {
+        NStorage.#ensureDriver();
+        return NStorage.#driver;
     }
 
     /**
@@ -159,8 +154,9 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Condition avant écriture critique</caption>
      * if (storage.isAvailable) { storage.set('session', { token: 'abc' }); }
      */
-    get isAvailable() {
-        return this.#adapter !== null;
+    static get isAvailable() {
+        NStorage.#ensureDriver();
+        return NStorage.#adapter !== null;
     }
 
     /**
@@ -173,8 +169,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Vérifier si un préfixe est actif</caption>
      * if (storage.prefix.length > 0) { console.log('Préfixe technique actif'); }
      */
-    get prefix() {
-        return this.#prefix;
+    static get prefix() {
+        return NStorage.#prefix;
     }
 
     /**
@@ -188,8 +184,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Vérifier si l'instance est cloisonnée dans un contexte</caption>
      * if (storage.context.length > 0) { console.log(`Espace : ${storage.context}`); }
      */
-    get context() {
-        return this.#context;
+    static get context() {
+        return NStorage.#context;
     }
 
     /**
@@ -197,13 +193,13 @@ export class NStorage extends NObject {
      * @param {string} val - Nouveau contexte (ou chaîne vide pour repasser en mode généralisé).
      *
      * @example <caption>Exemple 1 : Définir un contexte après instanciation</caption>
-     * storage.context = 'admin';
+     * NStorage.context = 'admin';
      *
      * @example <caption>Exemple 2 : Réinitialiser au mode généralisé</caption>
-     * storage.context = '';
+     * NStorage.context = '';
      */
-    set context(val) {
-        this.#context = typeof val === 'string' ? val.trim() : '';
+    static set context(val) {
+        NStorage.#context = typeof val === 'string' ? val.trim() : '';
     }
 
     /**
@@ -216,22 +212,9 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Vérifier si le stockage est vide</caption>
      * if (storage.length === 0) { console.log('Stockage vide'); }
      */
-    get length() {
-        return this.keys().length;
-    }
-
-    /**
-     * Accès direct à la classe utilitaire transversale `NUtil`.
-     * @type {typeof NUtil}
-     *
-     * @example <caption>Exemple 1 : Journaliser via storage.util.log</caption>
-     * storage.util.log.info('Opération de stockage effectuée');
-     *
-     * @example <caption>Exemple 2 : Utiliser les utilitaires</caption>
-     * console.log(storage.util.str.slug('Clé de test'));
-     */
-    get util() {
-        return NUtil;
+    static get length() {
+        NStorage.#ensureDriver();
+        return NStorage.keys().length;
     }
 
     // =========================================================================
@@ -247,7 +230,7 @@ export class NStorage extends NObject {
      * @returns {NStorage} Nouvelle instance clonée et cloisonnée dans le contexte.
      *
      * @example <caption>Exemple 1 : Dériver un stockage dédié à l'espace administration</caption>
-     * const storage = new NStorage({ prefix: 'my_pos:' });
+     * NStorage.configure({ prefix: 'my_pos:' });
      * const adminStore = storage.withContext('admin');
      * adminStore.set('session_id', 'adm_123');
      * console.log(adminStore.getString('session_id')); // 'adm_123'
@@ -260,13 +243,28 @@ export class NStorage extends NObject {
      * console.log(appStore.getString('lang')); // 'fr'
      * console.log(siteStore.getString('lang')); // 'en'
      */
-    withContext(context) {
-        return new NStorage({
-            driver: this.#driver,
-            prefix: this.#prefix,
-            context: typeof context === 'string' ? context.trim() : '',
-            ttl: this.#defaultTtl
-        });
+        static withContext(context) {
+        const ctx = typeof context === 'string' ? context.trim() : '';
+        return {
+            get context() { return ctx; },
+            set: (key, value, optionsOrTtl) => {
+                const opts = typeof optionsOrTtl === 'number'
+                    ? { ttl: optionsOrTtl, context: ctx }
+                    : { ...(optionsOrTtl && typeof optionsOrTtl === 'object' ? optionsOrTtl : {}), context: ctx };
+                return NStorage.set(key, value, opts);
+            },
+            get: (key, defaultValue = null, options = {}) => NStorage.get(key, defaultValue, { ...options, context: ctx }),
+            getString: (key, defaultValue = '', options = {}) => NStorage.getString(key, defaultValue, { ...options, context: ctx }),
+            getNumber: (key, defaultValue = 0, options = {}) => NStorage.getNumber(key, defaultValue, { ...options, context: ctx }),
+            getBoolean: (key, defaultValue = false, options = {}) => NStorage.getBoolean(key, defaultValue, { ...options, context: ctx }),
+            getJson: (key, defaultValue = {}, options = {}) => NStorage.getJson(key, defaultValue, { ...options, context: ctx }),
+            getArray: (key, defaultValue = [], options = {}) => NStorage.getArray(key, defaultValue, { ...options, context: ctx }),
+            has: (key, options = {}) => NStorage.has(key, { ...options, context: ctx }),
+            remove: (key, options = {}) => NStorage.remove(key, { ...options, context: ctx }),
+            clear: () => NStorage.clear({ context: ctx }),
+            keys: () => NStorage.keys({ context: ctx }),
+            toObject: () => NStorage.toObject({ context: ctx })
+        };
     }
 
     // =========================================================================
@@ -284,14 +282,15 @@ export class NStorage extends NObject {
      * @returns {boolean} `true` si l'enregistrement a réussi, `false` sinon.
      *
      * @example <caption>Exemple 1 : Enregistrer une clé standard avec TTL</caption>
-     * storage.set('session', { token: 'abc' }, 3600);
+     * NStorage.set('session', { token: 'abc' }, 3600);
      *
      * @example <caption>Exemple 2 : Enregistrer avec contexte ponctuel</caption>
-     * storage.set('api_key', 'sec_123', { context: 'admin', ttl: 600 });
+     * NStorage.set('api_key', 'sec_123', { context: 'admin', ttl: 600 });
      */
-    set(key, value, optionsOrTtl) {
-        if (!this.#adapter) {
-            NUtil.log.warn('NStorage.set : Aucun adaptateur de stockage disponible (localStorage/sessionStorage inaccessible ou désactivé).', {
+    static set(key, value, optionsOrTtl) {
+        NStorage.#ensureDriver();
+        if (!NStorage.#adapter) {
+            NLog.warn('NStorage.set : Aucun adaptateur de stockage disponible (localStorage/sessionStorage inaccessible ou désactivé).', {
                 code: 'WARN_STORAGE_NOT_AVAILABLE',
                 key
             });
@@ -299,7 +298,7 @@ export class NStorage extends NObject {
         }
 
         if (key === null || key === undefined) {
-            NUtil.log.warn('NStorage.set : Clé de stockage absente ou nulle.', {
+            NLog.warn('NStorage.set : Clé de stockage absente ou nulle.', {
                 code: 'WARN_STORAGE_INVALID_KEY',
                 key
             });
@@ -308,7 +307,7 @@ export class NStorage extends NObject {
 
         const keyStr = String(key).trim();
         if (keyStr.length === 0) {
-            NUtil.log.warn('NStorage.set : Clé de stockage vide.', {
+            NLog.warn('NStorage.set : Clé de stockage vide.', {
                 code: 'WARN_STORAGE_EMPTY_KEY'
             });
             return false;
@@ -320,7 +319,7 @@ export class NStorage extends NObject {
 
         const effectiveTtl = typeof options.ttl === 'number' && Number.isFinite(options.ttl) && options.ttl > 0
             ? Math.floor(options.ttl)
-            : this.#defaultTtl;
+            : NStorage.#defaultTtl;
 
         const payload = {
             v: value,
@@ -329,9 +328,9 @@ export class NStorage extends NObject {
 
         let serialized = '';
         try {
-            serialized = JSON.stringify(payload, this.#jsonReplacer);
+            serialized = JSON.stringify(payload, NStorage.#jsonReplacer);
         } catch (err) {
-            NUtil.log.error('NStorage.set : Échec de sérialisation JSON de la valeur.', {
+            NLog.error('NStorage.set : Échec de sérialisation JSON de la valeur.', {
                 code: 'ERR_STORAGE_SERIALIZATION_FAILED',
                 key: keyStr,
                 error: err,
@@ -340,17 +339,17 @@ export class NStorage extends NObject {
             return false;
         }
 
-        const ctxPrefix = this.#resolveContextPrefix(options.context);
+        const ctxPrefix = NStorage.#resolveContextPrefix(options.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
+        const fullKey = NStorage.#prefix ? `${NStorage.#prefix}${contextualKey}` : contextualKey;
 
         try {
-            this.#adapter.setItem(fullKey, serialized);
+            NStorage.#adapter.setItem(fullKey, serialized);
             return true;
         } catch (err) {
-            NUtil.log.error('NStorage.set : Échec d\'écriture dans le stockage (quota dépassé ou accès bloqué).', {
+            NLog.error('NStorage.set : Échec d\'écriture dans le stockage (quota dépassé ou accès bloqué).', {
                 code: 'ERR_STORAGE_WRITE_FAILED',
-                driver: this.#driver,
+                driver: NStorage.#driver,
                 key: keyStr,
                 error: err,
                 stack: err?.stack
@@ -376,19 +375,19 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Récupérer dans un contexte précis</caption>
      * const token = storage.get('token', null, { context: 'admin' });
      */
-    get(key, defaultValue = null, options = {}) {
-        if (!this.#adapter) return defaultValue;
+    static get(key, defaultValue = null, options = {}) {
+        if (!NStorage.#adapter) return defaultValue;
         if (key === null || key === undefined) return defaultValue;
 
         const keyStr = String(key).trim();
         if (keyStr.length === 0) return defaultValue;
 
         const opts = typeof options === 'object' && options !== null ? options : {};
-        const ctxPrefix = this.#resolveContextPrefix(opts.context);
+        const ctxPrefix = NStorage.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
+        const fullKey = NStorage.#prefix ? `${NStorage.#prefix}${contextualKey}` : contextualKey;
 
-        const raw = this.#readRawFromAdapter(fullKey);
+        const raw = NStorage.#readRawFromAdapter(fullKey);
 
         if (raw === null || raw === undefined) {
             return defaultValue;
@@ -399,7 +398,7 @@ export class NStorage extends NObject {
             if (parsed && typeof parsed === 'object' && 'v' in parsed && 'e' in parsed) {
                 // Vérification de la date d'expiration (TTL)
                 if (typeof parsed.e === 'number' && parsed.e > 0 && Date.now() > parsed.e) {
-                    this.remove(keyStr, opts);
+                    NStorage.remove(keyStr, opts);
                     return defaultValue;
                 }
 
@@ -428,8 +427,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Avec contexte applicatif ciblé</caption>
      * const adminKey = storage.getString('apiKey', '', { context: 'admin' });
      */
-    getString(key, defaultValue = '', options = {}) {
-        const val = this.get(key, defaultValue, options);
+    static getString(key, defaultValue = '', options = {}) {
+        const val = NStorage.get(key, defaultValue, options);
         return val !== null && val !== undefined ? String(val) : defaultValue;
     }
 
@@ -449,8 +448,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Compteur avec contexte</caption>
      * const adminVisits = storage.getNumber('visits', 0, { context: 'admin' });
      */
-    getNumber(key, defaultValue = 0, options = {}) {
-        const val = this.get(key, defaultValue, options);
+    static getNumber(key, defaultValue = 0, options = {}) {
+        const val = NStorage.get(key, defaultValue, options);
         const parsed = Number(val);
         return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : defaultValue;
     }
@@ -471,8 +470,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Évaluation booléenne dans un contexte</caption>
      * const isAdminActive = storage.getBoolean('isActive', true, { context: 'admin' });
      */
-    getBoolean(key, defaultValue = false, options = {}) {
-        const val = this.get(key, defaultValue, options);
+    static getBoolean(key, defaultValue = false, options = {}) {
+        const val = NStorage.get(key, defaultValue, options);
         if (typeof val === 'boolean') return val;
         if (typeof val === 'string') {
             const lower = val.toLowerCase().trim();
@@ -499,8 +498,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Paramètres par contexte</caption>
      * const siteConfig = storage.getJson('config', {}, { context: 'site' });
      */
-    getJson(key, defaultValue = {}, options = {}) {
-        const val = this.get(key, defaultValue, options);
+    static getJson(key, defaultValue = {}, options = {}) {
+        const val = NStorage.get(key, defaultValue, options);
         return val && typeof val === 'object' && !Array.isArray(val) ? val : defaultValue;
     }
 
@@ -520,8 +519,8 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Tableau par contexte</caption>
      * const adminRoles = storage.getArray('roles', [], { context: 'admin' });
      */
-    getArray(key, defaultValue = [], options = {}) {
-        const val = this.get(key, defaultValue, options);
+    static getArray(key, defaultValue = [], options = {}) {
+        const val = NStorage.get(key, defaultValue, options);
         return Array.isArray(val) ? val : defaultValue;
     }
 
@@ -539,19 +538,20 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Vérification d'une clé dans un contexte</caption>
      * if (storage.has('token', { context: 'admin' })) { console.log('Admin connecté'); }
      */
-    has(key, options = {}) {
-        if (!this.#adapter) return false;
+    static has(key, options = {}) {
+        NStorage.#ensureDriver();
+        if (!NStorage.#adapter) return false;
         if (key === null || key === undefined) return false;
 
         const keyStr = String(key).trim();
         if (keyStr.length === 0) return false;
 
         const opts = typeof options === 'object' && options !== null ? options : {};
-        const ctxPrefix = this.#resolveContextPrefix(opts.context);
+        const ctxPrefix = NStorage.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
+        const fullKey = NStorage.#prefix ? `${NStorage.#prefix}${contextualKey}` : contextualKey;
 
-        const raw = this.#readRawFromAdapter(fullKey);
+        const raw = NStorage.#readRawFromAdapter(fullKey);
 
         if (raw === null || raw === undefined) {
             return false;
@@ -561,7 +561,7 @@ export class NStorage extends NObject {
             const parsed = JSON.parse(raw);
             if (parsed && typeof parsed === 'object' && 'e' in parsed) {
                 if (typeof parsed.e === 'number' && parsed.e > 0 && Date.now() > parsed.e) {
-                    this.remove(keyStr, opts);
+                    NStorage.remove(keyStr, opts);
                     return false;
                 }
             }
@@ -584,25 +584,26 @@ export class NStorage extends NObject {
      * console.log('Supprimé :', ok);
      *
      * @example <caption>Exemple 2 : Nettoyage d'une clé dans un contexte</caption>
-     * storage.remove('session', { context: 'admin' });
+     * NStorage.remove('session', { context: 'admin' });
      */
-    remove(key, options = {}) {
-        if (!this.#adapter) return false;
+    static remove(key, options = {}) {
+        NStorage.#ensureDriver();
+        if (!NStorage.#adapter) return false;
         if (key === null || key === undefined) return false;
 
         const keyStr = String(key).trim();
         if (keyStr.length === 0) return false;
 
         const opts = typeof options === 'object' && options !== null ? options : {};
-        const ctxPrefix = this.#resolveContextPrefix(opts.context);
+        const ctxPrefix = NStorage.#resolveContextPrefix(opts.context);
         const contextualKey = ctxPrefix ? `${ctxPrefix}${keyStr}` : keyStr;
-        const fullKey = this.#prefix ? `${this.#prefix}${contextualKey}` : contextualKey;
+        const fullKey = NStorage.#prefix ? `${NStorage.#prefix}${contextualKey}` : contextualKey;
 
         try {
-            this.#adapter.removeItem(fullKey);
+            NStorage.#adapter.removeItem(fullKey);
             return true;
         } catch (err) {
-            NUtil.log.error('NStorage.remove : Erreur lors de la suppression de la clé.', {
+            NLog.error('NStorage.remove : Erreur lors de la suppression de la clé.', {
                 code: 'ERR_STORAGE_REMOVE_FAILED',
                 key: keyStr,
                 error: err,
@@ -624,35 +625,36 @@ export class NStorage extends NObject {
      * adminStore.clear(); // Supprime uniquement les clés débutant par 'admin:'
      *
      * @example <caption>Exemple 2 : Vidage complet généralisé</caption>
-     * const genStore = new NStorage();
-     * genStore.clear();
+          * NStorage.clear();
      */
-    clear() {
-        if (!this.#adapter) return false;
+    static clear(options = {}) {
+        NStorage.#ensureDriver();
+        if (!NStorage.#adapter) return false;
+        const ctx = typeof options?.context === 'string' ? options.context.trim() : NStorage.#context;
 
         try {
             // Si pas de préfixe ET pas de contexte, effacement global direct
-            if (!this.#prefix && !this.#context && typeof this.#adapter.clear === 'function') {
-                this.#adapter.clear();
+            if (!NStorage.#prefix && !ctx && typeof NStorage.#adapter.clear === 'function') {
+                NStorage.#adapter.clear();
                 return true;
             }
 
             // Sinon, suppression ciblée des clés appartenant au préfixe/contexte
-            const allKeys = this.keys();
+            const allKeys = NStorage.keys(options);
             let allSuccess = true;
             for (const k of allKeys) {
-                const removed = this.remove(k);
+                const removed = NStorage.remove(k, options);
                 if (!removed) {
                     allSuccess = false;
                 }
             }
             return allSuccess;
         } catch (err) {
-            NUtil.log.error('NStorage.clear : Échec du vidage du stockage.', {
+            NLog.error('NStorage.clear : Échec du vidage du stockage.', {
                 code: 'ERR_STORAGE_CLEAR_FAILED',
-                prefix: this.#prefix,
-                context: this.#context,
-                driver: this.#driver,
+                prefix: NStorage.#prefix,
+                context: NStorage.#context,
+                driver: NStorage.#driver,
                 error: err,
                 stack: err?.stack
             });
@@ -674,25 +676,26 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Lister toutes les clés en mode généralisé</caption>
      * console.log(storage.keys());
      */
-    keys() {
-        if (!this.#adapter) return [];
+    static keys(options = {}) {
+        NStorage.#ensureDriver();
+        if (!NStorage.#adapter) return [];
 
         const result = [];
-        const ctxPrefix = this.#resolveContextPrefix();
+        const ctxPrefix = NStorage.#resolveContextPrefix(options?.context);
 
         try {
             const rawKeysList = [];
-            const count = typeof this.#adapter.length === 'number' ? this.#adapter.length : 0;
+            const count = typeof NStorage.#adapter.length === 'number' ? NStorage.#adapter.length : 0;
             for (let i = 0; i < count; i++) {
-                const fullKey = this.#adapter.key(i);
+                const fullKey = NStorage.#adapter.key(i);
                 if (fullKey) {
                     rawKeysList.push(fullKey);
                 }
             }
 
             for (const fullKey of rawKeysList) {
-                if (!this.#prefix || fullKey.startsWith(this.#prefix)) {
-                    const plainContextualKey = this.#prefix ? fullKey.slice(this.#prefix.length) : fullKey;
+                if (!NStorage.#prefix || fullKey.startsWith(NStorage.#prefix)) {
+                    const plainContextualKey = NStorage.#prefix ? fullKey.slice(NStorage.#prefix.length) : fullKey;
 
                     // Si un contexte est configuré sur l'instance, filtrer strictement sur ce contexte
                     if (ctxPrefix) {
@@ -711,11 +714,11 @@ export class NStorage extends NObject {
                 }
             }
         } catch (err) {
-            NUtil.log.error('NStorage.keys : Erreur lors de l\'énumération des clés.', {
+            NLog.error('NStorage.keys : Erreur lors de l\'énumération des clés.', {
                 code: 'ERR_STORAGE_KEYS_FAILED',
-                driver: this.#driver,
-                prefix: this.#prefix,
-                context: this.#context,
+                driver: NStorage.#driver,
+                prefix: NStorage.#prefix,
+                context: NStorage.#context,
                 error: err,
                 stack: err?.stack
             });
@@ -737,11 +740,11 @@ export class NStorage extends NObject {
      * @example <caption>Exemple 2 : Inspecter le contenu complet</caption>
      * console.log(storage.toObject());
      */
-    toObject() {
+    static toObject() {
         const obj = {};
-        const activeKeys = this.keys();
+        const activeKeys = NStorage.keys();
         for (const k of activeKeys) {
-            const val = this.get(k);
+            const val = NStorage.get(k);
             if (val !== undefined && val !== null) {
                 obj[k] = val;
             }
@@ -759,10 +762,11 @@ export class NStorage extends NObject {
      * @param {string} fullKey - Clé complète avec préfixe.
      * @returns {string|null}
      */
-    #readRawFromAdapter(fullKey) {
-        if (!this.#adapter) return null;
+    static #readRawFromAdapter(fullKey) {
+        NStorage.#ensureDriver();
+        if (!NStorage.#adapter) return null;
         try {
-            return this.#adapter.getItem(fullKey);
+            return NStorage.#adapter.getItem(fullKey);
         } catch {
             return null;
         }
@@ -780,8 +784,8 @@ export class NStorage extends NObject {
      * @param {string} [customContext] - Surcharge ponctuelle du contexte.
      * @returns {string} Préfixe de contexte formaté (ex: 'admin:' ou '').
      */
-    #resolveContextPrefix(customContext) {
-        let ctx = this.#context;
+    static #resolveContextPrefix(customContext) {
+        let ctx = NStorage.#context;
         if (customContext !== undefined && customContext !== null) {
             ctx = typeof customContext === 'string' ? customContext.trim() : '';
         }
@@ -795,52 +799,52 @@ export class NStorage extends NObject {
      * @private
      * @param {'auto'|'localStorage'|'sessionStorage'} requestedDriver - Pilote demandé.
      */
-    #initDriver(requestedDriver) {
-        const scope = this.#getGlobalScope();
+    static #initDriver(requestedDriver) {
+        const scope = NStorage.#getGlobalScope();
         const req = typeof requestedDriver === 'string' ? requestedDriver.toLowerCase().trim() : 'auto';
 
         if (req === 'sessionstorage') {
-            if (this.#isStorageAvailable('sessionStorage')) {
-                this.#driver = 'sessionStorage';
-                this.#adapter = scope.sessionStorage;
+            if (NStorage.#isStorageAvailable('sessionStorage')) {
+                NStorage.#driver = 'sessionStorage';
+                NStorage.#adapter = scope.sessionStorage;
                 return;
             }
-            if (this.#isStorageAvailable('localStorage')) {
-                this.#driver = 'localStorage';
-                this.#adapter = scope.localStorage;
+            if (NStorage.#isStorageAvailable('localStorage')) {
+                NStorage.#driver = 'localStorage';
+                NStorage.#adapter = scope.localStorage;
                 return;
             }
-            this.#driver = null;
-            this.#adapter = null;
+            NStorage.#driver = null;
+            NStorage.#adapter = null;
             return;
         }
 
         if (req === 'localstorage') {
-            if (this.#isStorageAvailable('localStorage')) {
-                this.#driver = 'localStorage';
-                this.#adapter = scope.localStorage;
+            if (NStorage.#isStorageAvailable('localStorage')) {
+                NStorage.#driver = 'localStorage';
+                NStorage.#adapter = scope.localStorage;
                 return;
             }
-            if (this.#isStorageAvailable('sessionStorage')) {
-                this.#driver = 'sessionStorage';
-                this.#adapter = scope.sessionStorage;
+            if (NStorage.#isStorageAvailable('sessionStorage')) {
+                NStorage.#driver = 'sessionStorage';
+                NStorage.#adapter = scope.sessionStorage;
                 return;
             }
-            this.#driver = null;
-            this.#adapter = null;
+            NStorage.#driver = null;
+            NStorage.#adapter = null;
             return;
         }
 
         // Mode 'auto' : priorité à localStorage, repli sur sessionStorage
-        if (this.#isStorageAvailable('localStorage')) {
-            this.#driver = 'localStorage';
-            this.#adapter = scope.localStorage;
-        } else if (this.#isStorageAvailable('sessionStorage')) {
-            this.#driver = 'sessionStorage';
-            this.#adapter = scope.sessionStorage;
+        if (NStorage.#isStorageAvailable('localStorage')) {
+            NStorage.#driver = 'localStorage';
+            NStorage.#adapter = scope.localStorage;
+        } else if (NStorage.#isStorageAvailable('sessionStorage')) {
+            NStorage.#driver = 'sessionStorage';
+            NStorage.#adapter = scope.sessionStorage;
         } else {
-            this.#driver = null;
-            this.#adapter = null;
+            NStorage.#driver = null;
+            NStorage.#adapter = null;
         }
     }
 
@@ -852,9 +856,9 @@ export class NStorage extends NObject {
      * @param {'localStorage'|'sessionStorage'} type - Type de stockage à tester.
      * @returns {boolean} `true` si le stockage est pleinement fonctionnel.
      */
-    #isStorageAvailable(type) {
+    static #isStorageAvailable(type) {
         try {
-            const scope = this.#getGlobalScope();
+            const scope = NStorage.#getGlobalScope();
             if (!scope || !scope[type]) {
                 return false;
             }
@@ -875,7 +879,7 @@ export class NStorage extends NObject {
      * @private
      * @returns {any} Contexte global (globalThis, window, self ou objet vide).
      */
-    #getGlobalScope() {
+    static #getGlobalScope() {
         if (typeof globalThis !== 'undefined') return globalThis;
         if (typeof window !== 'undefined') return window;
         if (typeof self !== 'undefined') return self;
@@ -890,7 +894,7 @@ export class NStorage extends NObject {
      * @param {any} value - Valeur à sérialiser.
      * @returns {any} Valeur adaptée pour JSON.
      */
-    #jsonReplacer(_key, value) {
+    static #jsonReplacer(_key, value) {
         if (typeof value === 'bigint') {
             return Number(value);
         }
@@ -903,19 +907,24 @@ export class NStorage extends NObject {
      * @returns {void}
      *
      * @example <caption>Exemple 1 : Détruire l'instance NStorage</caption>
-     * const storage = new NStorage({ prefix: 'tmp:' });
-     * storage.destroy();
+     * NStorage.configure({ prefix: 'tmp:' });
+     * NStorage.destroy();
      * console.log(storage.isDestroyed); // true
      *
      * @example <caption>Exemple 2 : Vérifier la disponibilité après destruction</caption>
-     * storage.destroy();
+     * NStorage.destroy();
      * console.log(storage.isAvailable); // false
      */
-    destroy() {
-        this.#adapter = null;
-        this.#driver = null;
-        super.destroy();
+    static destroy() {
+        NStorage.#adapter = null;
+        NStorage.#driver = null;
+        NStorage.#prefix = '';
+        NStorage.#context = '';
+        NStorage.#defaultTtl = 0;
+        NStorage.#initialized = false;
     }
 }
+
+NObject.registerStorage(NStorage);
 
 export default NStorage;

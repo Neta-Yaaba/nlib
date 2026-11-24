@@ -1,25 +1,29 @@
 /**
- * @file NDirectory.js
+ * @file NDir.js
  * @package @nlib/js-backend
  * @description Classe utilitaire de gestion des répertoires (dossiers) pour l'écosystème NLib,
- * accessible via `NUtil.dir` (ou `NUtil.directory`) et par instanciation directe (`new NDirectory()`).
+ * classe utilitaire statique accessible directement via `NDir` ou `NDir` (`NDir`).
  *
  * Stratégie de stockage adaptative multiplateforme à 3 niveaux (coordonnée avec `NFile`) :
- * 1. **Conteneur Natif / WebView (`native`)** : si `NUtil.env.isWebView` est actif, délègue les opérations
- *    au système d'exploitation hôte via `NUtil.sys.invokeNative`.
+ * 1. **Conteneur Natif / WebView (`native`)** : si `NEnv.isWebView` est actif, délègue les opérations
+ *    au système d'exploitation hôte via `NSys.invokeNative`.
  * 2. **File System Access API / OPFS (`fs`)** : si l'API `navigator.storage.getDirectory` est disponible,
  *    manipule les `FileSystemDirectoryHandle`.
- * 3. **IndexedDB (`idb`)** : s'appuie sur `NUtil.db.idb` (magasin `ntable`) en synchronisation avec
+ * 3. **IndexedDB (`idb`)** : s'appuie sur `NIndexedDB.instance` (magasin `ntable`) en synchronisation avec
  *    les fichiers enregistrés par `NFile` (`__nfile__:`) et les dossiers (`__ndir__:`).
  *
- * Les erreurs sont journalisées via `NUtil.log` avec retours normalisés.
+ * Les erreurs sont journalisées via `NLog` avec retours normalisés.
  */
 
-import { NObject } from '../core/NObject.js';
+import { NLog } from '../log/NLog.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NIndexedDB } from '../database/NIndexedDB.js';
+import { NFile } from './NFile.js';
+import { NNum } from '../utils/NNum.js';
+import { NSys } from '../system/NSys.js';
 
 /**
- * Structure de réponse standardisée pour les opérations de répertoire `NDirectory`.
+ * Structure de réponse standardisée pour les opérations de répertoire `NDir`.
  * @typedef {Object} NDirectoryResponse
  * @property {boolean} ok - Indique si l'opération a réussi.
  * @property {any} [data=null] - Données ou métadonnées retournées par l'opération.
@@ -45,30 +49,29 @@ import { NUtil } from '../utils/NUtil.js';
  */
 
 /**
- * @class NDirectory
- * @extends NObject
+ * @class NDir
  * @description Service utilitaire de manipulation des répertoires (création, suppression, listage, arborescence,
  * recherche, copie, déplacement, renommage, vidage et calcul de taille) avec bascule automatique entre
- * Pont Natif (`invokeNative`), File System Access API (`navigator.storage.getDirectory`) et IndexedDB (`NUtil.db.idb`).
+ * Pont Natif (`invokeNative`), File System Access API (`navigator.storage.getDirectory`) et IndexedDB (`NIndexedDB.instance`).
  *
  * @example <caption>Exemple 1 : Créer un dossier, y écrire des fichiers et lister son contenu</caption>
- * await NUtil.dir.create('projets/2026/rapports');
- * await NUtil.file.writeText('projets/2026/rapports/bilan.txt', 'Bilan annuel');
- * const listRes = await NUtil.dir.list('projets/2026/rapports');
+ * await NDir.create('projets/2026/rapports');
+ * await NFile.writeText('projets/2026/rapports/bilan.txt', 'Bilan annuel');
+ * const listRes = await NDir.list('projets/2026/rapports');
  * console.log(listRes.ok, listRes.data.length); // true, 1
  *
  * @example <caption>Exemple 2 : Explorer l'arborescence, copier, renommer et vider un dossier</caption>
- * const tree = await NUtil.dir.tree('projets');
+ * const tree = await NDir.tree('projets');
  * console.log(tree.data);
- * await NUtil.dir.copy('projets/2026', 'projets/archive_2026');
- * await NUtil.dir.clear('projets/2026/rapports');
+ * await NDir.copy('projets/2026', 'projets/archive_2026');
+ * await NDir.clear('projets/2026/rapports');
  *
  * @example <caption>Exemple 3 : Rechercher des fichiers et calculer la taille totale d'un répertoire</caption>
- * const found = await NUtil.dir.find('projets', { extension: 'txt' });
- * const totalBytes = await NUtil.dir.size('projets');
- * console.log(found.length, NUtil.num.formatBytes(totalBytes));
+ * const found = await NDir.find('projets', { extension: 'txt' });
+ * const totalBytes = await NDir.size('projets');
+ * console.log(found.length, NNum.formatBytes(totalBytes));
  */
-export class NDirectory extends NObject {
+export class NDir {
 
     // =========================================================================
     // Propriétés privées
@@ -79,21 +82,21 @@ export class NDirectory extends NObject {
      * @type {string}
      * @private
      */
-    #idbDirPrefix = '__ndir__:';
+    static #idbDirPrefix = '__ndir__:';
 
     /**
      * Préfixe de clé utilisé par `NFile` pour les fichiers dans le magasin IndexedDB `ntable`.
      * @type {string}
      * @private
      */
-    #idbFilePrefix = '__nfile__:';
+    static #idbFilePrefix = '__nfile__:';
 
     /**
      * Nom du magasin IndexedDB utilisé en mode de repli.
      * @type {string}
      * @private
      */
-    #idbStoreName = 'ntable';
+    static #idbStoreName = 'ntable';
 
     // =========================================================================
     // Accesseurs d'instance — Détection du moteur de stockage
@@ -101,23 +104,23 @@ export class NDirectory extends NObject {
 
     /**
      * Retourne le moteur de stockage actif sélectionné automatiquement selon l'environnement :
-     * - `'native'` : Application native / WebView (`NUtil.env.isWebView`) via `NUtil.sys.invokeNative`.
+     * - `'native'` : Application native / WebView (`NEnv.isWebView`) via `NSys.invokeNative`.
      * - `'fs'` : File System Access API / OPFS (`navigator.storage.getDirectory`).
-     * - `'idb'` : Repli universel sur IndexedDB (`NUtil.db.idb`).
+     * - `'idb'` : Repli universel sur IndexedDB (`NIndexedDB.instance`).
      *
      * @returns {'native'|'fs'|'idb'} Identifiant du moteur de stockage actif.
      *
      * @example <caption>Exemple 1 : Lire le moteur de répertoire actif</caption>
-     * console.log(NUtil.dir.driver); // 'native' | 'fs' | 'idb'
+     * console.log(NDir.driver); // 'native' | 'fs' | 'idb'
      *
-     * @example <caption>Exemple 2 : Cohérence avec NUtil.file.driver</caption>
-     * console.log(NUtil.dir.driver === NUtil.file.driver); // true
+     * @example <caption>Exemple 2 : Cohérence avec NFile.driver</caption>
+     * console.log(NDir.driver === NFile.driver); // true
      */
-    get driver() {
-        if (this.isNativeAvailable) {
+    static get driver() {
+        if (NDir.isNativeAvailable) {
             return 'native';
         }
-        if (this.isFsApiAvailable) {
+        if (NDir.isFsApiAvailable) {
             return 'fs';
         }
         return 'idb';
@@ -129,12 +132,12 @@ export class NDirectory extends NObject {
      * @returns {boolean} `true` si exécuté dans une application native NLib.
      *
      * @example <caption>Exemple 1 : Vérifier la disponibilité du pont natif</caption>
-     * console.log(NUtil.dir.isNativeAvailable);
+     * console.log(NDir.isNativeAvailable);
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof NUtil.dir.isNativeAvailable); // 'boolean'
+     * console.log(typeof NDir.isNativeAvailable); // 'boolean'
      */
-    get isNativeAvailable() {
+    static get isNativeAvailable() {
         return Boolean(NUtil?.env?.isWebView);
     }
 
@@ -144,12 +147,12 @@ export class NDirectory extends NObject {
      * @returns {boolean} `true` si `navigator.storage.getDirectory` est disponible.
      *
      * @example <caption>Exemple 1 : Vérifier le support File System Access API</caption>
-     * console.log(NUtil.dir.isFsApiAvailable);
+     * console.log(NDir.isFsApiAvailable);
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof new NDirectory().isFsApiAvailable); // 'boolean'
+     * console.log(typeof NDir.isFsApiAvailable); // 'boolean'
      */
-    get isFsApiAvailable() {
+    static get isFsApiAvailable() {
         return (
             typeof navigator !== 'undefined' &&
             navigator.storage !== null &&
@@ -170,16 +173,16 @@ export class NDirectory extends NObject {
      * @returns {string} Chemin normalisé.
      *
      * @example <caption>Exemple 1 : Normaliser un chemin Windows ou mixte</caption>
-     * console.log(NUtil.dir.normalizePath('exports\\2026//factures/')); // 'exports/2026/factures'
+     * console.log(NDir.normalizePath('exports\\2026//factures/')); // 'exports/2026/factures'
      *
      * @example <caption>Exemple 2 : Normaliser la racine</caption>
-     * console.log(NUtil.dir.normalizePath('/')); // ''
+     * console.log(NDir.normalizePath('/')); // ''
      */
-    normalizePath(path = '') {
+    static normalizePath(path = '') {
         if (typeof path !== 'string') {
             return '';
         }
-        return NUtil.file.normalizePath(path);
+        return NFile.normalizePath(path);
     }
 
     /**
@@ -189,13 +192,13 @@ export class NDirectory extends NObject {
      * @returns {string} Chemin assemblé et normalisé.
      *
      * @example <caption>Exemple 1 : Joindre des sous-dossiers</caption>
-     * console.log(NUtil.dir.joinPath('storage', 'images', 'avatars')); // 'storage/images/avatars'
+     * console.log(NDir.joinPath('storage', 'images', 'avatars')); // 'storage/images/avatars'
      *
      * @example <caption>Exemple 2 : Ignorer les segments vides</caption>
-     * console.log(NUtil.dir.joinPath('', 'logs', '/2026/')); // 'logs/2026'
+     * console.log(NDir.joinPath('', 'logs', '/2026/')); // 'logs/2026'
      */
-    joinPath(...segments) {
-        return NUtil.file.joinPath(...segments);
+    static joinPath(...segments) {
+        return NFile.joinPath(...segments);
     }
 
     /**
@@ -205,13 +208,13 @@ export class NDirectory extends NObject {
      * @returns {string} Nom du répertoire (ou `''` pour la racine).
      *
      * @example <caption>Exemple 1 : Obtenir le nom du dossier</caption>
-     * console.log(NUtil.dir.getName('projets/2026/rapports')); // 'rapports'
+     * console.log(NDir.getName('projets/2026/rapports')); // 'rapports'
      *
      * @example <caption>Exemple 2 : Dossier racine</caption>
-     * console.log(NUtil.dir.getName('/')); // ''
+     * console.log(NDir.getName('/')); // ''
      */
-    getName(path) {
-        const norm = this.normalizePath(path);
+    static getName(path) {
+        const norm = NDir.normalizePath(path);
         if (!norm) {
             return '';
         }
@@ -226,13 +229,13 @@ export class NDirectory extends NObject {
      * @returns {string} Chemin du dossier parent (ou `''` si déjà à la racine).
      *
      * @example <caption>Exemple 1 : Obtenir le dossier parent</caption>
-     * console.log(NUtil.dir.getParent('projets/2026/rapports')); // 'projets/2026'
+     * console.log(NDir.getParent('projets/2026/rapports')); // 'projets/2026'
      *
      * @example <caption>Exemple 2 : Dossier de premier niveau</caption>
-     * console.log(NUtil.dir.getParent('projets')); // ''
+     * console.log(NDir.getParent('projets')); // ''
      */
-    getParent(path) {
-        const norm = this.normalizePath(path);
+    static getParent(path) {
+        const norm = NDir.normalizePath(path);
         if (!norm) {
             return '';
         }
@@ -253,23 +256,23 @@ export class NDirectory extends NObject {
      * @returns {Promise<boolean>} `true` si le répertoire existe, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier l'existence d'un dossier créé</caption>
-     * await NUtil.dir.create('archives/2026');
-     * console.log(await NUtil.dir.exists('archives/2026')); // true
+     * await NDir.create('archives/2026');
+     * console.log(await NDir.exists('archives/2026')); // true
      *
      * @example <caption>Exemple 2 : Vérifier un dossier inexistant</caption>
-     * console.log(await NUtil.dir.exists('archives/introuvable')); // false
+     * console.log(await NDir.exists('archives/introuvable')); // false
      */
-    async exists(path = '', options = {}) {
-        const normPath = this.normalizePath(path);
+    static async exists(path = '', options = {}) {
+        const normPath = NDir.normalizePath(path);
         if (normPath === '') {
             return true;
         }
 
-        const activeDriver = this.#resolveDriver(options?.driver);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
 
         try {
             if (activeDriver === 'native') {
-                const res = await this.#invokeNativeDir('exists', { path: normPath });
+                const res = await NDir.#invokeNativeDir('exists', { path: normPath });
                 if (res && typeof res === 'object') {
                     if (typeof res.exists === 'boolean') return res.exists;
                     if (typeof res.data === 'boolean') return res.data;
@@ -279,17 +282,17 @@ export class NDirectory extends NObject {
             }
 
             if (activeDriver === 'fs') {
-                const dirHandle = await this.#getFsDirectoryHandle(normPath, false);
+                const dirHandle = await NDir.#getFsDirectoryHandle(normPath, false);
                 return dirHandle !== null;
             }
 
             // Repli IndexedDB : vérifie soit une entrée explicite __ndir__, soit un fichier/sous-dossier préfixé
-            const directRes = await NUtil.db.idb.get(this.#idbStoreName, this.#toIdbDirKey(normPath));
+            const directRes = await NIndexedDB.instance.get(NDir.#idbStoreName, NDir.#toIdbDirKey(normPath));
             if (directRes?.ok && directRes?.data) {
                 return true;
             }
 
-            const allRecords = await this.#getAllIdbRecords();
+            const allRecords = await NDir.#getAllIdbRecords();
             const prefix = `${normPath}/`;
             return allRecords.some((rec) => typeof rec.path === 'string' && rec.path.startsWith(prefix));
         } catch {
@@ -305,48 +308,48 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: NDirectoryEntry, error, code }`.
      *
      * @example <caption>Exemple 1 : Créer une arborescence de dossiers</caption>
-     * const res = await NUtil.dir.create('data/exports/pdf');
+     * const res = await NDir.create('data/exports/pdf');
      * console.log(res.ok, res.data.path); // true, 'data/exports/pdf'
      *
      * @example <caption>Exemple 2 : Créer un dossier simple</caption>
-     * const res2 = await NUtil.dir.create('logs');
+     * const res2 = await NDir.create('logs');
      * console.log(res2.data.isDirectory); // true
      */
-    async create(path, options = {}) {
-        const normPath = this.normalizePath(path);
-        const activeDriver = this.#resolveDriver(options?.driver);
+    static async create(path, options = {}) {
+        const normPath = NDir.normalizePath(path);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
         const recursive = options?.recursive !== false;
         const now = Date.now();
 
         if (!normPath) {
-            return this.#ok(this.#buildDirInfo('', activeDriver, now, now));
+            return NDir.#ok(NDir.#buildDirInfo('', activeDriver, now, now));
         }
 
         try {
             if (!recursive) {
-                const parent = this.getParent(normPath);
-                if (parent && !(await this.exists(parent, { driver: activeDriver }))) {
-                    return this.#fail(`Le dossier parent "${parent}" n'existe pas.`, 'ERR_DIR_PARENT_NOT_FOUND');
+                const parent = NDir.getParent(normPath);
+                if (parent && !(await NDir.exists(parent, { driver: activeDriver }))) {
+                    return NDir.#fail(`Le dossier parent "${parent}" n'existe pas.`, 'ERR_DIR_PARENT_NOT_FOUND');
                 }
             }
 
             if (activeDriver === 'native') {
-                const res = await this.#invokeNativeDir('create', { path: normPath, recursive });
+                const res = await NDir.#invokeNativeDir('create', { path: normPath, recursive });
                 if (!res || res.ok === false || res.success === false) {
-                    return this.#fail(
+                    return NDir.#fail(
                         res?.error || res?.message || `Échec de création native du dossier "${normPath}".`,
                         res?.code || 'ERR_DIR_CREATE_NATIVE'
                     );
                 }
-                return this.#ok(this.#buildDirInfo(normPath, 'native', now, now));
+                return NDir.#ok(NDir.#buildDirInfo(normPath, 'native', now, now));
             }
 
             if (activeDriver === 'fs') {
-                const handle = await this.#getFsDirectoryHandle(normPath, true);
+                const handle = await NDir.#getFsDirectoryHandle(normPath, true);
                 if (!handle) {
-                    return this.#fail(`Impossible de créer le dossier "${normPath}" via File System API.`, 'ERR_DIR_FS_CREATE');
+                    return NDir.#fail(`Impossible de créer le dossier "${normPath}" via File System API.`, 'ERR_DIR_FS_CREATE');
                 }
-                return this.#ok(this.#buildDirInfo(normPath, 'fs', now, now));
+                return NDir.#ok(NDir.#buildDirInfo(normPath, 'fs', now, now));
             }
 
             // Repli IndexedDB : enregistre chaque segment de dossier parent + le dossier cible
@@ -354,14 +357,14 @@ export class NDirectory extends NObject {
             let current = '';
             for (let i = 0; i < parts.length; i++) {
                 current = current ? `${current}/${parts[i]}` : parts[i];
-                const dirKey = this.#toIdbDirKey(current);
-                const existing = await NUtil.db.idb.get(this.#idbStoreName, dirKey);
+                const dirKey = NDir.#toIdbDirKey(current);
+                const existing = await NIndexedDB.instance.get(NDir.#idbStoreName, dirKey);
                 if (!existing?.ok || !existing?.data) {
-                    await NUtil.db.idb.put(this.#idbStoreName, {
+                    await NIndexedDB.instance.put(NDir.#idbStoreName, {
                         id: dirKey,
                         path: current,
-                        name: this.getName(current),
-                        parent: this.getParent(current),
+                        name: NDir.getName(current),
+                        parent: NDir.getParent(current),
                         createdAt: now,
                         updatedAt: now,
                         isFile: false,
@@ -370,14 +373,14 @@ export class NDirectory extends NObject {
                 }
             }
 
-            return this.#ok(this.#buildDirInfo(normPath, 'idb', now, now));
+            return NDir.#ok(NDir.#buildDirInfo(normPath, 'idb', now, now));
         } catch (err) {
-            NUtil.log.error(`NDirectory.create : Erreur lors de la création du dossier "${normPath}".`, {
+            NLog.error(`NDir.create : Erreur lors de la création du dossier "${normPath}".`, {
                 code: 'ERR_DIR_CREATE',
                 path: normPath,
                 error: err?.message
             });
-            return this.#fail(err?.message || 'Erreur lors de la création du répertoire.', 'ERR_DIR_CREATE');
+            return NDir.#fail(err?.message || 'Erreur lors de la création du répertoire.', 'ERR_DIR_CREATE');
         }
     }
 
@@ -389,14 +392,14 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: NDirectoryEntry, error, code }`.
      *
      * @example <caption>Exemple 1 : Créer un répertoire avec mkdir()</caption>
-     * const res = await NUtil.dir.mkdir('backups/sql');
+     * const res = await NDir.mkdir('backups/sql');
      * console.log(res.ok); // true
      *
      * @example <caption>Exemple 2 : Vérifier l'existence après mkdir()</caption>
-     * console.log(await NUtil.dir.exists('backups/sql')); // true
+     * console.log(await NDir.exists('backups/sql')); // true
      */
-    async mkdir(path, options = {}) {
-        return await this.create(path, options);
+    static async mkdir(path, options = {}) {
+        return await NDir.create(path, options);
     }
 
     /**
@@ -407,15 +410,15 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: NDirectoryEntry, error, code }`.
      *
      * @example <caption>Exemple 1 : Garantir l'existence d'un dossier de cache</caption>
-     * const res = await NUtil.dir.ensure('cache/thumbnails');
+     * const res = await NDir.ensure('cache/thumbnails');
      * console.log(res.ok); // true
      *
      * @example <caption>Exemple 2 : Appel idempotent sur un dossier existant</caption>
-     * const res2 = await NUtil.dir.ensure('cache/thumbnails');
+     * const res2 = await NDir.ensure('cache/thumbnails');
      * console.log(res2.ok); // true
      */
-    async ensure(path, options = {}) {
-        return await this.create(path, { ...options, recursive: true });
+    static async ensure(path, options = {}) {
+        return await NDir.create(path, { ...options, recursive: true });
     }
 
     /**
@@ -426,25 +429,25 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data, error, code }`.
      *
      * @example <caption>Exemple 1 : Obtenir les statistiques d'un répertoire</caption>
-     * await NUtil.file.writeText('stats_dir/a.txt', 'Bonjour');
-     * const stat = await NUtil.dir.stat('stats_dir', { computeSize: true });
+     * await NFile.writeText('stats_dir/a.txt', 'Bonjour');
+     * const stat = await NDir.stat('stats_dir', { computeSize: true });
      * console.log(stat.ok, stat.data.filesCount, stat.data.size); // true, 1, 7
      *
      * @example <caption>Exemple 2 : Répertoire inexistant</caption>
-     * const missing = await NUtil.dir.stat('dossier_absent');
+     * const missing = await NDir.stat('dossier_absent');
      * console.log(missing.ok, missing.code); // false, 'ERR_DIR_NOT_FOUND'
      */
-    async stat(path = '', options = {}) {
-        const normPath = this.normalizePath(path);
-        const activeDriver = this.#resolveDriver(options?.driver);
+    static async stat(path = '', options = {}) {
+        const normPath = NDir.normalizePath(path);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
 
         try {
-            const exists = await this.exists(normPath, { driver: activeDriver });
+            const exists = await NDir.exists(normPath, { driver: activeDriver });
             if (!exists) {
-                return this.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
+                return NDir.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
             }
 
-            const entriesRes = await this.list(normPath, {
+            const entriesRes = await NDir.list(normPath, {
                 recursive: Boolean(options?.computeSize),
                 driver: activeDriver
             });
@@ -465,21 +468,21 @@ export class NDirectory extends NObject {
             }
 
             const now = Date.now();
-            return this.#ok({
-                ...this.#buildDirInfo(normPath, activeDriver, now, now),
+            return NDir.#ok({
+                ...NDir.#buildDirInfo(normPath, activeDriver, now, now),
                 filesCount,
                 directoriesCount,
                 entriesCount: filesCount + directoriesCount,
                 size: totalSize,
-                formattedSize: NUtil.num.formatBytes(totalSize)
+                formattedSize: NNum.formatBytes(totalSize)
             });
         } catch (err) {
-            NUtil.log.error(`NDirectory.stat : Erreur lors de l'inspection du répertoire "${normPath}".`, {
+            NLog.error(`NDir.stat : Erreur lors de l'inspection du répertoire "${normPath}".`, {
                 code: 'ERR_DIR_STAT',
                 path: normPath,
                 error: err?.message
             });
-            return this.#fail(err?.message || 'Erreur lors de l\'inspection du répertoire.', 'ERR_DIR_STAT');
+            return NDir.#fail(err?.message || 'Erreur lors de l\'inspection du répertoire.', 'ERR_DIR_STAT');
         }
     }
 
@@ -491,16 +494,16 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data, error, code }`.
      *
      * @example <caption>Exemple 1 : Lire les informations d'un dossier via info()</caption>
-     * await NUtil.dir.create('medialib');
-     * const res = await NUtil.dir.info('medialib');
+     * await NDir.create('medialib');
+     * const res = await NDir.info('medialib');
      * console.log(res.ok, res.data.name); // true, 'medialib'
      *
      * @example <caption>Exemple 2 : Calculer la taille via info()</caption>
-     * const res2 = await NUtil.dir.info('medialib', { computeSize: true });
+     * const res2 = await NDir.info('medialib', { computeSize: true });
      * console.log(res2.data.formattedSize); // '0 B'
      */
-    async info(path = '', options = {}) {
-        return await this.stat(path, options);
+    static async info(path = '', options = {}) {
+        return await NDir.stat(path, options);
     }
 
     /**
@@ -516,18 +519,18 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: Array<NDirectoryEntry>, error, code }`.
      *
      * @example <caption>Exemple 1 : Lister les entrées directes d'un dossier</caption>
-     * await NUtil.file.writeText('docs/a.txt', 'A');
-     * await NUtil.file.writeText('docs/sub/b.txt', 'B');
-     * const res = await NUtil.dir.list('docs');
+     * await NFile.writeText('docs/a.txt', 'A');
+     * await NFile.writeText('docs/sub/b.txt', 'B');
+     * const res = await NDir.list('docs');
      * console.log(res.ok, res.data.map((e) => e.name)); // true, ['sub', 'a.txt']
      *
      * @example <caption>Exemple 2 : Lister récursivement tous les fichiers</caption>
-     * const all = await NUtil.dir.list('docs', { recursive: true, type: 'files' });
+     * const all = await NDir.list('docs', { recursive: true, type: 'files' });
      * console.log(all.data.map((e) => e.path)); // ['docs/a.txt', 'docs/sub/b.txt']
      */
-    async list(path = '', options = {}) {
-        const normPath = this.normalizePath(path);
-        const activeDriver = this.#resolveDriver(options?.driver);
+    static async list(path = '', options = {}) {
+        const normPath = NDir.normalizePath(path);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
         const recursive = Boolean(options?.recursive);
         const filterType = options?.type || 'all';
 
@@ -535,28 +538,28 @@ export class NDirectory extends NObject {
             let entries = [];
 
             if (activeDriver === 'native') {
-                const res = await this.#invokeNativeDir('list', { path: normPath, recursive });
+                const res = await NDir.#invokeNativeDir('list', { path: normPath, recursive });
                 if (!res || res.ok === false || res.success === false) {
-                    return this.#fail(
+                    return NDir.#fail(
                         res?.error || res?.message || `Impossible de lister le répertoire natif "${normPath}".`,
                         res?.code || 'ERR_DIR_LIST_NATIVE'
                     );
                 }
                 const rawList = Array.isArray(res.data) ? res.data : (Array.isArray(res.entries) ? res.entries : []);
-                entries = rawList.map((item) => this.#normalizeRawEntry(item, normPath, 'native'));
+                entries = rawList.map((item) => NDir.#normalizeRawEntry(item, normPath, 'native'));
             } else if (activeDriver === 'fs') {
-                const dirHandle = await this.#getFsDirectoryHandle(normPath, false);
+                const dirHandle = await NDir.#getFsDirectoryHandle(normPath, false);
                 if (!dirHandle) {
-                    return this.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
+                    return NDir.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
                 }
-                entries = await this.#listFsDirectory(dirHandle, normPath, recursive);
+                entries = await NDir.#listFsDirectory(dirHandle, normPath, recursive);
             } else {
                 // Repli IndexedDB
-                const exists = await this.exists(normPath, { driver: 'idb' });
+                const exists = await NDir.exists(normPath, { driver: 'idb' });
                 if (!exists) {
-                    return this.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
+                    return NDir.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
                 }
-                entries = await this.#listIdbDirectory(normPath, recursive);
+                entries = await NDir.#listIdbDirectory(normPath, recursive);
             }
 
             // Filtrage par type ('all' | 'files' | 'directories')
@@ -595,14 +598,14 @@ export class NDirectory extends NObject {
                 return a.path.localeCompare(b.path);
             });
 
-            return this.#ok(entries);
+            return NDir.#ok(entries);
         } catch (err) {
-            NUtil.log.error(`NDirectory.list : Erreur lors du listage du répertoire "${normPath}".`, {
+            NLog.error(`NDir.list : Erreur lors du listage du répertoire "${normPath}".`, {
                 code: 'ERR_DIR_LIST',
                 path: normPath,
                 error: err?.message
             });
-            return this.#fail(err?.message || 'Erreur lors du listage du répertoire.', 'ERR_DIR_LIST');
+            return NDir.#fail(err?.message || 'Erreur lors du listage du répertoire.', 'ERR_DIR_LIST');
         }
     }
 
@@ -614,15 +617,15 @@ export class NDirectory extends NObject {
      * @returns {Promise<Array<NDirectoryEntry>>} Tableau des entrées de fichiers (`[]` si vide ou introuvable).
      *
      * @example <caption>Exemple 1 : Obtenir uniquement les fichiers d'un dossier</caption>
-     * await NUtil.file.writeText('exports/f1.csv', 'a,b');
-     * const files = await NUtil.dir.listFiles('exports');
+     * await NFile.writeText('exports/f1.csv', 'a,b');
+     * const files = await NDir.listFiles('exports');
      * console.log(files.length, files[0].name); // 1, 'f1.csv'
      *
      * @example <caption>Exemple 2 : Dossier inexistant retourne un tableau vide</caption>
-     * console.log(await NUtil.dir.listFiles('introuvable')); // []
+     * console.log(await NDir.listFiles('introuvable')); // []
      */
-    async listFiles(path = '', options = {}) {
-        const res = await this.list(path, { ...options, type: 'files' });
+    static async listFiles(path = '', options = {}) {
+        const res = await NDir.list(path, { ...options, type: 'files' });
         return res.ok && Array.isArray(res.data) ? res.data : [];
     }
 
@@ -634,16 +637,16 @@ export class NDirectory extends NObject {
      * @returns {Promise<Array<NDirectoryEntry>>} Tableau des sous-répertoires (`[]` si vide ou introuvable).
      *
      * @example <caption>Exemple 1 : Obtenir les sous-dossiers directs</caption>
-     * await NUtil.dir.create('racine/enfants_1');
-     * await NUtil.dir.create('racine/enfants_2');
-     * const dirs = await NUtil.dir.listDirectories('racine');
+     * await NDir.create('racine/enfants_1');
+     * await NDir.create('racine/enfants_2');
+     * const dirs = await NDir.listDirectories('racine');
      * console.log(dirs.map((d) => d.name)); // ['enfants_1', 'enfants_2']
      *
      * @example <caption>Exemple 2 : Dossier sans sous-dossier retourne []</caption>
-     * console.log(await NUtil.dir.listDirectories('racine/enfants_1')); // []
+     * console.log(await NDir.listDirectories('racine/enfants_1')); // []
      */
-    async listDirectories(path = '', options = {}) {
-        const res = await this.list(path, { ...options, type: 'directories' });
+    static async listDirectories(path = '', options = {}) {
+        const res = await NDir.list(path, { ...options, type: 'directories' });
         return res.ok && Array.isArray(res.data) ? res.data : [];
     }
 
@@ -655,36 +658,36 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: Object, error, code }` avec `children` imbriqués.
      *
      * @example <caption>Exemple 1 : Générer l'arbre complet d'un dossier</caption>
-     * await NUtil.file.writeText('app/src/index.js', '// code');
-     * const treeRes = await NUtil.dir.tree('app');
+     * await NFile.writeText('app/src/index.js', '// code');
+     * const treeRes = await NDir.tree('app');
      * console.log(treeRes.ok, treeRes.data.children.length); // true, 1
      *
      * @example <caption>Exemple 2 : Limiter la profondeur de l'arbre</caption>
-     * const shallow = await NUtil.dir.tree('app', { maxDepth: 1 });
+     * const shallow = await NDir.tree('app', { maxDepth: 1 });
      * console.log(shallow.ok); // true
      */
-    async tree(path = '', options = {}) {
-        const normPath = this.normalizePath(path);
-        const activeDriver = this.#resolveDriver(options?.driver);
+    static async tree(path = '', options = {}) {
+        const normPath = NDir.normalizePath(path);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
         const maxDepth = typeof options?.maxDepth === 'number' && options.maxDepth >= 0
             ? options.maxDepth
             : Infinity;
 
-        const exists = await this.exists(normPath, { driver: activeDriver });
+        const exists = await NDir.exists(normPath, { driver: activeDriver });
         if (!exists) {
-            return this.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
+            return NDir.#fail(`Répertoire introuvable : "${normPath}".`, 'ERR_DIR_NOT_FOUND');
         }
 
         const buildNode = async (currentPath, depth) => {
             const now = Date.now();
             const node = {
-                ...this.#buildDirInfo(currentPath, activeDriver, now, now),
+                ...NDir.#buildDirInfo(currentPath, activeDriver, now, now),
                 children: []
             };
             if (depth >= maxDepth) {
                 return node;
             }
-            const listRes = await this.list(currentPath, { recursive: false, driver: activeDriver });
+            const listRes = await NDir.list(currentPath, { recursive: false, driver: activeDriver });
             if (!listRes.ok || !Array.isArray(listRes.data)) {
                 return node;
             }
@@ -701,7 +704,7 @@ export class NDirectory extends NObject {
         };
 
         const rootNode = await buildNode(normPath, 0);
-        return this.#ok(rootNode);
+        return NDir.#ok(rootNode);
     }
 
     /**
@@ -717,17 +720,17 @@ export class NDirectory extends NObject {
      * @returns {Promise<Array<NDirectoryEntry>>} Liste des entrées trouvées.
      *
      * @example <caption>Exemple 1 : Rechercher des fichiers par nom ou sous-chaîne</caption>
-     * await NUtil.file.writeText('docs/facture_janvier.pdf', 'PDF 1');
-     * await NUtil.file.writeText('docs/2026/facture_fevrier.pdf', 'PDF 2');
-     * const results = await NUtil.dir.find('docs', { query: 'facture', extension: 'pdf' });
+     * await NFile.writeText('docs/facture_janvier.pdf', 'PDF 1');
+     * await NFile.writeText('docs/2026/facture_fevrier.pdf', 'PDF 2');
+     * const results = await NDir.find('docs', { query: 'facture', extension: 'pdf' });
      * console.log(results.length); // 2
      *
      * @example <caption>Exemple 2 : Recherche avec expression régulière</caption>
-     * const jan = await NUtil.dir.find('docs', { query: /janvier/i });
+     * const jan = await NDir.find('docs', { query: /janvier/i });
      * console.log(jan.length); // 1
      */
-    async find(path = '', criteria = {}) {
-        const listRes = await this.list(path, {
+    static async find(path = '', criteria = {}) {
+        const listRes = await NDir.list(path, {
             recursive: true,
             type: criteria?.type || 'all',
             extension: criteria?.extension,
@@ -775,15 +778,15 @@ export class NDirectory extends NObject {
      * @returns {Promise<number>} Taille totale en octets (`0` si vide ou introuvable).
      *
      * @example <caption>Exemple 1 : Calculer la taille totale d'un dossier</caption>
-     * await NUtil.file.writeText('rapport_dir/p1.txt', '12345');
-     * await NUtil.file.writeText('rapport_dir/p2.txt', '67890');
-     * console.log(await NUtil.dir.size('rapport_dir')); // 10
+     * await NFile.writeText('rapport_dir/p1.txt', '12345');
+     * await NFile.writeText('rapport_dir/p2.txt', '67890');
+     * console.log(await NDir.size('rapport_dir')); // 10
      *
      * @example <caption>Exemple 2 : Dossier inexistant retourne 0</caption>
-     * console.log(await NUtil.dir.size('dossier_vide_ou_absent')); // 0
+     * console.log(await NDir.size('dossier_vide_ou_absent')); // 0
      */
-    async size(path = '', options = {}) {
-        const files = await this.listFiles(path, { recursive: true, driver: options?.driver });
+    static async size(path = '', options = {}) {
+        const files = await NDir.listFiles(path, { recursive: true, driver: options?.driver });
         let total = 0;
         for (let i = 0; i < files.length; i++) {
             total += Number(files[i].size) || 0;
@@ -799,62 +802,62 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: { path, cleared }, error, code }`.
      *
      * @example <caption>Exemple 1 : Vider un répertoire de fichiers temporaires</caption>
-     * await NUtil.file.writeText('tmp/a.tmp', '1');
-     * await NUtil.file.writeText('tmp/b.tmp', '2');
-     * await NUtil.dir.clear('tmp');
-     * console.log((await NUtil.dir.listFiles('tmp')).length); // 0
+     * await NFile.writeText('tmp/a.tmp', '1');
+     * await NFile.writeText('tmp/b.tmp', '2');
+     * await NDir.clear('tmp');
+     * console.log((await NDir.listFiles('tmp')).length); // 0
      *
      * @example <caption>Exemple 2 : Le dossier lui-même existe toujours après clear()</caption>
-     * console.log(await NUtil.dir.exists('tmp')); // true
+     * console.log(await NDir.exists('tmp')); // true
      */
-    async clear(path, options = {}) {
-        const normPath = this.normalizePath(path);
-        const activeDriver = this.#resolveDriver(options?.driver);
+    static async clear(path, options = {}) {
+        const normPath = NDir.normalizePath(path);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
 
         try {
             if (activeDriver === 'native') {
-                const res = await this.#invokeNativeDir('clear', { path: normPath });
+                const res = await NDir.#invokeNativeDir('clear', { path: normPath });
                 if (res && (res.ok === false || res.success === false)) {
-                    return this.#fail(
+                    return NDir.#fail(
                         res?.error || res?.message || `Échec du vidage natif du répertoire "${normPath}".`,
                         res?.code || 'ERR_DIR_CLEAR_NATIVE'
                     );
                 }
-                return this.#ok({ path: normPath, cleared: true, driver: 'native' });
+                return NDir.#ok({ path: normPath, cleared: true, driver: 'native' });
             }
 
             if (activeDriver === 'fs') {
-                const dirHandle = await this.#getFsDirectoryHandle(normPath, false);
+                const dirHandle = await NDir.#getFsDirectoryHandle(normPath, false);
                 if (!dirHandle) {
-                    await this.create(normPath, { driver: 'fs' });
-                    return this.#ok({ path: normPath, cleared: true, driver: 'fs' });
+                    await NDir.create(normPath, { driver: 'fs' });
+                    return NDir.#ok({ path: normPath, cleared: true, driver: 'fs' });
                 }
                 for await (const [entryName] of dirHandle.entries()) {
                     await dirHandle.removeEntry(entryName, { recursive: true });
                 }
-                return this.#ok({ path: normPath, cleared: true, driver: 'fs' });
+                return NDir.#ok({ path: normPath, cleared: true, driver: 'fs' });
             }
 
             // Repli IndexedDB
-            const allRecords = await this.#getAllIdbRecords();
+            const allRecords = await NDir.#getAllIdbRecords();
             const prefix = normPath ? `${normPath}/` : '';
             for (let i = 0; i < allRecords.length; i++) {
                 const rec = allRecords[i];
                 if (!normPath || (typeof rec.path === 'string' && rec.path.startsWith(prefix))) {
-                    await NUtil.db.idb.delete(this.#idbStoreName, rec.id);
+                    await NIndexedDB.instance.delete(NDir.#idbStoreName, rec.id);
                 }
             }
             if (normPath) {
-                await this.create(normPath, { driver: 'idb' });
+                await NDir.create(normPath, { driver: 'idb' });
             }
-            return this.#ok({ path: normPath, cleared: true, driver: 'idb' });
+            return NDir.#ok({ path: normPath, cleared: true, driver: 'idb' });
         } catch (err) {
-            NUtil.log.error(`NDirectory.clear : Erreur lors du vidage du répertoire "${normPath}".`, {
+            NLog.error(`NDir.clear : Erreur lors du vidage du répertoire "${normPath}".`, {
                 code: 'ERR_DIR_CLEAR',
                 path: normPath,
                 error: err?.message
             });
-            return this.#fail(err?.message || 'Erreur lors du vidage du répertoire.', 'ERR_DIR_CLEAR');
+            return NDir.#fail(err?.message || 'Erreur lors du vidage du répertoire.', 'ERR_DIR_CLEAR');
         }
     }
 
@@ -866,67 +869,67 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: { path, deleted }, error, code }`.
      *
      * @example <caption>Exemple 1 : Supprimer un répertoire avec tout son contenu</caption>
-     * await NUtil.file.writeText('old_dir/sub/file.txt', 'data');
-     * const delRes = await NUtil.dir.delete('old_dir');
-     * console.log(delRes.ok, await NUtil.dir.exists('old_dir')); // true, false
+     * await NFile.writeText('old_dir/sub/file.txt', 'data');
+     * const delRes = await NDir.delete('old_dir');
+     * console.log(delRes.ok, await NDir.exists('old_dir')); // true, false
      *
      * @example <caption>Exemple 2 : Refuser la suppression d'un dossier non vide si recursive est false</caption>
-     * await NUtil.file.writeText('non_empty/file.txt', 'data');
-     * const failRes = await NUtil.dir.delete('non_empty', { recursive: false });
+     * await NFile.writeText('non_empty/file.txt', 'data');
+     * const failRes = await NDir.delete('non_empty', { recursive: false });
      * console.log(failRes.ok, failRes.code); // false, 'ERR_DIR_NOT_EMPTY'
      */
-    async delete(path, options = {}) {
-        const normPath = this.normalizePath(path);
+    static async delete(path, options = {}) {
+        const normPath = NDir.normalizePath(path);
         if (!normPath) {
-            return this.#fail('Impossible de supprimer le répertoire racine. Utilisez clear("") pour le vider.', 'ERR_DIR_ROOT_DELETE');
+            return NDir.#fail('Impossible de supprimer le répertoire racine. Utilisez clear("") pour le vider.', 'ERR_DIR_ROOT_DELETE');
         }
 
-        const activeDriver = this.#resolveDriver(options?.driver);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
         const recursive = options?.recursive !== false;
 
         try {
             if (!recursive) {
-                const listRes = await this.list(normPath, { recursive: false, driver: activeDriver });
+                const listRes = await NDir.list(normPath, { recursive: false, driver: activeDriver });
                 if (listRes.ok && Array.isArray(listRes.data) && listRes.data.length > 0) {
-                    return this.#fail(`Le répertoire "${normPath}" n'est pas vide.`, 'ERR_DIR_NOT_EMPTY');
+                    return NDir.#fail(`Le répertoire "${normPath}" n'est pas vide.`, 'ERR_DIR_NOT_EMPTY');
                 }
             }
 
             if (activeDriver === 'native') {
-                const res = await this.#invokeNativeDir('delete', { path: normPath, recursive });
+                const res = await NDir.#invokeNativeDir('delete', { path: normPath, recursive });
                 if (res && (res.ok === false || res.success === false)) {
-                    return this.#fail(
+                    return NDir.#fail(
                         res?.error || res?.message || `Échec de suppression native du dossier "${normPath}".`,
                         res?.code || 'ERR_DIR_DELETE_NATIVE'
                     );
                 }
-                return this.#ok({ path: normPath, deleted: true, driver: 'native' });
+                return NDir.#ok({ path: normPath, deleted: true, driver: 'native' });
             }
 
             if (activeDriver === 'fs') {
-                const removed = await this.#removeFsDirectoryEntry(normPath, recursive);
-                return this.#ok({ path: normPath, deleted: removed, driver: 'fs' });
+                const removed = await NDir.#removeFsDirectoryEntry(normPath, recursive);
+                return NDir.#ok({ path: normPath, deleted: removed, driver: 'fs' });
             }
 
             // Repli IndexedDB
-            await NUtil.db.idb.delete(this.#idbStoreName, this.#toIdbDirKey(normPath));
-            const allRecords = await this.#getAllIdbRecords();
+            await NIndexedDB.instance.delete(NDir.#idbStoreName, NDir.#toIdbDirKey(normPath));
+            const allRecords = await NDir.#getAllIdbRecords();
             const prefix = `${normPath}/`;
             for (let i = 0; i < allRecords.length; i++) {
                 const rec = allRecords[i];
                 if (rec.path === normPath || (typeof rec.path === 'string' && rec.path.startsWith(prefix))) {
-                    await NUtil.db.idb.delete(this.#idbStoreName, rec.id);
+                    await NIndexedDB.instance.delete(NDir.#idbStoreName, rec.id);
                 }
             }
 
-            return this.#ok({ path: normPath, deleted: true, driver: 'idb' });
+            return NDir.#ok({ path: normPath, deleted: true, driver: 'idb' });
         } catch (err) {
-            NUtil.log.error(`NDirectory.delete : Erreur lors de la suppression du dossier "${normPath}".`, {
+            NLog.error(`NDir.delete : Erreur lors de la suppression du dossier "${normPath}".`, {
                 code: 'ERR_DIR_DELETE',
                 path: normPath,
                 error: err?.message
             });
-            return this.#fail(err?.message || 'Erreur lors de la suppression du répertoire.', 'ERR_DIR_DELETE');
+            return NDir.#fail(err?.message || 'Erreur lors de la suppression du répertoire.', 'ERR_DIR_DELETE');
         }
     }
 
@@ -938,15 +941,15 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: { path, deleted }, error, code }`.
      *
      * @example <caption>Exemple 1 : Supprimer un répertoire avec rmdir()</caption>
-     * await NUtil.dir.create('temp_logs');
-     * const res = await NUtil.dir.rmdir('temp_logs');
+     * await NDir.create('temp_logs');
+     * const res = await NDir.rmdir('temp_logs');
      * console.log(res.ok); // true
      *
      * @example <caption>Exemple 2 : Vérifier l'absence après rmdir()</caption>
-     * console.log(await NUtil.dir.exists('temp_logs')); // false
+     * console.log(await NDir.exists('temp_logs')); // false
      */
-    async rmdir(path, options = {}) {
-        return await this.delete(path, options);
+    static async rmdir(path, options = {}) {
+        return await NDir.delete(path, options);
     }
 
     /**
@@ -958,54 +961,54 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: NDirectoryEntry, error, code }`.
      *
      * @example <caption>Exemple 1 : Copier un dossier complet</caption>
-     * await NUtil.file.writeText('src_dir/sub/doc.txt', 'Contenu');
-     * const copyRes = await NUtil.dir.copy('src_dir', 'dest_dir');
-     * console.log(copyRes.ok, await NUtil.file.readText('dest_dir/sub/doc.txt')); // true, 'Contenu'
+     * await NFile.writeText('src_dir/sub/doc.txt', 'Contenu');
+     * const copyRes = await NDir.copy('src_dir', 'dest_dir');
+     * console.log(copyRes.ok, await NFile.readText('dest_dir/sub/doc.txt')); // true, 'Contenu'
      *
      * @example <caption>Exemple 2 : Empêcher l'écrasement si overwrite est false</caption>
-     * const failRes = await NUtil.dir.copy('src_dir', 'dest_dir', { overwrite: false });
+     * const failRes = await NDir.copy('src_dir', 'dest_dir', { overwrite: false });
      * console.log(failRes.ok, failRes.code); // false, 'ERR_DIR_ALREADY_EXISTS'
      */
-    async copy(sourcePath, destinationPath, options = {}) {
-        const normSrc = this.normalizePath(sourcePath);
-        const normDest = this.normalizePath(destinationPath);
+    static async copy(sourcePath, destinationPath, options = {}) {
+        const normSrc = NDir.normalizePath(sourcePath);
+        const normDest = NDir.normalizePath(destinationPath);
 
         if (!normSrc || !normDest) {
-            return this.#fail('Chemin source ou destination de répertoire invalide.', 'ERR_DIR_INVALID_PATH');
+            return NDir.#fail('Chemin source ou destination de répertoire invalide.', 'ERR_DIR_INVALID_PATH');
         }
         if (normDest === normSrc || normDest.startsWith(`${normSrc}/`)) {
-            return this.#fail('Impossible de copier un répertoire à l\'intérieur de lui-même.', 'ERR_DIR_SELF_COPY');
+            return NDir.#fail('Impossible de copier un répertoire à l\'intérieur de lui-même.', 'ERR_DIR_SELF_COPY');
         }
 
         const overwrite = options?.overwrite !== false;
-        const activeDriver = this.#resolveDriver(options?.driver);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
 
-        if (!(await this.exists(normSrc, { driver: activeDriver }))) {
-            return this.#fail(`Le répertoire source "${normSrc}" est introuvable.`, 'ERR_DIR_NOT_FOUND');
+        if (!(await NDir.exists(normSrc, { driver: activeDriver }))) {
+            return NDir.#fail(`Le répertoire source "${normSrc}" est introuvable.`, 'ERR_DIR_NOT_FOUND');
         }
 
-        if (!overwrite && (await this.exists(normDest, { driver: activeDriver }))) {
-            return this.#fail(`Le répertoire de destination "${normDest}" existe déjà.`, 'ERR_DIR_ALREADY_EXISTS');
+        if (!overwrite && (await NDir.exists(normDest, { driver: activeDriver }))) {
+            return NDir.#fail(`Le répertoire de destination "${normDest}" existe déjà.`, 'ERR_DIR_ALREADY_EXISTS');
         }
 
         if (activeDriver === 'native') {
-            const nativeRes = await this.#invokeNativeDir('copy', {
+            const nativeRes = await NDir.#invokeNativeDir('copy', {
                 sourcePath: normSrc,
                 destinationPath: normDest,
                 overwrite
             });
             if (nativeRes && nativeRes.ok !== false && nativeRes.success !== false) {
-                return await this.stat(normDest, { driver: 'native' });
+                return await NDir.stat(normDest, { driver: 'native' });
             }
-            return this.#fail(
+            return NDir.#fail(
                 nativeRes?.error || nativeRes?.message || `Échec de la copie native de "${normSrc}" vers "${normDest}".`,
                 nativeRes?.code || 'ERR_DIR_COPY_NATIVE'
             );
         }
 
         // Création du dossier de destination et copie récursive des sous-dossiers et fichiers
-        await this.create(normDest, { driver: activeDriver });
-        const entriesRes = await this.list(normSrc, { recursive: true, driver: activeDriver });
+        await NDir.create(normDest, { driver: activeDriver });
+        const entriesRes = await NDir.list(normSrc, { recursive: true, driver: activeDriver });
         const entries = entriesRes.ok && Array.isArray(entriesRes.data) ? entriesRes.data : [];
 
         for (let i = 0; i < entries.length; i++) {
@@ -1014,13 +1017,13 @@ export class NDirectory extends NObject {
             const targetPath = `${normDest}/${relative}`;
 
             if (entry.isDirectory) {
-                await this.create(targetPath, { driver: activeDriver });
+                await NDir.create(targetPath, { driver: activeDriver });
             } else {
-                await NUtil.file.copy(entry.path, targetPath, { overwrite, driver: activeDriver });
+                await NFile.copy(entry.path, targetPath, { overwrite, driver: activeDriver });
             }
         }
 
-        return await this.stat(normDest, { driver: activeDriver });
+        return await NDir.stat(normDest, { driver: activeDriver });
     }
 
     /**
@@ -1032,48 +1035,48 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: NDirectoryEntry, error, code }`.
      *
      * @example <caption>Exemple 1 : Déplacer un dossier</caption>
-     * await NUtil.file.writeText('drafts/2026/note.txt', 'Note');
-     * const moveRes = await NUtil.dir.move('drafts/2026', 'published/2026');
-     * console.log(moveRes.ok, await NUtil.dir.exists('drafts/2026')); // true, false
+     * await NFile.writeText('drafts/2026/note.txt', 'Note');
+     * const moveRes = await NDir.move('drafts/2026', 'published/2026');
+     * console.log(moveRes.ok, await NDir.exists('drafts/2026')); // true, false
      *
      * @example <caption>Exemple 2 : Les fichiers sont accessibles au nouvel emplacement</caption>
-     * console.log(await NUtil.file.readText('published/2026/note.txt')); // 'Note'
+     * console.log(await NFile.readText('published/2026/note.txt')); // 'Note'
      */
-    async move(sourcePath, destinationPath, options = {}) {
-        const normSrc = this.normalizePath(sourcePath);
-        const normDest = this.normalizePath(destinationPath);
+    static async move(sourcePath, destinationPath, options = {}) {
+        const normSrc = NDir.normalizePath(sourcePath);
+        const normDest = NDir.normalizePath(destinationPath);
 
         if (!normSrc || !normDest) {
-            return this.#fail('Chemin source ou destination de répertoire invalide.', 'ERR_DIR_INVALID_PATH');
+            return NDir.#fail('Chemin source ou destination de répertoire invalide.', 'ERR_DIR_INVALID_PATH');
         }
         if (normSrc === normDest) {
-            return await this.stat(normSrc, { driver: options?.driver });
+            return await NDir.stat(normSrc, { driver: options?.driver });
         }
 
-        const activeDriver = this.#resolveDriver(options?.driver);
+        const activeDriver = NDir.#resolveDriver(options?.driver);
 
         if (activeDriver === 'native') {
             const overwrite = options?.overwrite !== false;
-            const nativeRes = await this.#invokeNativeDir('move', {
+            const nativeRes = await NDir.#invokeNativeDir('move', {
                 sourcePath: normSrc,
                 destinationPath: normDest,
                 overwrite
             });
             if (nativeRes && nativeRes.ok !== false && nativeRes.success !== false) {
-                return await this.stat(normDest, { driver: 'native' });
+                return await NDir.stat(normDest, { driver: 'native' });
             }
-            return this.#fail(
+            return NDir.#fail(
                 nativeRes?.error || nativeRes?.message || `Échec du déplacement natif de "${normSrc}" vers "${normDest}".`,
                 nativeRes?.code || 'ERR_DIR_MOVE_NATIVE'
             );
         }
 
-        const copyRes = await this.copy(normSrc, normDest, { ...options, driver: activeDriver });
+        const copyRes = await NDir.copy(normSrc, normDest, { ...options, driver: activeDriver });
         if (!copyRes.ok) {
             return copyRes;
         }
 
-        await this.delete(normSrc, { recursive: true, driver: activeDriver });
+        await NDir.delete(normSrc, { recursive: true, driver: activeDriver });
         return copyRes;
     }
 
@@ -1086,24 +1089,24 @@ export class NDirectory extends NObject {
      * @returns {Promise<NDirectoryResponse>} Résultat `{ ok, data: NDirectoryEntry, error, code }`.
      *
      * @example <caption>Exemple 1 : Renommer un dossier</caption>
-     * await NUtil.file.writeText('projets/v1/readme.md', '# V1');
-     * const renRes = await NUtil.dir.rename('projets/v1', 'v2');
+     * await NFile.writeText('projets/v1/readme.md', '# V1');
+     * const renRes = await NDir.rename('projets/v1', 'v2');
      * console.log(renRes.ok, renRes.data.path); // true, 'projets/v2'
      *
      * @example <caption>Exemple 2 : Vérifier le fichier dans le dossier renommé</caption>
-     * console.log(await NUtil.file.readText('projets/v2/readme.md')); // '# V1'
+     * console.log(await NFile.readText('projets/v2/readme.md')); // '# V1'
      */
-    async rename(path, newDirectoryName, options = {}) {
-        const normPath = this.normalizePath(path);
-        const cleanNewName = this.getName(newDirectoryName);
+    static async rename(path, newDirectoryName, options = {}) {
+        const normPath = NDir.normalizePath(path);
+        const cleanNewName = NDir.getName(newDirectoryName);
 
         if (!normPath || !cleanNewName) {
-            return this.#fail('Chemin ou nouveau nom de répertoire invalide.', 'ERR_DIR_INVALID_NAME');
+            return NDir.#fail('Chemin ou nouveau nom de répertoire invalide.', 'ERR_DIR_INVALID_NAME');
         }
 
-        const parent = this.getParent(normPath);
+        const parent = NDir.getParent(normPath);
         const targetPath = parent ? `${parent}/${cleanNewName}` : cleanNewName;
-        return await this.move(normPath, targetPath, options);
+        return await NDir.move(normPath, targetPath, options);
     }
 
     // =========================================================================
@@ -1116,17 +1119,17 @@ export class NDirectory extends NObject {
      * @param {'auto'|'native'|'fs'|'idb'} [requestedDriver='auto'] - Moteur demandé.
      * @returns {'native'|'fs'|'idb'} Moteur effectif.
      */
-    #resolveDriver(requestedDriver = 'auto') {
-        if (requestedDriver === 'native' && this.isNativeAvailable) {
+    static #resolveDriver(requestedDriver = 'auto') {
+        if (requestedDriver === 'native' && NDir.isNativeAvailable) {
             return 'native';
         }
-        if (requestedDriver === 'fs' && this.isFsApiAvailable) {
+        if (requestedDriver === 'fs' && NDir.isFsApiAvailable) {
             return 'fs';
         }
         if (requestedDriver === 'idb') {
             return 'idb';
         }
-        return this.driver;
+        return NDir.driver;
     }
 
     /**
@@ -1135,8 +1138,8 @@ export class NDirectory extends NObject {
      * @param {string} normPath - Chemin normalisé.
      * @returns {string} Clé unique pour `ntable`.
      */
-    #toIdbDirKey(normPath) {
-        return `${this.#idbDirPrefix}${normPath}`;
+    static #toIdbDirKey(normPath) {
+        return `${NDir.#idbDirPrefix}${normPath}`;
     }
 
     /**
@@ -1146,8 +1149,8 @@ export class NDirectory extends NObject {
      * @param {Object} params - Paramètres de l'action.
      * @returns {Promise<any>}
      */
-    async #invokeNativeDir(action, params = {}) {
-        return await NUtil.sys.invokeNative({
+    static async #invokeNativeDir(action, params = {}) {
+        return await NSys.invokeNative({
             type: ['app', 'directory', action],
             params
         });
@@ -1160,9 +1163,9 @@ export class NDirectory extends NObject {
      * @param {boolean} [create=false] - Créer les répertoires intermédiaires s'ils n'existent pas.
      * @returns {Promise<any|null>} Instance `FileSystemDirectoryHandle` ou `null`.
      */
-    async #getFsDirectoryHandle(normPath, create = false) {
+    static async #getFsDirectoryHandle(normPath, create = false) {
         try {
-            if (!this.isFsApiAvailable) {
+            if (!NDir.isFsApiAvailable) {
                 return null;
             }
             let currentDir = await navigator.storage.getDirectory();
@@ -1187,22 +1190,22 @@ export class NDirectory extends NObject {
      * @param {boolean} recursive - Parcourir récursivement.
      * @returns {Promise<Array<NDirectoryEntry>>}
      */
-    async #listFsDirectory(dirHandle, basePath, recursive) {
+    static async #listFsDirectory(dirHandle, basePath, recursive) {
         const results = [];
         const now = Date.now();
 
         for await (const [entryName, handle] of dirHandle.entries()) {
             const entryPath = basePath ? `${basePath}/${entryName}` : entryName;
             if (handle.kind === 'directory') {
-                results.push(this.#buildDirInfo(entryPath, 'fs', now, now));
+                results.push(NDir.#buildDirInfo(entryPath, 'fs', now, now));
                 if (recursive) {
-                    const subEntries = await this.#listFsDirectory(handle, entryPath, true);
+                    const subEntries = await NDir.#listFsDirectory(handle, entryPath, true);
                     results.push(...subEntries);
                 }
             } else {
                 let size = 0;
                 let updatedAt = now;
-                let mimeType = NUtil.file.getMimeType(entryPath);
+                let mimeType = NFile.getMimeType(entryPath);
                 try {
                     const fileObj = await handle.getFile();
                     size = Number(fileObj.size) || 0;
@@ -1211,7 +1214,7 @@ export class NDirectory extends NObject {
                 } catch {
                     // Ignore
                 }
-                const parts = NUtil.file.splitPath(entryPath);
+                const parts = NFile.splitPath(entryPath);
                 results.push({
                     path: entryPath,
                     name: parts.name,
@@ -1220,7 +1223,7 @@ export class NDirectory extends NObject {
                     parent: basePath,
                     directory: basePath,
                     size,
-                    formattedSize: NUtil.num.formatBytes(size),
+                    formattedSize: NNum.formatBytes(size),
                     mimeType,
                     createdAt: updatedAt,
                     updatedAt,
@@ -1241,14 +1244,14 @@ export class NDirectory extends NObject {
      * @param {boolean} recursive - Suppression récursive.
      * @returns {Promise<boolean>}
      */
-    async #removeFsDirectoryEntry(normPath, recursive = true) {
+    static async #removeFsDirectoryEntry(normPath, recursive = true) {
         try {
-            if (!this.isFsApiAvailable || !normPath) {
+            if (!NDir.isFsApiAvailable || !normPath) {
                 return false;
             }
-            const parentPath = this.getParent(normPath);
-            const dirName = this.getName(normPath);
-            const parentHandle = await this.#getFsDirectoryHandle(parentPath, false);
+            const parentPath = NDir.getParent(normPath);
+            const dirName = NDir.getName(normPath);
+            const parentHandle = await NDir.#getFsDirectoryHandle(parentPath, false);
             if (!parentHandle) {
                 return true;
             }
@@ -1264,8 +1267,8 @@ export class NDirectory extends NObject {
      * @private
      * @returns {Promise<Array<Object>>}
      */
-    async #getAllIdbRecords() {
-        const res = await NUtil.db.idb.getAll(this.#idbStoreName);
+    static async #getAllIdbRecords() {
+        const res = await NIndexedDB.instance.getAll(NDir.#idbStoreName);
         if (!res?.ok || !Array.isArray(res.data)) {
             return [];
         }
@@ -1273,7 +1276,7 @@ export class NDirectory extends NObject {
             (item) =>
                 item &&
                 typeof item.id === 'string' &&
-                (item.id.startsWith(this.#idbFilePrefix) || item.id.startsWith(this.#idbDirPrefix))
+                (item.id.startsWith(NDir.#idbFilePrefix) || item.id.startsWith(NDir.#idbDirPrefix))
         );
     }
 
@@ -1284,8 +1287,8 @@ export class NDirectory extends NObject {
      * @param {boolean} recursive - Si `true`, inclut toute la descendance.
      * @returns {Promise<Array<NDirectoryEntry>>}
      */
-    async #listIdbDirectory(basePath, recursive) {
-        const allRecords = await this.#getAllIdbRecords();
+    static async #listIdbDirectory(basePath, recursive) {
+        const allRecords = await NDir.#getAllIdbRecords();
         const prefix = basePath ? `${basePath}/` : '';
         const entriesMap = new Map();
         const now = Date.now();
@@ -1308,16 +1311,16 @@ export class NDirectory extends NObject {
 
             if (slashIdx === -1) {
                 // Entrée directe
-                if (rec.isDirectory || rec.id.startsWith(this.#idbDirPrefix)) {
+                if (rec.isDirectory || rec.id.startsWith(NDir.#idbDirPrefix)) {
                     if (!entriesMap.has(recPath)) {
                         entriesMap.set(
                             recPath,
-                            this.#buildDirInfo(recPath, 'idb', rec.createdAt || now, rec.updatedAt || now)
+                            NDir.#buildDirInfo(recPath, 'idb', rec.createdAt || now, rec.updatedAt || now)
                         );
                     }
                 } else {
                     const size = Number(rec.size) || 0;
-                    const parts = NUtil.file.splitPath(recPath);
+                    const parts = NFile.splitPath(recPath);
                     entriesMap.set(recPath, {
                         path: recPath,
                         name: parts.name,
@@ -1326,8 +1329,8 @@ export class NDirectory extends NObject {
                         parent: basePath,
                         directory: basePath,
                         size,
-                        formattedSize: NUtil.num.formatBytes(size),
-                        mimeType: rec.mimeType || NUtil.file.getMimeType(recPath),
+                        formattedSize: NNum.formatBytes(size),
+                        mimeType: rec.mimeType || NFile.getMimeType(recPath),
                         createdAt: Number(rec.createdAt) || now,
                         updatedAt: Number(rec.updatedAt) || now,
                         isFile: true,
@@ -1344,21 +1347,21 @@ export class NDirectory extends NObject {
                 for (let d = 0; d < limit; d++) {
                     accum = accum ? `${accum}/${subParts[d]}` : subParts[d];
                     if (!entriesMap.has(accum)) {
-                        entriesMap.set(accum, this.#buildDirInfo(accum, 'idb', now, now));
+                        entriesMap.set(accum, NDir.#buildDirInfo(accum, 'idb', now, now));
                     }
                 }
 
                 if (recursive) {
-                    if (rec.isDirectory || rec.id.startsWith(this.#idbDirPrefix)) {
+                    if (rec.isDirectory || rec.id.startsWith(NDir.#idbDirPrefix)) {
                         if (!entriesMap.has(recPath)) {
                             entriesMap.set(
                                 recPath,
-                                this.#buildDirInfo(recPath, 'idb', rec.createdAt || now, rec.updatedAt || now)
+                                NDir.#buildDirInfo(recPath, 'idb', rec.createdAt || now, rec.updatedAt || now)
                             );
                         }
                     } else {
                         const size = Number(rec.size) || 0;
-                        const parts = NUtil.file.splitPath(recPath);
+                        const parts = NFile.splitPath(recPath);
                         entriesMap.set(recPath, {
                             path: recPath,
                             name: parts.name,
@@ -1367,8 +1370,8 @@ export class NDirectory extends NObject {
                             parent: parts.directory,
                             directory: parts.directory,
                             size,
-                            formattedSize: NUtil.num.formatBytes(size),
-                            mimeType: rec.mimeType || NUtil.file.getMimeType(recPath),
+                            formattedSize: NNum.formatBytes(size),
+                            mimeType: rec.mimeType || NFile.getMimeType(recPath),
                             createdAt: Number(rec.createdAt) || now,
                             updatedAt: Number(rec.updatedAt) || now,
                             isFile: true,
@@ -1391,14 +1394,14 @@ export class NDirectory extends NObject {
      * @param {'native'|'fs'|'idb'} driver - Moteur actif.
      * @returns {NDirectoryEntry}
      */
-    #normalizeRawEntry(item, parentPath, driver) {
+    static #normalizeRawEntry(item, parentPath, driver) {
         const now = Date.now();
         if (typeof item === 'string') {
             const fullPath = parentPath ? `${parentPath}/${item}` : item;
-            const parts = NUtil.file.splitPath(fullPath);
+            const parts = NFile.splitPath(fullPath);
             const isDir = !parts.extension;
             return isDir
-                ? this.#buildDirInfo(fullPath, driver, now, now)
+                ? NDir.#buildDirInfo(fullPath, driver, now, now)
                 : {
                     path: fullPath,
                     name: parts.name,
@@ -1408,7 +1411,7 @@ export class NDirectory extends NObject {
                     directory: parentPath,
                     size: 0,
                     formattedSize: '0 B',
-                    mimeType: NUtil.file.getMimeType(fullPath),
+                    mimeType: NFile.getMimeType(fullPath),
                     createdAt: now,
                     updatedAt: now,
                     isFile: true,
@@ -1417,10 +1420,10 @@ export class NDirectory extends NObject {
                 };
         }
 
-        const entryPath = this.normalizePath(item.path || (parentPath ? `${parentPath}/${item.name}` : item.name));
+        const entryPath = NDir.normalizePath(item.path || (parentPath ? `${parentPath}/${item.name}` : item.name));
         const isDir = Boolean(item.isDirectory || item.kind === 'directory' || item.type === 'directory');
         if (isDir) {
-            return this.#buildDirInfo(
+            return NDir.#buildDirInfo(
                 entryPath,
                 driver,
                 Number(item.createdAt) || now,
@@ -1429,7 +1432,7 @@ export class NDirectory extends NObject {
         }
 
         const size = Number(item.size) || 0;
-        const parts = NUtil.file.splitPath(entryPath);
+        const parts = NFile.splitPath(entryPath);
         return {
             path: entryPath,
             name: parts.name,
@@ -1438,8 +1441,8 @@ export class NDirectory extends NObject {
             parent: parts.directory,
             directory: parts.directory,
             size,
-            formattedSize: NUtil.num.formatBytes(size),
-            mimeType: item.mimeType || NUtil.file.getMimeType(entryPath),
+            formattedSize: NNum.formatBytes(size),
+            mimeType: item.mimeType || NFile.getMimeType(entryPath),
             createdAt: Number(item.createdAt) || now,
             updatedAt: Number(item.updatedAt) || now,
             isFile: true,
@@ -1457,14 +1460,14 @@ export class NDirectory extends NObject {
      * @param {number} updatedAt - Timestamp de modification.
      * @returns {NDirectoryEntry}
      */
-    #buildDirInfo(normPath, driver, createdAt, updatedAt) {
+    static #buildDirInfo(normPath, driver, createdAt, updatedAt) {
         return {
             path: normPath,
-            name: this.getName(normPath),
-            baseName: this.getName(normPath),
+            name: NDir.getName(normPath),
+            baseName: NDir.getName(normPath),
             extension: '',
-            parent: this.getParent(normPath),
-            directory: this.getParent(normPath),
+            parent: NDir.getParent(normPath),
+            directory: NDir.getParent(normPath),
             size: 0,
             formattedSize: '0 B',
             mimeType: 'inode/directory',
@@ -1482,7 +1485,7 @@ export class NDirectory extends NObject {
      * @param {any} data - Données de retour.
      * @returns {NDirectoryResponse}
      */
-    #ok(data) {
+    static #ok(data) {
         return {
             ok: true,
             data,
@@ -1498,7 +1501,7 @@ export class NDirectory extends NObject {
      * @param {string} code - Code d'erreur.
      * @returns {NDirectoryResponse}
      */
-    #fail(error, code = 'ERR_DIR_OPERATION') {
+    static #fail(error, code = 'ERR_DIR_OPERATION') {
         return {
             ok: false,
             data: null,
@@ -1508,4 +1511,4 @@ export class NDirectory extends NObject {
     }
 }
 
-export default NDirectory;
+export default NDir;

@@ -2,7 +2,7 @@ import { describe, it, assert } from '../../index.js';
 import { NEditNumber, NTag } from '../../../index.js';
 
 describe('NEditNumber (dom/elements/NEditNumber.js)', () => {
-    it('h�rite de NTag, g�re number/range, min/max/step et getValueAsNumber', () => {
+    it('hérite de NTag, gère number/range, min/max/step et getValueAsNumber', () => {
         const nb = new NEditNumber({
             name: 'qty',
             min: 1,

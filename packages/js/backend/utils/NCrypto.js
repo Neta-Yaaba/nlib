@@ -1,7 +1,7 @@
 /**
- * @file NCryptography.js
+ * @file NCrypto.js
  * @package @nlib/js-backend
- * @description Classe utilitaire de cryptographie basée sur l'API Web Crypto (`globalThis.crypto.subtle`)
+ * @description Classe utilitaire statique de cryptographie basée sur l'API Web Crypto (`globalThis.crypto.subtle`)
  * dans l'écosystème NLib :
  * - Génération d'octets aléatoires cryptographiquement sûrs (`randomBytes`) et encodage Base64 / UTF-8 (`bytesToBase64`, `base64ToBytes`, `encodeBase64`, `decodeBase64`),
  * - Hachage SHA-256 (`sha256`),
@@ -11,44 +11,41 @@
  * - Chiffrement et déchiffrement local AES-256-GCM avec clé persistée dans IndexedDB (`encryptLocal`, `decryptLocal`).
  */
 
-import { NObject } from '../core/NObject.js';
+import { NLog } from '../log/NLog.js';
 import { NUtil } from './NUtil.js';
+import { NIndexedDB } from '../database/NIndexedDB.js';
 
 /**
- * @class NCryptography
- * @extends NObject
- * @description Fournit les opérations cryptographiques Web Crypto pour le hachage SHA-256,
+ * @class NCrypto
+ * @description Fournit les opérations cryptographiques statiques Web Crypto pour le hachage SHA-256,
  * l'encodage Base64 et le chiffrement symétrique, asymétrique, hybride et local dans NLib.
  *
  * @example <caption>Exemple 1 : Hachage SHA-256 et encodage Base64</caption>
- * const crypto = new NCryptography();
- * const hash = await crypto.sha256('nlib-secret');
- * const b64 = crypto.encodeBase64('Bonjour NLib');
- * console.log(crypto.decodeBase64(b64)); // 'Bonjour NLib'
+ * const hash = await NCrypto.sha256('nlib-secret');
+ * const b64 = NCrypto.encodeBase64('Bonjour NLib');
+ * console.log(NCrypto.decodeBase64(b64)); // 'Bonjour NLib'
  *
  * @example <caption>Exemple 2 : Chiffrement symétrique AES-256-CBC</caption>
- * const crypto = new NCryptography();
- * const payload = await crypto.encryptSymmetric('Données sensibles', 'MaCleSecrete');
- * const plain = await crypto.decryptSymmetric(payload, 'MaCleSecrete');
+ * const payload = await NCrypto.encryptSymmetric('Données sensibles', 'MaCleSecrete');
+ * const plain = await NCrypto.decryptSymmetric(payload, 'MaCleSecrete');
  * console.log(plain); // 'Données sensibles'
  *
  * @example <caption>Exemple 3 : Chiffrement asymétrique / hybride RSA-OAEP</caption>
- * const crypto = new NCryptography();
- * const keyPair = await crypto.generateKeyPair({ modulusLength: 2048, hash: 'SHA-256' });
+ * const keyPair = await NCrypto.generateKeyPair({ modulusLength: 2048, hash: 'SHA-256' });
  * if (keyPair) {
- *     const encrypted = await crypto.encrypt({ id: 42 }, keyPair.publicKey);
- *     const decrypted = await crypto.decrypt(encrypted, keyPair.privateKey);
+ *     const encrypted = await NCrypto.encrypt({ id: 42 }, keyPair.publicKey);
+ *     const decrypted = await NCrypto.decrypt(encrypted, keyPair.privateKey);
  *     console.log(decrypted); // '{"id":42}'
  * }
  */
-export class NCryptography extends NObject {
+export class NCrypto {
 
     /**
      * Promesse en cours pour la récupération ou génération de la clé locale AES-256-GCM.
      * @type {Promise<CryptoKey|null>|null}
      * @private
      */
-    #localKeyPromise = null;
+    static #localKeyPromise = null;
 
     // =========================================================================
     // Méthodes publiques — Environnement, Aléatoire & Encodage Base64
@@ -61,17 +58,15 @@ export class NCryptography extends NObject {
      * @returns {boolean} `true` si Web Crypto est pleinement disponible, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier le support Web Crypto</caption>
-     * const crypto = new NCryptography();
-     * if (crypto.isWebCryptoAvailable()) {
+     * if (NCrypto.isWebCryptoAvailable()) {
      *     console.log('Web Crypto prêt.');
      * }
      *
      * @example <caption>Exemple 2 : Repli conditionnel avant une opération</caption>
-     * const crypto = new NCryptography();
-     * const canEncrypt = crypto.isWebCryptoAvailable();
+     * const canEncrypt = NCrypto.isWebCryptoAvailable();
      * console.log(canEncrypt); // true dans un navigateur/contexte sécurisé
      */
-    isWebCryptoAvailable() {
+    static isWebCryptoAvailable() {
         return (
             typeof globalThis !== 'undefined' &&
             !!globalThis.crypto?.subtle &&
@@ -87,22 +82,20 @@ export class NCryptography extends NObject {
      * @returns {Uint8Array} Tableau d'octets aléatoires, ou `Uint8Array(0)` si Web Crypto est indisponible ou la longueur invalide.
      *
      * @example <caption>Exemple 1 : Générer un IV de 16 octets</caption>
-     * const crypto = new NCryptography();
-     * const iv = crypto.randomBytes(16);
+     * const iv = NCrypto.randomBytes(16);
      * console.log(iv.length); // 16
      *
      * @example <caption>Exemple 2 : Générer un sel de 32 octets en Base64</caption>
-     * const crypto = new NCryptography();
-     * const salt = crypto.bytesToBase64(crypto.randomBytes(32));
+     * const salt = NCrypto.bytesToBase64(NCrypto.randomBytes(32));
      */
-    randomBytes(length = 16) {
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.randomBytes: Web Crypto indisponible.');
+    static randomBytes(length = 16) {
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.randomBytes: Web Crypto indisponible.');
             return new Uint8Array(0);
         }
 
         if (!Number.isInteger(length) || length < 1) {
-            NUtil.log?.warn?.('NCryptography.randomBytes: La longueur doit être un entier positif.', { length });
+            NLog.warn('NCrypto.randomBytes: La longueur doit être un entier positif.', { length });
             return new Uint8Array(0);
         }
 
@@ -117,7 +110,7 @@ export class NCryptography extends NObject {
 
             return bytes;
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.randomBytes: Échec de génération aléatoire.', error);
+            NLog.error('NCrypto.randomBytes: Échec de génération aléatoire.', error);
             return new Uint8Array(0);
         }
     }
@@ -129,15 +122,13 @@ export class NCryptography extends NObject {
      * @returns {string} Chaîne Base64 correspondante, ou `''` si l'entrée est invalide ou vide.
      *
      * @example <caption>Exemple 1 : Encoder un Uint8Array en Base64</caption>
-     * const crypto = new NCryptography();
-     * console.log(crypto.bytesToBase64(new Uint8Array([78, 76, 105, 98]))); // 'TkxpYg=='
+     * console.log(NCrypto.bytesToBase64(new Uint8Array([78, 76, 105, 98]))); // 'TkxpYg=='
      *
      * @example <caption>Exemple 2 : Encoder un ArrayBuffer en Base64</caption>
-     * const crypto = new NCryptography();
      * const buffer = new Uint8Array([1, 2, 3, 4]).buffer;
-     * console.log(crypto.bytesToBase64(buffer)); // 'AQIDBA=='
+     * console.log(NCrypto.bytesToBase64(buffer)); // 'AQIDBA=='
      */
-    bytesToBase64(bytes) {
+    static bytesToBase64(bytes) {
         const data = bytes instanceof ArrayBuffer
             ? new Uint8Array(bytes)
             : bytes;
@@ -165,16 +156,14 @@ export class NCryptography extends NObject {
      * @returns {Uint8Array} Tableau d'octets décodé, ou `Uint8Array(0)` si l'entrée est vide ou invalide.
      *
      * @example <caption>Exemple 1 : Décoder une chaîne Base64 en octets</caption>
-     * const crypto = new NCryptography();
-     * const bytes = crypto.base64ToBytes('TkxpYg==');
+     * const bytes = NCrypto.base64ToBytes('TkxpYg==');
      * console.log(Array.from(bytes)); // [78, 76, 105, 98]
      *
      * @example <caption>Exemple 2 : Gestion d'une chaîne Base64 invalide</caption>
-     * const crypto = new NCryptography();
-     * const empty = crypto.base64ToBytes('###invalide###');
+     * const empty = NCrypto.base64ToBytes('###invalide###');
      * console.log(empty.length); // 0
      */
-    base64ToBytes(base64) {
+    static base64ToBytes(base64) {
         if (typeof base64 !== 'string' || !base64.trim()) {
             return new Uint8Array(0);
         }
@@ -200,19 +189,17 @@ export class NCryptography extends NObject {
      * @returns {string} Texte encodé en Base64, ou `''` si l'entrée n'est pas une chaîne non vide.
      *
      * @example <caption>Exemple 1 : Encodage UTF-8 vers Base64</caption>
-     * const crypto = new NCryptography();
-     * console.log(crypto.encodeBase64('NLib 🔒'));
+     * console.log(NCrypto.encodeBase64('NLib 🔒'));
      *
      * @example <caption>Exemple 2 : Encodage d'une chaîne accentuée</caption>
-     * const crypto = new NCryptography();
-     * console.log(crypto.encodeBase64('Sécurité')); // 'U8OpY3VyaXTDqQ=='
+     * console.log(NCrypto.encodeBase64('Sécurité')); // 'U8OpY3VyaXTDqQ=='
      */
-    encodeBase64(text) {
+    static encodeBase64(text) {
         if (typeof text !== 'string' || !text.length) {
             return '';
         }
 
-        return this.bytesToBase64(
+        return NCrypto.bytesToBase64(
             new TextEncoder().encode(text)
         );
     }
@@ -224,16 +211,14 @@ export class NCryptography extends NObject {
      * @returns {string} Texte UTF-8 décodé, ou `''` si le format Base64 ou UTF-8 est invalide.
      *
      * @example <caption>Exemple 1 : Décodage Base64 vers UTF-8</caption>
-     * const crypto = new NCryptography();
-     * const encoded = crypto.encodeBase64('Bonjour');
-     * console.log(crypto.decodeBase64(encoded)); // 'Bonjour'
+     * const encoded = NCrypto.encodeBase64('Bonjour');
+     * console.log(NCrypto.decodeBase64(encoded)); // 'Bonjour'
      *
      * @example <caption>Exemple 2 : Entrée invalide retournant une chaîne vide</caption>
-     * const crypto = new NCryptography();
-     * console.log(crypto.decodeBase64('invalide!')); // ''
+     * console.log(NCrypto.decodeBase64('invalide!')); // ''
      */
-    decodeBase64(base64) {
-        const bytes = this.base64ToBytes(base64);
+    static decodeBase64(base64) {
+        const bytes = NCrypto.base64ToBytes(base64);
 
         if (!bytes.length) {
             return '';
@@ -259,20 +244,18 @@ export class NCryptography extends NObject {
      * @returns {Promise<string|Uint8Array>} Empreinte au format demandé, ou `''` / `Uint8Array(0)` en cas d'indisponibilité ou d'erreur.
      *
      * @example <caption>Exemple 1 : Empreinte hexadécimale</caption>
-     * const crypto = new NCryptography();
-     * const hex = await crypto.sha256('nlib');
+     * const hex = await NCrypto.sha256('nlib');
      * console.log(hex.length); // 64
      *
      * @example <caption>Exemple 2 : Empreinte binaire (Uint8Array)</caption>
-     * const crypto = new NCryptography();
-     * const bytes = await crypto.sha256('nlib', 'bytes');
+     * const bytes = await NCrypto.sha256('nlib', 'bytes');
      * console.log(bytes.length); // 32
      */
-    async sha256(data, outputFormat = 'hex') {
+    static async sha256(data, outputFormat = 'hex') {
         const emptyFallback = outputFormat === 'bytes' ? new Uint8Array(0) : '';
 
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.sha256: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.sha256: Web Crypto indisponible.');
             return emptyFallback;
         }
 
@@ -290,14 +273,14 @@ export class NCryptography extends NObject {
             }
 
             if (outputFormat === 'base64') {
-                return this.bytesToBase64(digest);
+                return NCrypto.bytesToBase64(digest);
             }
 
             return Array.from(digest)
                 .map(byte => byte.toString(16).padStart(2, '0'))
                 .join('');
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.sha256: Échec du calcul SHA-256.', error);
+            NLog.error('NCrypto.sha256: Échec du calcul SHA-256.', error);
             return emptyFallback;
         }
     }
@@ -315,16 +298,14 @@ export class NCryptography extends NObject {
      * @returns {Promise<CryptoKeyPair|null>} Paire de clés `{ publicKey, privateKey }`, ou `null` en cas d'erreur ou de paramètre invalide.
      *
      * @example <caption>Exemple 1 : Génération avec les paramètres par défaut (4096 bits, SHA-1)</caption>
-     * const crypto = new NCryptography();
-     * const pair = await crypto.generateKeyPair();
+     * const pair = await NCrypto.generateKeyPair();
      *
      * @example <caption>Exemple 2 : Génération 2048 bits avec SHA-256</caption>
-     * const crypto = new NCryptography();
-     * const pair = await crypto.generateKeyPair({ modulusLength: 2048, hash: 'SHA-256' });
+     * const pair = await NCrypto.generateKeyPair({ modulusLength: 2048, hash: 'SHA-256' });
      */
-    async generateKeyPair(options = {}) {
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.generateKeyPair: Web Crypto indisponible.');
+    static async generateKeyPair(options = {}) {
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.generateKeyPair: Web Crypto indisponible.');
             return null;
         }
 
@@ -333,12 +314,12 @@ export class NCryptography extends NObject {
         const hash = opts.hash ?? 'SHA-1';
 
         if (![2048, 3072, 4096].includes(modulusLength)) {
-            NUtil.log?.warn?.('NCryptography.generateKeyPair: Taille RSA non autorisée.', { modulusLength });
+            NLog.warn('NCrypto.generateKeyPair: Taille RSA non autorisée.', { modulusLength });
             return null;
         }
 
         if (!['SHA-1', 'SHA-256'].includes(hash)) {
-            NUtil.log?.warn?.('NCryptography.generateKeyPair: Algorithme RSA invalide.', { hash });
+            NLog.warn('NCrypto.generateKeyPair: Algorithme RSA invalide.', { hash });
             return null;
         }
 
@@ -354,7 +335,7 @@ export class NCryptography extends NObject {
                 ['encrypt', 'decrypt']
             );
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.generateKeyPair: Échec de génération de la paire de clés.', error);
+            NLog.error('NCrypto.generateKeyPair: Échec de génération de la paire de clés.', error);
             return null;
         }
     }
@@ -366,20 +347,18 @@ export class NCryptography extends NObject {
      * @returns {Promise<string>} Clé formatée au standard PEM, ou `''` en cas d'échec.
      *
      * @example <caption>Exemple 1 : Exporter une clé publique en PEM</caption>
-     * const crypto = new NCryptography();
-     * const pair = await crypto.generateKeyPair({ modulusLength: 2048 });
+     * const pair = await NCrypto.generateKeyPair({ modulusLength: 2048 });
      * if (pair) {
-     *     const pem = await crypto.exportPublicKeyToPem(pair.publicKey);
+     *     const pem = await NCrypto.exportPublicKeyToPem(pair.publicKey);
      *     console.log(pem);
      * }
      *
      * @example <caption>Exemple 2 : Gestion d'une clé absente ou invalide</caption>
-     * const crypto = new NCryptography();
-     * const pem = await crypto.exportPublicKeyToPem(null);
+     * const pem = await NCrypto.exportPublicKeyToPem(null);
      * console.log(pem); // ''
      */
-    async exportPublicKeyToPem(publicKey) {
-        if (!publicKey || !this.isWebCryptoAvailable()) {
+    static async exportPublicKeyToPem(publicKey) {
+        if (!publicKey || !NCrypto.isWebCryptoAvailable()) {
             return '';
         }
 
@@ -389,12 +368,12 @@ export class NCryptography extends NObject {
                 publicKey
             );
 
-            const base64 = this.bytesToBase64(buffer);
+            const base64 = NCrypto.bytesToBase64(buffer);
             const formatted = (base64.match(/.{1,64}/g) || []).join('\n');
 
             return `-----BEGIN PUBLIC KEY-----\n${formatted}\n-----END PUBLIC KEY-----`;
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.exportPublicKeyToPem', error);
+            NLog.error('NCrypto.exportPublicKeyToPem', error);
             return '';
         }
     }
@@ -407,18 +386,16 @@ export class NCryptography extends NObject {
      * @returns {Promise<CryptoKey|null>} Clé publique `CryptoKey` prête pour le chiffrement, ou `null` si invalide.
      *
      * @example <caption>Exemple 1 : Importer une clé publique PEM</caption>
-     * const crypto = new NCryptography();
-     * const pubKey = await crypto.importPublicKeyFromPem(pemString);
+     * const pubKey = await NCrypto.importPublicKeyFromPem(pemString);
      *
      * @example <caption>Exemple 2 : Importer la clé publique du serveur et vérifier sa validité</caption>
-     * const crypto = new NCryptography();
-     * const serverKey = await crypto.importPublicKeyFromPem(serverPem);
+     * const serverKey = await NCrypto.importPublicKeyFromPem(serverPem);
      * if (serverKey) {
-     *     const encrypted = await crypto.encrypt('Ping', serverKey);
+     *     const encrypted = await NCrypto.encrypt('Ping', serverKey);
      * }
      */
-    async importPublicKeyFromPem(pemKey) {
-        if (typeof pemKey !== 'string' || !this.isWebCryptoAvailable()) {
+    static async importPublicKeyFromPem(pemKey) {
+        if (typeof pemKey !== 'string' || !NCrypto.isWebCryptoAvailable()) {
             return null;
         }
 
@@ -429,7 +406,7 @@ export class NCryptography extends NObject {
             let pemContents = pemKey.replace(pemHeader, '').replace(pemFooter, '');
             pemContents = pemContents.replace(/\s+/g, '');
 
-            const binaryKeyBuffer = this.base64ToBytes(pemContents);
+            const binaryKeyBuffer = NCrypto.base64ToBytes(pemContents);
             if (!binaryKeyBuffer.length) {
                 return null;
             }
@@ -445,7 +422,7 @@ export class NCryptography extends NObject {
                 ['encrypt']
             );
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.importPublicKeyFromPem', error);
+            NLog.error('NCrypto.importPublicKeyFromPem', error);
             return null;
         }
     }
@@ -465,23 +442,21 @@ export class NCryptography extends NObject {
      * @returns {Promise<Object>} Charge chiffrée (`{ type, data }` ou `{ type, key, iv, data }`), ou `{}` en cas d'entrée vide ou d'erreur.
      *
      * @example <caption>Exemple 1 : Chiffrer un message court (mode asymétrique)</caption>
-     * const crypto = new NCryptography();
-     * const payload = await crypto.encrypt('Message confidentiel', keyPair.publicKey);
+     * const payload = await NCrypto.encrypt('Message confidentiel', keyPair.publicKey);
      * console.log(payload.type); // 'asymmetric'
      *
      * @example <caption>Exemple 2 : Chiffrer un objet volumineux (mode hybride RSA + AES)</caption>
-     * const crypto = new NCryptography();
      * const largeObj = { token: 'x'.repeat(300), items: [1, 2, 3] };
-     * const payload = await crypto.encrypt(largeObj, keyPair.publicKey);
+     * const payload = await NCrypto.encrypt(largeObj, keyPair.publicKey);
      * console.log(payload.type); // 'hybrid'
      */
-    async encrypt(data, publicKey = null) {
+    static async encrypt(data, publicKey = null) {
         if (data === null || data === undefined || data === '') {
             return {};
         }
 
-        if (!this.isWebCryptoAvailable() || !publicKey) {
-            NUtil.log?.warn?.('NCryptography.encrypt: Une clé publique RSA et Web Crypto sont nécessaires.');
+        if (!NCrypto.isWebCryptoAvailable() || !publicKey) {
+            NLog.warn('NCrypto.encrypt: Une clé publique RSA et Web Crypto sont nécessaires.');
             return {};
         }
 
@@ -501,7 +476,7 @@ export class NCryptography extends NObject {
 
                 return {
                     type: 'asymmetric',
-                    data: this.bytesToBase64(encrypted)
+                    data: NCrypto.bytesToBase64(encrypted)
                 };
             }
 
@@ -511,7 +486,7 @@ export class NCryptography extends NObject {
                 ['encrypt']
             );
 
-            const iv = this.randomBytes(16);
+            const iv = NCrypto.randomBytes(16);
             if (!iv.length) {
                 return {};
             }
@@ -535,12 +510,12 @@ export class NCryptography extends NObject {
 
             return {
                 type: 'hybrid',
-                key: this.bytesToBase64(encryptedKey),
-                iv: this.bytesToBase64(iv),
-                data: this.bytesToBase64(encryptedData)
+                key: NCrypto.bytesToBase64(encryptedKey),
+                iv: NCrypto.bytesToBase64(iv),
+                data: NCrypto.bytesToBase64(encryptedData)
             };
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.encrypt', error);
+            NLog.error('NCrypto.encrypt', error);
             return {};
         }
     }
@@ -554,15 +529,13 @@ export class NCryptography extends NObject {
      * @returns {Promise<string>} Texte en clair déchiffré, ou `''` en cas d'échec ou de données invalides.
      *
      * @example <caption>Exemple 1 : Déchiffrer un objet chiffré reçu</caption>
-     * const crypto = new NCryptography();
-     * const clearText = await crypto.decrypt(payload, keyPair.privateKey);
+     * const clearText = await NCrypto.decrypt(payload, keyPair.privateKey);
      *
      * @example <caption>Exemple 2 : Déchiffrer une charge sérialisée en JSON</caption>
-     * const crypto = new NCryptography();
      * const jsonPayload = JSON.stringify(payload);
-     * const clearText = await crypto.decrypt(jsonPayload, keyPair.privateKey);
+     * const clearText = await NCrypto.decrypt(jsonPayload, keyPair.privateKey);
      */
-    async decrypt(encryptedPayload, privateKey = null) {
+    static async decrypt(encryptedPayload, privateKey = null) {
         if (!encryptedPayload || !privateKey) {
             return '';
         }
@@ -581,14 +554,14 @@ export class NCryptography extends NObject {
             return '';
         }
 
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.decrypt: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.decrypt: Web Crypto indisponible.');
             return '';
         }
 
         try {
             if (payload.type === 'hybrid') {
-                const encryptedKey = this.base64ToBytes(payload.key);
+                const encryptedKey = NCrypto.base64ToBytes(payload.key);
                 const rawKey = await globalThis.crypto.subtle.decrypt(
                     { name: 'RSA-OAEP' },
                     privateKey,
@@ -603,8 +576,8 @@ export class NCryptography extends NObject {
                     ['decrypt']
                 );
 
-                const iv = this.base64ToBytes(payload.iv);
-                const encryptedData = this.base64ToBytes(payload.data);
+                const iv = NCrypto.base64ToBytes(payload.iv);
+                const encryptedData = NCrypto.base64ToBytes(payload.data);
 
                 const decrypted = await globalThis.crypto.subtle.decrypt(
                     { name: 'AES-CBC', iv },
@@ -619,7 +592,7 @@ export class NCryptography extends NObject {
                 const decrypted = await globalThis.crypto.subtle.decrypt(
                     { name: 'RSA-OAEP' },
                     privateKey,
-                    this.base64ToBytes(payload.data)
+                    NCrypto.base64ToBytes(payload.data)
                 );
 
                 return new TextDecoder().decode(decrypted);
@@ -627,7 +600,7 @@ export class NCryptography extends NObject {
 
             return '';
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.decrypt', error);
+            NLog.error('NCrypto.decrypt', error);
             return '';
         }
     }
@@ -644,26 +617,24 @@ export class NCryptography extends NObject {
      * @returns {Promise<{type: string, iv: string, data: string}|null>} Objet chiffré, ou `null` si les paramètres sont invalides ou en cas d'erreur.
      *
      * @example <caption>Exemple 1 : Chiffrement symétrique d'une chaîne</caption>
-     * const crypto = new NCryptography();
-     * const res = await crypto.encryptSymmetric('Secret', 'MotDePasseFort');
+     * const res = await NCrypto.encryptSymmetric('Secret', 'MotDePasseFort');
      *
      * @example <caption>Exemple 2 : Chiffrement symétrique d'un JSON sérialisé</caption>
-     * const crypto = new NCryptography();
-     * const res = await crypto.encryptSymmetric(JSON.stringify({ id: 10 }), 'ClePartagee');
+     * const res = await NCrypto.encryptSymmetric(JSON.stringify({ id: 10 }), 'ClePartagee');
      * console.log(res?.type); // 'aes-256-cbc'
      */
-    async encryptSymmetric(data, secretKey) {
+    static async encryptSymmetric(data, secretKey) {
         if (data === null || data === undefined || !secretKey) {
             return null;
         }
 
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.encryptSymmetric: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.encryptSymmetric: Web Crypto indisponible.');
             return null;
         }
 
         try {
-            const keyBytes = await this.sha256(secretKey, 'bytes');
+            const keyBytes = await NCrypto.sha256(secretKey, 'bytes');
             if (!keyBytes.length) {
                 return null;
             }
@@ -676,7 +647,7 @@ export class NCryptography extends NObject {
                 ['encrypt']
             );
 
-            const iv = this.randomBytes(16);
+            const iv = NCrypto.randomBytes(16);
             if (!iv.length) {
                 return null;
             }
@@ -691,11 +662,11 @@ export class NCryptography extends NObject {
 
             return {
                 type: 'aes-256-cbc',
-                iv: this.bytesToBase64(iv),
-                data: this.bytesToBase64(encrypted)
+                iv: NCrypto.bytesToBase64(iv),
+                data: NCrypto.bytesToBase64(encrypted)
             };
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.encryptSymmetric', error);
+            NLog.error('NCrypto.encryptSymmetric', error);
             return null;
         }
     }
@@ -708,20 +679,18 @@ export class NCryptography extends NObject {
      * @returns {Promise<string>} Texte en clair déchiffré, ou `''` si le déchiffrement échoue.
      *
      * @example <caption>Exemple 1 : Déchiffrement depuis l'objet retourné par encryptSymmetric</caption>
-     * const crypto = new NCryptography();
-     * const plain = await crypto.decryptSymmetric(encryptedObj, 'MotDePasseFort');
+     * const plain = await NCrypto.decryptSymmetric(encryptedObj, 'MotDePasseFort');
      *
      * @example <caption>Exemple 2 : Déchiffrement depuis une chaîne JSON</caption>
-     * const crypto = new NCryptography();
-     * const plain = await crypto.decryptSymmetric(JSON.stringify(encryptedObj), 'MotDePasseFort');
+     * const plain = await NCrypto.decryptSymmetric(JSON.stringify(encryptedObj), 'MotDePasseFort');
      */
-    async decryptSymmetric(payload, secretKey) {
+    static async decryptSymmetric(payload, secretKey) {
         if (!payload || !secretKey) {
             return '';
         }
 
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.decryptSymmetric: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.decryptSymmetric: Web Crypto indisponible.');
             return '';
         }
 
@@ -740,7 +709,7 @@ export class NCryptography extends NObject {
         }
 
         try {
-            const keyBytes = await this.sha256(secretKey, 'bytes');
+            const keyBytes = await NCrypto.sha256(secretKey, 'bytes');
             if (!keyBytes.length) {
                 return '';
             }
@@ -756,15 +725,15 @@ export class NCryptography extends NObject {
             const decrypted = await globalThis.crypto.subtle.decrypt(
                 {
                     name: 'AES-CBC',
-                    iv: this.base64ToBytes(parsed.iv)
+                    iv: NCrypto.base64ToBytes(parsed.iv)
                 },
                 key,
-                this.base64ToBytes(parsed.data)
+                NCrypto.base64ToBytes(parsed.data)
             );
 
             return new TextDecoder().decode(decrypted);
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.decryptSymmetric', error);
+            NLog.error('NCrypto.decryptSymmetric', error);
             return '';
         }
     }
@@ -775,7 +744,7 @@ export class NCryptography extends NObject {
 
     /**
      * Chiffre localement une donnée (chaîne ou objet sérialisable en JSON) en AES-256-GCM
-     * à l'aide d'une clé locale non exportable conservée dans IndexedDB (`NUtil.db.idb`)
+     * à l'aide d'une clé locale non exportable conservée dans IndexedDB (`NIndexedDB.instance`)
      * et d'un IV aléatoire de 96 bits.
      * Le résultat Base64 préfixe l'octet de version (`0x04`), l'IV de 12 octets et le texte chiffré authentifié.
      *
@@ -783,20 +752,18 @@ export class NCryptography extends NObject {
      * @returns {Promise<string>} Chaîne Base64 versionnée (`0x04`), ou `''` en cas d'entrée vide, d'indisponibilité ou d'erreur.
      *
      * @example <caption>Exemple 1 : Chiffrer un objet localement sans fournir de clé</caption>
-     * const crypto = new NCryptography();
-     * const token = await crypto.encryptLocal({ userId: 7, role: 'admin' });
+     * const token = await NCrypto.encryptLocal({ userId: 7, role: 'admin' });
      *
      * @example <caption>Exemple 2 : Chiffrer une chaîne de texte pour le stockage local</caption>
-     * const crypto = new NCryptography();
-     * const cipher = await crypto.encryptLocal('Préférences confidentielles');
+     * const cipher = await NCrypto.encryptLocal('Préférences confidentielles');
      */
-    async encryptLocal(data) {
+    static async encryptLocal(data) {
         if (data === null || data === undefined || data === '') {
             return '';
         }
 
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.encryptLocal: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.encryptLocal: Web Crypto indisponible.');
             return '';
         }
 
@@ -808,13 +775,13 @@ export class NCryptography extends NObject {
             const bytes = new TextEncoder().encode(plainText);
 
             // Récupération automatique de la clé locale.
-            const key = await this.#generateLocalKey();
+            const key = await NCrypto.#generateLocalKey();
             if (!key) {
                 return '';
             }
 
             // Génération d'un IV aléatoire de 96 bits.
-            const iv = this.randomBytes(12);
+            const iv = NCrypto.randomBytes(12);
             if (iv.length !== 12) {
                 return '';
             }
@@ -838,9 +805,9 @@ export class NCryptography extends NObject {
             result.set(iv, 1);
             result.set(cipherBytes, 13);
 
-            return this.bytesToBase64(result);
+            return NCrypto.bytesToBase64(result);
         } catch (error) {
-            NUtil.log?.error?.('NCryptography.encryptLocal: Échec du chiffrement local.', error);
+            NLog.error('NCrypto.encryptLocal: Échec du chiffrement local.', error);
             return '';
         }
     }
@@ -853,26 +820,24 @@ export class NCryptography extends NObject {
      * @returns {Promise<string>} Chaîne en clair déchiffrée, ou `''` si la donnée est invalide ou l'authentification échoue.
      *
      * @example <caption>Exemple 1 : Déchiffrer un objet JSON stocké localement</caption>
-     * const crypto = new NCryptography();
-     * const raw = await crypto.decryptLocal(token);
+     * const raw = await NCrypto.decryptLocal(token);
      * const obj = raw ? JSON.parse(raw) : null;
      *
      * @example <caption>Exemple 2 : Déchiffrer une chaîne simple</caption>
-     * const crypto = new NCryptography();
-     * const text = await crypto.decryptLocal(cipher);
+     * const text = await NCrypto.decryptLocal(cipher);
      * console.log(text); // 'Préférences confidentielles'
      */
-    async decryptLocal(encryptedData) {
+    static async decryptLocal(encryptedData) {
         if (typeof encryptedData !== 'string' || !encryptedData) {
             return '';
         }
 
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.decryptLocal: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.decryptLocal: Web Crypto indisponible.');
             return '';
         }
 
-        const combined = this.base64ToBytes(encryptedData);
+        const combined = NCrypto.base64ToBytes(encryptedData);
 
         if (
             combined.length < 30 ||
@@ -883,7 +848,7 @@ export class NCryptography extends NObject {
 
         try {
             // Récupération automatique de la même clé locale.
-            const key = await this.#generateLocalKey();
+            const key = await NCrypto.#generateLocalKey();
             if (!key) {
                 return '';
             }
@@ -903,8 +868,8 @@ export class NCryptography extends NObject {
 
             return new TextDecoder().decode(decrypted);
         } catch (error) {
-            NUtil.log?.warn?.(
-                'NCryptography.decryptLocal: Authentification échouée.',
+            NLog.warn(
+                'NCrypto.decryptLocal: Authentification échouée.',
                 error
             );
 
@@ -923,7 +888,7 @@ export class NCryptography extends NObject {
      * @param {any} key - Clé candidate.
      * @returns {boolean}
      */
-    #isValidLocalKey(key) {
+    static #isValidLocalKey(key) {
         return Boolean(
             key &&
             typeof key === 'object' &&
@@ -945,36 +910,36 @@ export class NCryptography extends NObject {
      * @private
      *
      * @example <caption>Exemple 1 : Récupération ou création automatique lors du chiffrement local</caption>
-     * // Interne : const key = await this.#generateLocalKey();
+     * // Interne : const key = await NCrypto.#generateLocalKey();
      *
      * @example <caption>Exemple 2 : Réutilisation de la même clé lors du déchiffrement local</caption>
-     * // Interne : const key = await this.#generateLocalKey(); // Lit "n_local_key" depuis "ntable"
+     * // Interne : const key = await NCrypto.#generateLocalKey(); // Lit "n_local_key" depuis "ntable"
      */
-    async #generateLocalKey() {
-        if (!this.isWebCryptoAvailable()) {
-            NUtil.log?.warn?.('NCryptography.#generateLocalKey: Web Crypto indisponible.');
+    static async #generateLocalKey() {
+        if (!NCrypto.isWebCryptoAvailable()) {
+            NLog.warn('NCrypto.#generateLocalKey: Web Crypto indisponible.');
             return null;
         }
 
-        if (this.#localKeyPromise) {
-            return await this.#localKeyPromise;
+        if (NCrypto.#localKeyPromise) {
+            return await NCrypto.#localKeyPromise;
         }
 
-        this.#localKeyPromise = (async () => {
+        NCrypto.#localKeyPromise = (async () => {
             try {
-                const existingRes = await NUtil.db.idb.get('ntable', 'n_local_key');
+                const existingRes = await NIndexedDB.instance.get('ntable', 'n_local_key');
                 if (!existingRes || !existingRes.ok) {
-                    NUtil.log?.error?.(
-                        'NCryptography.#generateLocalKey: Impossible de lire la clé locale depuis IndexedDB.',
+                    NLog.error(
+                        'NCrypto.#generateLocalKey: Impossible de lire la clé locale depuis IndexedDB.',
                         existingRes
                     );
                     return null;
                 }
 
                 if (existingRes.data) {
-                    if (!this.#isValidLocalKey(existingRes.data)) {
-                        NUtil.log?.error?.(
-                            'NCryptography.#generateLocalKey: Clé locale stockée invalide ou extractible pour AES-GCM.'
+                    if (!NCrypto.#isValidLocalKey(existingRes.data)) {
+                        NLog.error(
+                            'NCrypto.#generateLocalKey: Clé locale stockée invalide ou extractible pour AES-GCM.'
                         );
                         return null;
                     }
@@ -990,10 +955,10 @@ export class NCryptography extends NObject {
                     ['encrypt', 'decrypt']
                 );
 
-                const putRes = await NUtil.db.idb.put('ntable', newKey, 'n_local_key');
+                const putRes = await NIndexedDB.instance.put('ntable', newKey, 'n_local_key');
                 if (!putRes || !putRes.ok) {
-                    NUtil.log?.error?.(
-                        'NCryptography.#generateLocalKey: Échec de persistance de la clé locale dans IndexedDB.',
+                    NLog.error(
+                        'NCrypto.#generateLocalKey: Échec de persistance de la clé locale dans IndexedDB.',
                         putRes
                     );
                     return null;
@@ -1001,15 +966,15 @@ export class NCryptography extends NObject {
 
                 return newKey;
             } catch (error) {
-                NUtil.log?.error?.('NCryptography.#generateLocalKey: Échec de récupération ou création de la clé locale.', error);
+                NLog.error('NCrypto.#generateLocalKey: Échec de récupération ou création de la clé locale.', error);
                 return null;
             } finally {
-                this.#localKeyPromise = null;
+                NCrypto.#localKeyPromise = null;
             }
         })();
 
-        return await this.#localKeyPromise;
+        return await NCrypto.#localKeyPromise;
     }
 }
 
-export default NCryptography;
+export default NCrypto;

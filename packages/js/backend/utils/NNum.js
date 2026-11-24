@@ -1,37 +1,32 @@
 /**
- * @file NNumber.js
+ * @file NNum.js
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, la conversion, le calcul mathématique
  * et le formatage des nombres dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
+import { NLog } from '../log/NLog.js';
 
 /**
- * @class NNumber
- * @extends NObject
+ * @class NNum
  * @description Utilitaire de gestion et traitement des nombres.
  *
  * @example <caption>Exemple 1 : Validation, arrondi et bornage (clamp)</caption>
- * const num = new NNumber();
- * console.log(num.isNumeric('42.5'));       // true
- * console.log(num.round(3.14159, 2));       // 3.14
- * console.log(num.clamp(150, 0, 100));      // 100
+ * console.log(NNum.isNumeric('42.5'));       // true
+ * console.log(NNum.round(3.14159, 2));       // 3.14
+ * console.log(NNum.clamp(150, 0, 100));      // 100
  *
  * @example <caption>Exemple 2 : Formatage de nombres, devises et tailles de fichiers</caption>
- * const num = new NNumber();
- * console.log(num.format(1250000.5, { decimals: 2 })); // '1 250 000,50'
- * console.log(num.formatCurrency(25000, { symbol: '$', decimals: 0 })); // '25 000 $'
- * console.log(num.formatBytes(1048576)); // '1 Mo'
+ * console.log(NNum.format(1250000.5, { decimals: 2 })); // '1 250 000,50'
+ * console.log(NNum.formatCurrency(25000, { symbol: '$', decimals: 0 })); // '25 000 $'
+ * console.log(NNum.formatBytes(1048576)); // '1 Mo'
  *
  * @example <caption>Exemple 3 : Calculs de pourcentages et statistiques sur tableau</caption>
- * const num = new NNumber();
- * console.log(num.percentage(25, 200));        // 12.5
- * console.log(num.sum([10, 20, 30]));          // 60
- * console.log(num.average([10, 20, 30]));      // 20
+ * console.log(NNum.percentage(25, 200));        // 12.5
+ * console.log(NNum.sum([10, 20, 30]));          // 60
+ * console.log(NNum.average([10, 20, 30]));      // 20
  */
-export class NNumber extends NObject {
+export class NNum {
 
     // =========================================================================
     // Méthodes publiques — Vérifications & Comparaisons (Validation)
@@ -44,17 +39,15 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si `value` est un nombre fini valide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester des nombres valides</caption>
-     * const num = new NNumber();
-     * console.log(num.isNumber(42));    // true
-     * console.log(num.isNumber(-3.14)); // true
+         * console.log(NNum.isNumber(42));    // true
+     * console.log(NNum.isNumber(-3.14)); // true
      *
      * @example <caption>Exemple 2 : Rejeter les chaînes, NaN et Infinity</caption>
-     * const num = new NNumber();
-     * console.log(num.isNumber('42'));     // false
-     * console.log(num.isNumber(NaN));      // false
-     * console.log(num.isNumber(Infinity)); // false
+         * console.log(NNum.isNumber('42'));     // false
+     * console.log(NNum.isNumber(NaN));      // false
+     * console.log(NNum.isNumber(Infinity)); // false
      */
-    isNumber(value) {
+    static isNumber(value) {
         return typeof value === 'number' && Number.isFinite(value);
     }
 
@@ -65,17 +58,15 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si la valeur est numérique, sinon `false`.
      *
      * @example <caption>Exemple 1 : Chaînes numériques et nombres</caption>
-     * const num = new NNumber();
-     * console.log(num.isNumeric(100));     // true
-     * console.log(num.isNumeric('42.75')); // true
+         * console.log(NNum.isNumeric(100));     // true
+     * console.log(NNum.isNumeric('42.75')); // true
      *
      * @example <caption>Exemple 2 : Valeurs non numériques</caption>
-     * const num = new NNumber();
-     * console.log(num.isNumeric('abc')); // false
-     * console.log(num.isNumeric(''));    // false
-     * console.log(num.isNumeric(null));  // false
+         * console.log(NNum.isNumeric('abc')); // false
+     * console.log(NNum.isNumeric(''));    // false
+     * console.log(NNum.isNumeric(null));  // false
      */
-    isNumeric(value) {
+    static isNumeric(value) {
         if (this.isNumber(value)) {
             return true;
         }
@@ -96,16 +87,14 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si `value` est un entier, sinon `false`.
      *
      * @example <caption>Exemple 1 : Nombre entier</caption>
-     * const num = new NNumber();
-     * console.log(num.isInteger(25));  // true
-     * console.log(num.isInteger(-10)); // true
+         * console.log(NNum.isInteger(25));  // true
+     * console.log(NNum.isInteger(-10)); // true
      *
      * @example <caption>Exemple 2 : Nombre décimal ou chaîne</caption>
-     * const num = new NNumber();
-     * console.log(num.isInteger(25.5)); // false
-     * console.log(num.isInteger('25')); // false
+         * console.log(NNum.isInteger(25.5)); // false
+     * console.log(NNum.isInteger('25')); // false
      */
-    isInteger(value) {
+    static isInteger(value) {
         return Number.isInteger(value);
     }
 
@@ -116,15 +105,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si `value` est un nombre à virgule, sinon `false`.
      *
      * @example <caption>Exemple 1 : Nombre décimal</caption>
-     * const num = new NNumber();
-     * console.log(num.isFloat(3.14)); // true
+         * console.log(NNum.isFloat(3.14)); // true
      *
      * @example <caption>Exemple 2 : Nombre entier</caption>
-     * const num = new NNumber();
-     * console.log(num.isFloat(10));   // false
-     * console.log(num.isFloat(10.0)); // false
+         * console.log(NNum.isFloat(10));   // false
+     * console.log(NNum.isFloat(10.0)); // false
      */
-    isFloat(value) {
+    static isFloat(value) {
         return this.isNumber(value) && !Number.isInteger(value);
     }
 
@@ -135,15 +122,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si le nombre est un entier pair, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester un nombre pair</caption>
-     * const num = new NNumber();
-     * console.log(num.isEven(4)); // true
-     * console.log(num.isEven(0)); // true
+         * console.log(NNum.isEven(4)); // true
+     * console.log(NNum.isEven(0)); // true
      *
      * @example <caption>Exemple 2 : Tester un nombre impair</caption>
-     * const num = new NNumber();
-     * console.log(num.isEven(7)); // false
+         * console.log(NNum.isEven(7)); // false
      */
-    isEven(value) {
+    static isEven(value) {
         return this.isInteger(value) && value % 2 === 0;
     }
 
@@ -154,15 +139,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si le nombre est un entier impair, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester un nombre impair</caption>
-     * const num = new NNumber();
-     * console.log(num.isOdd(3));  // true
-     * console.log(num.isOdd(-5)); // true
+         * console.log(NNum.isOdd(3));  // true
+     * console.log(NNum.isOdd(-5)); // true
      *
      * @example <caption>Exemple 2 : Tester un nombre pair</caption>
-     * const num = new NNumber();
-     * console.log(num.isOdd(8));  // false
+         * console.log(NNum.isOdd(8));  // false
      */
-    isOdd(value) {
+    static isOdd(value) {
         return this.isInteger(value) && Math.abs(value % 2) === 1;
     }
 
@@ -174,15 +157,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si le nombre est positif, sinon `false`.
      *
      * @example <caption>Exemple 1 : Strictement positif (par défaut)</caption>
-     * const num = new NNumber();
-     * console.log(num.isPositive(10)); // true
-     * console.log(num.isPositive(0));  // false
+         * console.log(NNum.isPositive(10)); // true
+     * console.log(NNum.isPositive(0));  // false
      *
      * @example <caption>Exemple 2 : Positif ou nul (includeZero = true)</caption>
-     * const num = new NNumber();
-     * console.log(num.isPositive(0, true)); // true
+         * console.log(NNum.isPositive(0, true)); // true
      */
-    isPositive(value, includeZero = false) {
+    static isPositive(value, includeZero = false) {
         if (!this.isNumber(value)) {
             return false;
         }
@@ -197,15 +178,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si le nombre est négatif, sinon `false`.
      *
      * @example <caption>Exemple 1 : Strictement négatif (par défaut)</caption>
-     * const num = new NNumber();
-     * console.log(num.isNegative(-5)); // true
-     * console.log(num.isNegative(0));  // false
+         * console.log(NNum.isNegative(-5)); // true
+     * console.log(NNum.isNegative(0));  // false
      *
      * @example <caption>Exemple 2 : Négatif ou nul (includeZero = true)</caption>
-     * const num = new NNumber();
-     * console.log(num.isNegative(0, true)); // true
+         * console.log(NNum.isNegative(0, true)); // true
      */
-    isNegative(value, includeZero = false) {
+    static isNegative(value, includeZero = false) {
         if (!this.isNumber(value)) {
             return false;
         }
@@ -222,15 +201,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si `value` est dans l'intervalle, sinon `false`.
      *
      * @example <caption>Exemple 1 : Intervalle inclusif [min, max] (par défaut)</caption>
-     * const num = new NNumber();
-     * console.log(num.isBetween(10, 10, 20)); // true
+         * console.log(NNum.isBetween(10, 10, 20)); // true
      *
      * @example <caption>Exemple 2 : Intervalle strictement exclusif ]min, max[</caption>
-     * const num = new NNumber();
-     * console.log(num.isBetween(10, 10, 20, false)); // false
-     * console.log(num.isBetween(15, 10, 20, false)); // true
+         * console.log(NNum.isBetween(10, 10, 20, false)); // false
+     * console.log(NNum.isBetween(15, 10, 20, false)); // true
      */
-    isBetween(value, min, max, inclusive = true) {
+    static isBetween(value, min, max, inclusive = true) {
         if (!this.isNumber(value) || !this.isNumber(min) || !this.isNumber(max)) {
             return false;
         }
@@ -251,15 +228,13 @@ export class NNumber extends NObject {
      * @returns {boolean} `true` si les deux nombres sont égaux à `tolerance` près, sinon `false`.
      *
      * @example <caption>Exemple 1 : Comparaison exacte d'entiers</caption>
-     * const num = new NNumber();
-     * console.log(num.equals(42, 42)); // true
-     * console.log(num.equals(42, 43)); // false
+         * console.log(NNum.equals(42, 42)); // true
+     * console.log(NNum.equals(42, 43)); // false
      *
      * @example <caption>Exemple 2 : Comparaison de flottants avec tolérance</caption>
-     * const num = new NNumber();
-     * console.log(num.equals(0.1 + 0.2, 0.3, 1e-9)); // true
+         * console.log(NNum.equals(0.1 + 0.2, 0.3, 1e-9)); // true
      */
-    equals(numA, numB, tolerance = 0) {
+    static equals(numA, numB, tolerance = 0) {
         if (!this.isNumber(numA) || !this.isNumber(numB)) {
             return false;
         }
@@ -280,15 +255,13 @@ export class NNumber extends NObject {
      * @returns {number} Entier converti ou `defaultValue`.
      *
      * @example <caption>Exemple 1 : Convertir une chaîne en entier</caption>
-     * const num = new NNumber();
-     * console.log(num.toInt('128'));       // 128
-     * console.log(num.toInt('invalide'));  // 0
+         * console.log(NNum.toInt('128'));       // 128
+     * console.log(NNum.toInt('invalide'));  // 0
      *
      * @example <caption>Exemple 2 : Convertir un nombre hexadécimal en base 16</caption>
-     * const num = new NNumber();
-     * console.log(num.toInt('FF', 0, 16)); // 255
+         * console.log(NNum.toInt('FF', 0, 16)); // 255
      */
-    toInt(value, defaultValue = 0, radix = 10) {
+    static toInt(value, defaultValue = 0, radix = 10) {
         if (this.isInteger(value)) {
             return value;
         }
@@ -305,15 +278,13 @@ export class NNumber extends NObject {
      * @returns {number} Nombre décimal converti ou `defaultValue`.
      *
      * @example <caption>Exemple 1 : Convertir une chaîne avec point ou virgule</caption>
-     * const num = new NNumber();
-     * console.log(num.toFloat('12.75')); // 12.75
-     * console.log(num.toFloat('12,75')); // 12.75
+         * console.log(NNum.toFloat('12.75')); // 12.75
+     * console.log(NNum.toFloat('12,75')); // 12.75
      *
      * @example <caption>Exemple 2 : Valeur par défaut personnalisée si invalide</caption>
-     * const num = new NNumber();
-     * console.log(num.toFloat('erreur', -1)); // -1
+         * console.log(NNum.toFloat('erreur', -1)); // -1
      */
-    toFloat(value, defaultValue = 0) {
+    static toFloat(value, defaultValue = 0) {
         if (this.isNumber(value)) {
             return value;
         }
@@ -331,15 +302,13 @@ export class NNumber extends NObject {
      * @returns {number} Nombre contraint entre `min` et `max`.
      *
      * @example <caption>Exemple 1 : Plafonner un pourcentage entre 0 et 100</caption>
-     * const num = new NNumber();
-     * console.log(num.clamp(120, 0, 100)); // 100
-     * console.log(num.clamp(-15, 0, 100)); // 0
+         * console.log(NNum.clamp(120, 0, 100)); // 100
+     * console.log(NNum.clamp(-15, 0, 100)); // 0
      *
      * @example <caption>Exemple 2 : Valeur déjà dans l'intervalle</caption>
-     * const num = new NNumber();
-     * console.log(num.clamp(45, 0, 100));  // 45
+         * console.log(NNum.clamp(45, 0, 100));  // 45
      */
-    clamp(value, min, max) {
+    static clamp(value, min, max) {
         const lower = Math.min(min, max);
         const upper = Math.max(min, max);
         return Math.min(Math.max(Number(value) || 0, lower), upper);
@@ -353,15 +322,13 @@ export class NNumber extends NObject {
      * @returns {number} Nombre arrondi.
      *
      * @example <caption>Exemple 1 : Arrondir à l'entier le plus proche (par défaut)</caption>
-     * const num = new NNumber();
-     * console.log(num.round(4.6)); // 5
+         * console.log(NNum.round(4.6)); // 5
      *
      * @example <caption>Exemple 2 : Arrondir à 2 décimales</caption>
-     * const num = new NNumber();
-     * console.log(num.round(19.995, 2)); // 20
-     * console.log(num.round(3.14159, 2)); // 3.14
+         * console.log(NNum.round(19.995, 2)); // 20
+     * console.log(NNum.round(3.14159, 2)); // 3.14
      */
-    round(value, decimals = 0) {
+    static round(value, decimals = 0) {
         const dec = Math.max(0, Math.floor(Number(decimals) || 0));
         const factor = 10 ** dec;
         return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
@@ -375,14 +342,12 @@ export class NNumber extends NObject {
      * @returns {number} Nombre arrondi à l'inférieur.
      *
      * @example <caption>Exemple 1 : Arrondir à l'entier inférieur</caption>
-     * const num = new NNumber();
-     * console.log(num.floor(4.9)); // 4
+         * console.log(NNum.floor(4.9)); // 4
      *
      * @example <caption>Exemple 2 : Arrondir à 2 décimales à l'inférieur</caption>
-     * const num = new NNumber();
-     * console.log(num.floor(3.149, 2)); // 3.14
+         * console.log(NNum.floor(3.149, 2)); // 3.14
      */
-    floor(value, decimals = 0) {
+    static floor(value, decimals = 0) {
         const dec = Math.max(0, Math.floor(Number(decimals) || 0));
         const factor = 10 ** dec;
         return Math.floor(Number(value) * factor) / factor;
@@ -396,14 +361,12 @@ export class NNumber extends NObject {
      * @returns {number} Nombre arrondi au supérieur.
      *
      * @example <caption>Exemple 1 : Arrondir à l'entier supérieur</caption>
-     * const num = new NNumber();
-     * console.log(num.ceil(4.1)); // 5
+         * console.log(NNum.ceil(4.1)); // 5
      *
      * @example <caption>Exemple 2 : Arrondir à 2 décimales au supérieur</caption>
-     * const num = new NNumber();
-     * console.log(num.ceil(3.141, 2)); // 3.15
+         * console.log(NNum.ceil(3.141, 2)); // 3.15
      */
-    ceil(value, decimals = 0) {
+    static ceil(value, decimals = 0) {
         const dec = Math.max(0, Math.floor(Number(decimals) || 0));
         const factor = 10 ** dec;
         return Math.ceil(Number(value) * factor) / factor;
@@ -423,17 +386,15 @@ export class NNumber extends NObject {
      * @returns {number} Pourcentage calculé.
      *
      * @example <caption>Exemple 1 : Calculer un taux de réussite</caption>
-     * const num = new NNumber();
-     * console.log(num.percentage(45, 60)); // 75
+         * console.log(NNum.percentage(45, 60)); // 75
      *
      * @example <caption>Exemple 2 : Protection contre la division par zéro</caption>
-     * const num = new NNumber();
-     * console.log(num.percentage(10, 0)); // 0
+         * console.log(NNum.percentage(10, 0)); // 0
      */
-    percentage(part, total, decimals = 2) {
+    static percentage(part, total, decimals = 2) {
         const t = Number(total);
         if (!t) {
-            NUtil.log.warn('NNumber.percentage: Total nul ou invalide, calcul de pourcentage impossible.', {
+            NLog.warn('NNum.percentage: Total nul ou invalide, calcul de pourcentage impossible.', {
                 code: 'WARN_PERCENTAGE_ZERO_TOTAL',
                 part,
                 total
@@ -452,14 +413,12 @@ export class NNumber extends NObject {
      * @returns {number} Valeur correspondante.
      *
      * @example <caption>Exemple 1 : Calculer une remise de 15% sur 200</caption>
-     * const num = new NNumber();
-     * console.log(num.percentageOf(15, 200)); // 30
+         * console.log(NNum.percentageOf(15, 200)); // 30
      *
      * @example <caption>Exemple 2 : Calculer une taxe de 18% sur 15 000</caption>
-     * const num = new NNumber();
-     * console.log(num.percentageOf(18, 15000)); // 2700
+         * console.log(NNum.percentageOf(18, 15000)); // 2700
      */
-    percentageOf(percent, total, decimals = 2) {
+    static percentageOf(percent, total, decimals = 2) {
         return this.round((Number(percent) / 100) * Number(total), decimals);
     }
 
@@ -470,14 +429,12 @@ export class NNumber extends NObject {
      * @returns {number} Somme totale (`0` si le tableau est vide).
      *
      * @example <caption>Exemple 1 : Somme d'une liste de montants</caption>
-     * const num = new NNumber();
-     * console.log(num.sum([100, 250, 50])); // 400
+         * console.log(NNum.sum([100, 250, 50])); // 400
      *
      * @example <caption>Exemple 2 : Tableau vide</caption>
-     * const num = new NNumber();
-     * console.log(num.sum([])); // 0
+         * console.log(NNum.sum([])); // 0
      */
-    sum(numbers = []) {
+    static sum(numbers = []) {
         if (!Array.isArray(numbers) || numbers.length === 0) {
             return 0;
         }
@@ -492,14 +449,12 @@ export class NNumber extends NObject {
      * @returns {number} Moyenne calculée (`0` si le tableau est vide).
      *
      * @example <caption>Exemple 1 : Moyenne de notes</caption>
-     * const num = new NNumber();
-     * console.log(num.average([12, 15, 18])); // 15
+         * console.log(NNum.average([12, 15, 18])); // 15
      *
      * @example <caption>Exemple 2 : Moyenne arrondie à 2 décimales</caption>
-     * const num = new NNumber();
-     * console.log(num.average([10, 11, 13], 2)); // 11.33
+         * console.log(NNum.average([10, 11, 13], 2)); // 11.33
      */
-    average(numbers = [], decimals = 2) {
+    static average(numbers = [], decimals = 2) {
         if (!Array.isArray(numbers) || numbers.length === 0) {
             return 0;
         }
@@ -513,14 +468,12 @@ export class NNumber extends NObject {
      * @returns {number|null} Valeur minimale, ou `null` si le tableau est vide.
      *
      * @example <caption>Exemple 1 : Trouver le minimum d'un tableau</caption>
-     * const num = new NNumber();
-     * console.log(num.min([45, 12, 89, 3])); // 3
+         * console.log(NNum.min([45, 12, 89, 3])); // 3
      *
      * @example <caption>Exemple 2 : Tableau vide</caption>
-     * const num = new NNumber();
-     * console.log(num.min([])); // null
+         * console.log(NNum.min([])); // null
      */
-    min(numbers = []) {
+    static min(numbers = []) {
         if (!Array.isArray(numbers) || numbers.length === 0) {
             return null;
         }
@@ -534,14 +487,12 @@ export class NNumber extends NObject {
      * @returns {number|null} Valeur maximale, ou `null` si le tableau est vide.
      *
      * @example <caption>Exemple 1 : Trouver le maximum d'un tableau</caption>
-     * const num = new NNumber();
-     * console.log(num.max([45, 12, 89, 3])); // 89
+         * console.log(NNum.max([45, 12, 89, 3])); // 89
      *
      * @example <caption>Exemple 2 : Tableau vide</caption>
-     * const num = new NNumber();
-     * console.log(num.max([])); // null
+         * console.log(NNum.max([])); // null
      */
-    max(numbers = []) {
+    static max(numbers = []) {
         if (!Array.isArray(numbers) || numbers.length === 0) {
             return null;
         }
@@ -556,15 +507,13 @@ export class NNumber extends NObject {
      * @returns {number} Entier aléatoire.
      *
      * @example <caption>Exemple 1 : Lancer un dé à 6 faces (entre 1 et 6)</caption>
-     * const num = new NNumber();
-     * const de = num.randomInt(1, 6);
-     * console.log(num.isBetween(de, 1, 6)); // true
+         * const de = NNum.randomInt(1, 6);
+     * console.log(NNum.isBetween(de, 1, 6)); // true
      *
      * @example <caption>Exemple 2 : Générer un nombre entre 0 et 100 par défaut</caption>
-     * const num = new NNumber();
-     * console.log(num.isInteger(num.randomInt())); // true
+         * console.log(NNum.isInteger(NNum.randomInt())); // true
      */
-    randomInt(min = 0, max = 100) {
+    static randomInt(min = 0, max = 100) {
         const lower = Math.ceil(Math.min(min, max));
         const upper = Math.floor(Math.max(min, max));
         return Math.floor(Math.random() * (upper - lower + 1)) + lower;
@@ -579,16 +528,14 @@ export class NNumber extends NObject {
      * @returns {number} Nombre décimal aléatoire.
      *
      * @example <caption>Exemple 1 : Nombre aléatoire entre 0 et 1 à 2 décimales</caption>
-     * const num = new NNumber();
-     * const val = num.randomFloat();
-     * console.log(num.isBetween(val, 0, 1)); // true
+         * const val = NNum.randomFloat();
+     * console.log(NNum.isBetween(val, 0, 1)); // true
      *
      * @example <caption>Exemple 2 : Prix aléatoire entre 10 et 50 à 2 décimales</caption>
-     * const num = new NNumber();
-     * const prix = num.randomFloat(10, 50, 2);
-     * console.log(num.isBetween(prix, 10, 50)); // true
+         * const prix = NNum.randomFloat(10, 50, 2);
+     * console.log(NNum.isBetween(prix, 10, 50)); // true
      */
-    randomFloat(min = 0, max = 1, decimals = 2) {
+    static randomFloat(min = 0, max = 1, decimals = 2) {
         const lower = Math.min(min, max);
         const upper = Math.max(min, max);
         const raw = Math.random() * (upper - lower) + lower;
@@ -611,19 +558,17 @@ export class NNumber extends NObject {
      * @returns {string} Nombre formaté sous forme de chaîne.
      *
      * @example <caption>Exemple 1 : Formater un grand entier avec espaces entre milliers</caption>
-     * const num = new NNumber();
-     * console.log(num.format(1250000)); // '1 250 000'
+         * console.log(NNum.format(1250000)); // '1 250 000'
      *
      * @example <caption>Exemple 2 : Formater avec 2 décimales et séparateurs personnalisés</caption>
-     * const num = new NNumber();
-     * console.log(num.format(1250000.5, { decimals: 2 })); // '1 250 000,50'
-     * console.log(num.format(1250000.5, {
+         * console.log(NNum.format(1250000.5, { decimals: 2 })); // '1 250 000,50'
+     * console.log(NNum.format(1250000.5, {
      *     decimals: 2,
      *     thousandsSeparator: ',',
      *     decimalSeparator: '.'
      * })); // '1,250,000.50'
      */
-    format(value, options = {}) {
+    static format(value, options = {}) {
         const opts = options ?? {};
         const dec = Math.max(0, Math.floor(Number(opts.decimals ?? 0)));
         const thousandsSep = opts.thousandsSeparator !== undefined ? String(opts.thousandsSeparator) : ' ';
@@ -653,13 +598,11 @@ export class NNumber extends NObject {
      * @returns {string} Montant monétaire formaté.
      *
      * @example <caption>Exemple 1 : Formatage en $ (par défaut)</caption>
-     * const num = new NNumber();
-     * console.log(num.formatCurrency(150000)); // '150 000 $'
+         * console.log(NNum.formatCurrency(150000)); // '150 000 $'
      *
      * @example <caption>Exemple 2 : Formatage en Euros ou Dollars avec symbole avant/après</caption>
-     * const num = new NNumber();
-     * console.log(num.formatCurrency(1250.5, { symbol: '€', decimals: 2 })); // '1 250,50 €'
-     * console.log(num.formatCurrency(99.99, {
+         * console.log(NNum.formatCurrency(1250.5, { symbol: '€', decimals: 2 })); // '1 250,50 €'
+     * console.log(NNum.formatCurrency(99.99, {
      *     symbol: '$',
      *     position: 'before',
      *     decimals: 2,
@@ -667,7 +610,7 @@ export class NNumber extends NObject {
      *     decimalSeparator: '.'
      * })); // '$99.99'
      */
-    formatCurrency(value, options = {}) {
+    static formatCurrency(value, options = {}) {
         const opts = options ?? {};
         const symbol = opts.symbol !== undefined ? String(opts.symbol) : '$';
         const position = opts.position === 'before' ? 'before' : 'after';
@@ -689,15 +632,13 @@ export class NNumber extends NObject {
      * @returns {string} Taille formatée avec son unité.
      *
      * @example <caption>Exemple 1 : Convertir des octets en Ko et Mo</caption>
-     * const num = new NNumber();
-     * console.log(num.formatBytes(1024));    // '1 Ko'
-     * console.log(num.formatBytes(1572864)); // '1.5 Mo'
+         * console.log(NNum.formatBytes(1024));    // '1 Ko'
+     * console.log(NNum.formatBytes(1572864)); // '1.5 Mo'
      *
      * @example <caption>Exemple 2 : Taille nulle</caption>
-     * const num = new NNumber();
-     * console.log(num.formatBytes(0));       // '0 o'
+         * console.log(NNum.formatBytes(0));       // '0 o'
      */
-    formatBytes(bytes, decimals = 2) {
+    static formatBytes(bytes, decimals = 2) {
         const b = Number(bytes) || 0;
         if (b <= 0) {
             return '0 o';
@@ -717,14 +658,12 @@ export class NNumber extends NObject {
      * @returns {string} Nombre formaté avec zéros en tête.
      *
      * @example <caption>Exemple 1 : Formater les heures ou mois sur 2 chiffres</caption>
-     * const num = new NNumber();
-     * console.log(num.pad(7));     // '07'
+         * console.log(NNum.pad(7));     // '07'
      *
      * @example <caption>Exemple 2 : Formater un numéro de facture sur 5 chiffres</caption>
-     * const num = new NNumber();
-     * console.log(num.pad(42, 5)); // '00042'
+         * console.log(NNum.pad(42, 5)); // '00042'
      */
-    pad(value, length = 2) {
+    static pad(value, length = 2) {
         const num = this.toInt(value, 0);
         const sign = num < 0 ? '-' : '';
         const digits = String(Math.abs(num)).padStart(Math.max(1, Math.floor(Number(length) || 2)), '0');
@@ -732,5 +671,5 @@ export class NNumber extends NObject {
     }
 }
 
-export default NNumber;
+export default NNum;
 

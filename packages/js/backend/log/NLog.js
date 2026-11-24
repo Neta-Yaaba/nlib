@@ -6,50 +6,45 @@
  * Fonctionnalités principales :
  * - Tous les logs (debug, info, warn, error) sont enregistrés dans un tampon en mémoire.
  * - L'affichage sur la console peut être activé via `consoleEnabled`.
- * - Intégration de `NEvent` avec initialisation paresseuse via `this.event` pour écouter les événements du logger.
+ * - Intégration de `NEvent` avec initialisation paresseuse via `this.event` pour écouter les événements du NLog.
  * - Méthodes d'exportation (`export`) et d'importation (`import`) pour la persistance ou l'envoi serveur.
  * - Enregistrement structuré des erreurs via `error()` et `captureException()`.
  */
 
 import { NEvent } from '../core/NEvent.js';
-import { NObject } from '../core/NObject.js';
 
 /**
  * @class NLog
- * @extends NObject
  * @description Gestionnaire d'enregistrement, de capture d'erreurs, d'événements et de consultation de journaux.
  *
  * @example <caption>Exemple 1 : Utilisation basique avec affichage console</caption>
- * const logger = new NLog({ consoleEnabled: true });
- * logger.info('Système prêt', { version: '1.0.0' });
- * logger.warn('Latence réseau élevée', { pingMs: 350 });
- * logger.error('Échec de lecture', { fichier: 'user.json' });
+ * NLog.configure({ consoleEnabled: true });
+ * NLog.info('Système prêt', { version: '1.0.0' });
+ * NLog.warn('Latence réseau élevée', { pingMs: 350 });
+ * NLog.error('Échec de lecture', { fichier: 'user.json' });
  *
- * @example <caption>Exemple 2 : Écoute des événements via logger.event</caption>
- * const logger = new NLog();
- * logger.event.on('log:error', (entry) => {
+ * @example <caption>Exemple 2 : Écoute des événements via NLog.event</caption>
+  * NLog.event.on('log:error', (entry) => {
  *     console.error('Alerte critique :', entry.message);
  * });
- * logger.event.on('clear', () => {
+ * NLog.event.on('clear', () => {
  *     console.log('Tampon de logs réinitialisé');
  * });
- * logger.error('Erreur SQL');
- * logger.clear();
+ * NLog.error('Erreur SQL');
+ * NLog.clear();
  *
  * @example <caption>Exemple 3 : Exportation et réimportation des journaux</caption>
- * const loggerA = new NLog();
- * loggerA.info('Étape 1 validée');
- * loggerA.info('Étape 2 validée');
+  * NLog.info('Étape 1 validée');
+ * NLog.info('Étape 2 validée');
  *
  * // Sérialisation pour stockage ou transmission
  * const dump = loggerA.export('json');
  *
  * // Restauration dans une autre instance
- * const loggerB = new NLog();
- * loggerB.import(dump);
+  * NLog.import(dump);
  * console.log(loggerB.getLogs().length); // 2
  */
-export class NLog extends NObject {
+export class NLog {
 
     // =========================================================================
     // Constantes statiques (Niveaux de sévérité)
@@ -65,8 +60,7 @@ export class NLog extends NObject {
      * console.log(NLog.LEVEL.ERROR); // 3
      *
      * @example <caption>Exemple 2 : Écrire un log en spécifiant directement le niveau statique</caption>
-     * const logger = new NLog();
-     * logger.write(NLog.LEVEL.WARN, 'Avertissement spécifique');
+          * NLog.write(NLog.LEVEL.WARN, 'Avertissement spécifique');
      */
     static LEVEL = Object.freeze({
         DEBUG: 0,
@@ -95,54 +89,47 @@ export class NLog extends NObject {
     // =========================================================================
 
     /**
-     * Instance interne de `NEvent` gérant les événements de ce logger.
+     * Instance interne de `NEvent` gérant les événements de ce NLog.
      * Reste à `null` et n'est instanciée que lors du premier appel à `this.event` (Lazy Initialization).
      * @type {NEvent|null}
      * @private
      */
-    #event = null;
+    static #event = null;
 
     /**
      * Indique si l'affichage sur la console JavaScript est actif.
      * @type {boolean}
      * @private
      */
-    #consoleEnabled = false;
+    static #consoleEnabled = false;
 
     /**
      * Indique si la capture et l'affichage des traces (stack trace) sont actifs.
      * @type {boolean}
      * @private
      */
-    #traceEnabled = true;
+    static #traceEnabled = true;
 
     /**
      * Nombre maximum d'entrées conservées dans le tampon mémoire.
      * @type {number}
      * @private
      */
-    #maxLogs = 1000;
+    static #maxLogs = 1000;
 
     /**
      * Tampon circulaire contenant toutes les entrées enregistrées.
      * @type {Array<Object>}
      * @private
      */
-    #buffer = [];
-
-    /**
-     * Contexte global par défaut associé à chaque entrée de log.
-     * @type {string|Object|null}
-     * @private
-     */
-    #context = null;
+    static #buffer = [];
 
     /**
      * Compteur séquentiel d'identifiant unique local pour chaque log.
      * @type {number}
      * @private
      */
-    #sequenceId = 0;
+    static #sequenceId = 0;
 
     // =========================================================================
     // Constructeur
@@ -151,28 +138,26 @@ export class NLog extends NObject {
     /**
      * Crée une nouvelle instance de `NLog`.
      *
-     * @param {Object} [options={}] - Options d'initialisation du logger.
+     * @param {Object} [options={}] - Options d'initialisation du NLog.
      * @param {boolean} [options.consoleEnabled=false] - Active immédiatement la sortie console.
      * @param {boolean} [options.traceEnabled=true] - Active la capture et l'affichage des traces d'appel (activé par défaut).
      * @param {number} [options.maxLogs=1000] - Capacité maximale du tampon en mémoire.
      * @param {string|Object|null} [options.context=null] - Contexte ou tag par défaut appliqué à chaque log.
      *
      * @example <caption>Exemple 1 : Instanciation minimale par défaut avec traces actives</caption>
-     * const logger = new NLog();
-     * logger.info('Message avec trace capturée');
-     * console.log(logger.getLogs()[0].caller); // Emplacement de l'appelant
+          * NLog.info('Message avec trace capturée');
+     * console.log(NLog.getLogs()[0].caller); // Emplacement de l'appelant
      *
      * @example <caption>Exemple 2 : Instanciation avec affichage console et traces</caption>
-     * const logger = new NLog({
+     * NLog.configure({
      *     consoleEnabled: true,
      *     traceEnabled: true,
      *     context: 'BaseDeDonnees',
      *     maxLogs: 500
      * });
-     * logger.info('Connexion établie à SQLite');
+     * NLog.info('Connexion établie à SQLite');
      */
-    constructor(options = {}) {
-        super(options);
+    static configure(options = {}) {
         if (options && typeof options === 'object') {
             if (typeof options.consoleEnabled === 'boolean') {
                 this.setConsoleEnabled(options.consoleEnabled);
@@ -183,9 +168,6 @@ export class NLog extends NObject {
             if (typeof options.maxLogs === 'number' && options.maxLogs > 0) {
                 this.#maxLogs = Math.floor(options.maxLogs);
             }
-            if (options.context !== undefined) {
-                this.#context = options.context;
-            }
         }
     }
 
@@ -194,7 +176,7 @@ export class NLog extends NObject {
     // =========================================================================
 
     /**
-     * Retourne le gestionnaire d'événements `NEvent` associé à ce logger.
+     * Retourne le gestionnaire d'événements `NEvent` associé à ce NLog.
      * La variable privée `#event` est initialisée lors du premier appel.
      *
      * Événements émis :
@@ -209,21 +191,20 @@ export class NLog extends NObject {
      * @returns {NEvent} Instance du gestionnaire d'événements.
      *
      * @example <caption>Exemple 1 : Écouter l'événement maxLogs pour archiver et vider le tampon</caption>
-     * const logger = new NLog({ maxLogs: 500 });
-     * logger.event.on('maxLogs', ({ maxLogs, target }) => {
+     * NLog.configure({ maxLogs: 500 });
+     * NLog.event.on('maxLogs', ({ maxLogs, target }) => {
      *     console.log(`Capacité maximale atteinte (${maxLogs}) : sauvegarde automatique`);
      *     const dump = target.export('json');
      *     target.clear();
      * });
      *
      * @example <caption>Exemple 2 : Écouter spécifiquement les avertissements ou erreurs</caption>
-     * const logger = new NLog();
-     * logger.event.on('log:warn', (entry) => {
+          * NLog.event.on('log:warn', (entry) => {
      *     console.warn(`Attention requise : ${entry.message}`);
      * });
-     * logger.warn('Charge CPU élevée');
+     * NLog.warn('Charge CPU élevée');
      */
-    get event() {
+    static get event() {
         if (!this.#event) {
             this.#event = new NEvent(this);
         }
@@ -237,16 +218,15 @@ export class NLog extends NObject {
      * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Activer la console dynamiquement</caption>
-     * const logger = new NLog();
-     * logger.setConsoleEnabled(true);
-     * logger.info('Ce log apparaît maintenant sur la console');
+          * NLog.setConsoleEnabled(true);
+     * NLog.info('Ce log apparaît maintenant sur la console');
      *
      * @example <caption>Exemple 2 : Désactiver la console pour le mode silencieux</caption>
-     * const logger = new NLog({ consoleEnabled: true });
-     * logger.setConsoleEnabled(false);
-     * logger.warn('Ce log est enregistré en mémoire mais pas affiché');
+     * NLog.configure({ consoleEnabled: true });
+     * NLog.setConsoleEnabled(false);
+     * NLog.warn('Ce log est enregistré en mémoire mais pas affiché');
      */
-    setConsoleEnabled(enabled = true) {
+    static setConsoleEnabled(enabled = true) {
         this.#consoleEnabled = Boolean(enabled);
         return this;
     }
@@ -257,16 +237,15 @@ export class NLog extends NObject {
      * @returns {boolean} `true` si les logs sont affichés sur la console, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérification de l'état de la console</caption>
-     * const logger = new NLog({ consoleEnabled: true });
-     * console.log(logger.isConsoleEnabled); // true
+     * NLog.configure({ consoleEnabled: true });
+     * console.log(NLog.isConsoleEnabled); // true
      *
      * @example <caption>Exemple 2 : Conditionner un affichage personnalisé selon l'état</caption>
-     * const logger = new NLog();
-     * if (!logger.isConsoleEnabled) {
-     *     logger.setConsoleEnabled(true);
+          * if (!NLog.isConsoleEnabled) {
+     *     NLog.setConsoleEnabled(true);
      * }
      */
-    get isConsoleEnabled() {
+    static get isConsoleEnabled() {
         return this.#consoleEnabled;
     }
 
@@ -277,16 +256,15 @@ export class NLog extends NObject {
      * @returns {this} L'instance courante pour permettre le chaînage fluide.
      *
      * @example <caption>Exemple 1 : Désactiver temporairement les traces</caption>
-     * const logger = new NLog();
-     * logger.setTraceEnabled(false);
-     * logger.info('Log concis sans trace');
+          * NLog.setTraceEnabled(false);
+     * NLog.info('Log concis sans trace');
      *
      * @example <caption>Exemple 2 : Réactiver les traces d'appel</caption>
-     * const logger = new NLog({ traceEnabled: false });
-     * logger.setTraceEnabled(true);
-     * logger.warn('Avertissement avec trace d\'appel');
+     * NLog.configure({ traceEnabled: false });
+     * NLog.setTraceEnabled(true);
+     * NLog.warn('Avertissement avec trace d\'appel');
      */
-    setTraceEnabled(enabled = true) {
+    static setTraceEnabled(enabled = true) {
         this.#traceEnabled = Boolean(enabled);
         return this;
     }
@@ -297,16 +275,14 @@ export class NLog extends NObject {
      * @returns {boolean} `true` si les traces sont activées, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérification de l'état des traces</caption>
-     * const logger = new NLog();
-     * console.log(logger.isTraceEnabled); // true
+          * console.log(NLog.isTraceEnabled); // true
      *
      * @example <caption>Exemple 2 : Conditionner un affichage selon l'état des traces</caption>
-     * const logger = new NLog();
-     * if (logger.isTraceEnabled) {
+          * if (NLog.isTraceEnabled) {
      *     console.log('Capture de trace active');
      * }
      */
-    get isTraceEnabled() {
+    static get isTraceEnabled() {
         return this.#traceEnabled;
     }
 
@@ -318,17 +294,16 @@ export class NLog extends NObject {
      * @returns {this} L'instance courante pour permettre le chaînage.
      *
      * @example <caption>Exemple 1 : Augmenter la capacité du tampon</caption>
-     * const logger = new NLog();
-     * logger.setMaxLogs(5000);
-     * console.log(logger.maxLogs); // 5000
+          * NLog.setMaxLogs(5000);
+     * console.log(NLog.maxLogs); // 5000
      *
      * @example <caption>Exemple 2 : Réduire la taille du tampon avec tronquage automatique</caption>
-     * const logger = new NLog({ maxLogs: 100 });
-     * for (let i = 0; i < 50; i++) logger.info(`Log ${i}`);
-     * logger.setMaxLogs(20);
-     * console.log(logger.getLogs().length); // 20
+     * NLog.configure({ maxLogs: 100 });
+     * for (let i = 0; i < 50; i++) NLog.info(`Log ${i}`);
+     * NLog.setMaxLogs(20);
+     * console.log(NLog.getLogs().length); // 20
      */
-    setMaxLogs(max) {
+    static setMaxLogs(max) {
         if (typeof max === 'number' && max > 0) {
             this.#maxLogs = Math.floor(max);
             let dropped = null;
@@ -353,53 +328,14 @@ export class NLog extends NObject {
      * @returns {number} Nombre maximum d'entrées conservées.
      *
      * @example <caption>Exemple 1 : Consulter la limite par défaut</caption>
-     * const logger = new NLog();
-     * console.log(logger.maxLogs); // 1000
+          * console.log(NLog.maxLogs); // 1000
      *
      * @example <caption>Exemple 2 : Consulter une limite personnalisée</caption>
-     * const logger = new NLog({ maxLogs: 250 });
-     * console.log(logger.maxLogs); // 250
+     * NLog.configure({ maxLogs: 250 });
+     * console.log(NLog.maxLogs); // 250
      */
-    get maxLogs() {
+    static get maxLogs() {
         return this.#maxLogs;
-    }
-
-    /**
-     * Définit le contexte par défaut associé à chaque log.
-     *
-     * @param {string|Object|null} context - Tag textuel (ex: `'Auth'`) ou objet de métadonnées.
-     * @returns {this} L'instance courante pour permettre le chaînage.
-     *
-     * @example <caption>Exemple 1 : Définir un tag textuel de service</caption>
-     * const logger = new NLog();
-     * logger.setContext('ServicePaiement');
-     * logger.info('Transaction créée'); // L'entrée aura context: 'ServicePaiement'
-     *
-     * @example <caption>Exemple 2 : Définir un objet contextuel complexe</caption>
-     * const logger = new NLog();
-     * logger.setContext({ module: 'Reseau', ip: '192.168.1.1' });
-     * logger.warn('Paquet retardé');
-     */
-    setContext(context) {
-        this.#context = context;
-        return this;
-    }
-
-    /**
-     * Retourne le contexte global par défaut actuellement configuré.
-     *
-     * @returns {string|Object|null} Le contexte actif ou `null`.
-     *
-     * @example <caption>Exemple 1 : Vérifier le contexte par défaut</caption>
-     * const logger = new NLog({ context: 'Securite' });
-     * console.log(logger.context); // 'Securite'
-     *
-     * @example <caption>Exemple 2 : Vérification sur une instance sans contexte</caption>
-     * const logger = new NLog();
-     * console.log(logger.context); // null
-     */
-    get context() {
-        return this.#context;
     }
 
     // =========================================================================
@@ -415,14 +351,14 @@ export class NLog extends NObject {
      * @returns {Object} L'objet entrée de log créé et stocké.
      *
      * @example <caption>Exemple 1 : Débogage simple d'une valeur de variable</caption>
-     * const logger = new NLog({ consoleEnabled: true });
-     * logger.debug('Valeur reçue du formulaire', { champ: 'email', valeur: 'test@example.com' });
+     * NLog.configure({ consoleEnabled: true });
+     * NLog.debug('Valeur reçue du formulaire', { champ: 'email', valeur: 'test@example.com' });
      *
      * @example <caption>Exemple 2 : Débogage avec surcharge ponctuelle du contexte</caption>
-     * const logger = new NLog({ context: 'Global' });
-     * logger.debug('Requête SQL brute', { sql: 'SELECT * FROM clients' }, 'SQLDriver');
+     * NLog.configure({ context: 'Global' });
+     * NLog.debug('Requête SQL brute', { sql: 'SELECT * FROM clients' }, 'SQLDriver');
      */
-    debug(message, details = null, context = null) {
+    static debug(message, details = null, context = null) {
         return this.write(NLog.LEVEL.DEBUG, message, details, context);
     }
 
@@ -435,14 +371,13 @@ export class NLog extends NObject {
      * @returns {Object} L'objet entrée de log créé et stocké.
      *
      * @example <caption>Exemple 1 : Informer du démarrage d'une opération</caption>
-     * const logger = new NLog();
-     * logger.info('Initialisation de l application terminée');
+          * NLog.info('Initialisation de l application terminée');
      *
      * @example <caption>Exemple 2 : Journaliser un événement métier avec détails</caption>
-     * const logger = new NLog({ consoleEnabled: true });
-     * logger.info('Utilisateur connecté', { utilisateurId: 42, role: 'admin' }, 'Authentification');
+     * NLog.configure({ consoleEnabled: true });
+     * NLog.info('Utilisateur connecté', { utilisateurId: 42, role: 'admin' }, 'Authentification');
      */
-    info(message, details = null, context = null) {
+    static info(message, details = null, context = null) {
         return this.write(NLog.LEVEL.INFO, message, details, context);
     }
 
@@ -455,14 +390,13 @@ export class NLog extends NObject {
      * @returns {Object} L'objet entrée de log créé et stocké.
      *
      * @example <caption>Exemple 1 : Signaler une ressource presque saturée</caption>
-     * const logger = new NLog({ consoleEnabled: true });
-     * logger.warn('Espace disque disponible inférieur à 10%', { disponibleMo: 450 });
+     * NLog.configure({ consoleEnabled: true });
+     * NLog.warn('Espace disque disponible inférieur à 10%', { disponibleMo: 450 });
      *
      * @example <caption>Exemple 2 : Signaler l'utilisation d'une méthode dépréciée</caption>
-     * const logger = new NLog();
-     * logger.warn('La méthode getAnciennesDonnees() est dépréciée', { alternative: 'getDonnees()' });
+          * NLog.warn('La méthode getAnciennesDonnees() est dépréciée', { alternative: 'getDonnees()' });
      */
-    warn(message, details = null, context = null) {
+    static warn(message, details = null, context = null) {
         return this.write(NLog.LEVEL.WARN, message, details, context);
     }
 
@@ -475,15 +409,14 @@ export class NLog extends NObject {
      * @returns {Object} L'objet entrée de log créé et stocké.
      *
      * @example <caption>Exemple 1 : Journaliser une erreur avec un message et des détails</caption>
-     * const logger = new NLog({ consoleEnabled: true });
-     * logger.error('Échec de la validation du formulaire', { champ: 'motDePasse', erreur: 'Trop court' });
+     * NLog.configure({ consoleEnabled: true });
+     * NLog.error('Échec de la validation du formulaire', { champ: 'motDePasse', erreur: 'Trop court' });
      *
      * @example <caption>Exemple 2 : Passer un objet d'erreur natif avec trace d'appel automatique</caption>
-     * const logger = new NLog();
-     * const err = new Error('Connexion réseau interrompue');
-     * logger.error('Impossible de joindre le serveur distant', err, 'Reseau');
+          * const err = new Error('Connexion réseau interrompue');
+     * NLog.error('Impossible de joindre le serveur distant', err, 'Reseau');
      */
-    error(message, errorOrDetails = null, context = null) {
+    static error(message, errorOrDetails = null, context = null) {
         return this.write(NLog.LEVEL.ERROR, message, errorOrDetails, context);
     }
 
@@ -498,26 +431,25 @@ export class NLog extends NObject {
      * @returns {{ success: boolean, message: string, code: any, log: Object }} Objet résultat sécurisé.
      *
      * @example <caption>Exemple 1 : Capture lors d'un parsing JSON erroné</caption>
-     * const logger = new NLog({ consoleEnabled: true });
+     * NLog.configure({ consoleEnabled: true });
      * try {
      *     JSON.parse('invalide');
      * } catch (err) {
-     *     const res = logger.captureException(err, { source: 'fichierConfig' });
+     *     const res = NLog.captureException(err, { source: 'fichierConfig' });
      *     console.log(res.success); // false
      *     console.log(res.message); // message de SyntaxError natif
      * }
      *
      * @example <caption>Exemple 2 : Capture d'une erreur personnalisée avec code d'erreur et écoute d'événement</caption>
-     * const logger = new NLog();
-     * logger.event.on('exception', ({ error }) => {
+          * NLog.event.on('exception', ({ error }) => {
      *     console.log('Capture effectuée pour code :', error.code);
      * });
      * const customErr = new Error('Accès interdit');
      * customErr.code = 403;
-     * const rapport = logger.captureException(customErr, { utilisateur: 'invite' });
+     * const rapport = NLog.captureException(customErr, { utilisateur: 'invite' });
      * console.log(rapport.code); // 403
      */
-    captureException(error, additionalContext = {}) {
+    static captureException(error, additionalContext = {}) {
         let message = 'Une erreur est survenue';
         let stack = null;
         let code = null;
@@ -572,16 +504,14 @@ export class NLog extends NObject {
      * @returns {Object} L'entrée créée et archivée.
      *
      * @example <caption>Exemple 1 : Écriture d'un log avec niveau numérique statique</caption>
-     * const logger = new NLog();
-     * const entree = logger.write(NLog.LEVEL.INFO, 'Sauvegarde achevée', { dureeMs: 120 });
+          * const entree = NLog.write(NLog.LEVEL.INFO, 'Sauvegarde achevée', { dureeMs: 120 });
      * console.log(entree.level); // 'INFO'
      *
      * @example <caption>Exemple 2 : Écriture d'un log avec écoute d'événement en temps réel</caption>
-     * const logger = new NLog();
-     * logger.event.on('log', (entree) => console.log('Événement log :', entree.message));
-     * logger.write('warn', 'Fichier temporaire non purgé');
+          * NLog.event.on('log', (entree) => console.log('Événement log :', entree.message));
+     * NLog.write('warn', 'Fichier temporaire non purgé');
      */
-    write(level, message, details = null, context = null, extra = {}) {
+    static write(level, message, details = null, context = null, extra = {}) {
         try {
             const levelNum = typeof level === 'number'
                 ? level
@@ -616,7 +546,7 @@ export class NLog extends NObject {
 
             const resolvedContext = (context !== null && context !== undefined)
                 ? context
-                : this.#context;
+                : null;
 
             this.#sequenceId += 1;
 
@@ -694,20 +624,18 @@ export class NLog extends NObject {
      * @returns {Array<Object>} Copie des entrées correspondantes.
      *
      * @example <caption>Exemple 1 : Obtenir tous les logs enregistrés</caption>
-     * const logger = new NLog();
-     * logger.info('Message 1');
-     * logger.warn('Message 2');
-     * console.log(logger.getLogs().length); // 2
+          * NLog.info('Message 1');
+     * NLog.warn('Message 2');
+     * console.log(NLog.getLogs().length); // 2
      *
      * @example <caption>Exemple 2 : Filtrer les erreurs uniquement avec une limite</caption>
-     * const logger = new NLog();
-     * logger.info('Info 1');
-     * logger.error('Erreur SQL');
-     * logger.error('Erreur Fichier');
-     * const erreurs = logger.getLogs({ level: 'error', limit: 1 });
+          * NLog.info('Info 1');
+     * NLog.error('Erreur SQL');
+     * NLog.error('Erreur Fichier');
+     * const erreurs = NLog.getLogs({ level: 'error', limit: 1 });
      * console.log(erreurs.length); // 1
      */
-    getLogs(filter = {}) {
+    static getLogs(filter = {}) {
         try {
             const f = (filter && typeof filter === 'object') ? filter : {};
             let result = [...this.#buffer];
@@ -755,18 +683,16 @@ export class NLog extends NObject {
      * @returns {this} L'instance courante pour permettre le chaînage.
      *
      * @example <caption>Exemple 1 : Réinitialiser le tampon après traitement</caption>
-     * const logger = new NLog();
-     * logger.info('Donnée temporaire');
-     * logger.clear();
-     * console.log(logger.getLogs().length); // 0
+          * NLog.info('Donnée temporaire');
+     * NLog.clear();
+     * console.log(NLog.getLogs().length); // 0
      *
      * @example <caption>Exemple 2 : Chaînage après vidage avec notification d'événement</caption>
-     * const logger = new NLog();
-     * logger.event.on('clear', () => console.log('Journal effacé'));
-     * logger.info('Ancien log');
-     * logger.clear().info('Nouveau log post-nettoyage');
+          * NLog.event.on('clear', () => console.log('Journal effacé'));
+     * NLog.info('Ancien log');
+     * NLog.clear().info('Nouveau log post-nettoyage');
      */
-    clear() {
+    static clear() {
         this.#buffer = [];
         if (this.#event) {
             this.#event.emit('clear', { target: this });
@@ -783,18 +709,16 @@ export class NLog extends NObject {
      * @returns {string|Array<Object>} Chaîne sérialisée ou tableau clone selon le format choisi.
      *
      * @example <caption>Exemple 1 : Exportation au format JSON</caption>
-     * const logger = new NLog();
-     * logger.info('Connexion réussie', { id: 10 });
-     * const jsonTexte = logger.export('json');
+          * NLog.info('Connexion réussie', { id: 10 });
+     * const jsonTexte = NLog.export('json');
      * console.log(typeof jsonTexte); // 'string'
      *
      * @example <caption>Exemple 2 : Exportation au format texte brut lisible ou tableau brut</caption>
-     * const logger = new NLog();
-     * logger.warn('Disque presque saturé');
-     * const texteRapport = logger.export('text'); // Lignes formatées
-     * const copieTableau = logger.export('raw');  // Array d'objets indépendant
+          * NLog.warn('Disque presque saturé');
+     * const texteRapport = NLog.export('text'); // Lignes formatées
+     * const copieTableau = NLog.export('raw');  // Array d'objets indépendant
      */
-    export(format = 'json') {
+    static export(format = 'json') {
         try {
             if (format === 'raw') {
                 return typeof structuredClone === 'function'
@@ -826,20 +750,18 @@ export class NLog extends NObject {
      * @returns {{ success: boolean, count: number }} Résultat sécurisé de l'importation.
      *
      * @example <caption>Exemple 1 : Restaurer des logs depuis une chaîne JSON</caption>
-     * const logger = new NLog();
-     * const dump = '[{"id":1,"timestamp":"2026-11-13T09:00:00Z","level":"INFO","message":"Test import"}]';
-     * const res = logger.import(dump);
+          * const dump = '[{"id":1,"timestamp":"2026-11-13T09:00:00Z","level":"INFO","message":"Test import"}]';
+     * const res = NLog.import(dump);
      * console.log(res.success); // true
      * console.log(res.count);   // 1
      *
      * @example <caption>Exemple 2 : Écraser le tampon actuel sans fusion (merge: false) avec écoute d'événement</caption>
-     * const logger = new NLog();
-     * logger.event.on('import', ({ count }) => console.log(`${count} logs importés`));
-     * logger.info('Log existant qui sera remplacé');
-     * logger.import([{ message: 'Seul log restant', level: 'WARN' }], { merge: false });
-     * console.log(logger.getLogs().length); // 1
+          * NLog.event.on('import', ({ count }) => console.log(`${count} logs importés`));
+     * NLog.info('Log existant qui sera remplacé');
+     * NLog.import([{ message: 'Seul log restant', level: 'WARN' }], { merge: false });
+     * console.log(NLog.getLogs().length); // 1
      */
-    import(data, options = {}) {
+    static import(data, options = {}) {
         try {
             let parsed = data;
             if (typeof data === 'string') {
@@ -897,27 +819,25 @@ export class NLog extends NObject {
      * @returns {void}
      *
      * @example <caption>Exemple 1 : Destruction simple et libération mémoire</caption>
-     * const logger = new NLog();
-     * logger.info('Données à supprimer');
-     * logger.destroy();
-     * console.log(logger.getLogs().length); // 0
+          * NLog.info('Données à supprimer');
+     * NLog.destroy();
+     * console.log(NLog.getLogs().length); // 0
      *
      * @example <caption>Exemple 2 : Écouter l'événement beforeDestroy pour effectuer une sauvegarde finale</caption>
-     * const logger = new NLog();
-     * logger.event.on('beforeDestroy', () => {
-     *     const dump = logger.export('json');
+          * NLog.event.on('beforeDestroy', () => {
+     *     const dump = NLog.export('json');
      *     // Sauvegarde finale...
      * });
-     * logger.destroy();
+     * NLog.destroy();
      */
-    destroy() {
+    static destroy() {
         if (this.#event) {
             this.#event.emit('beforeDestroy', { target: this });
             this.#event.clear();
             this.#event = null;
         }
         this.#buffer = [];
-        super.destroy();
+        this.#sequenceId = 0;
     }
 
     // =========================================================================
@@ -930,7 +850,7 @@ export class NLog extends NObject {
      * @param {Object} entry - L'objet représentant le log à afficher.
      * @private
      */
-    #printToConsole(entry) {
+    static #printToConsole(entry) {
         try {
             const prefix = `[${entry.timestamp}] [${entry.level}]`;
             const ctx = entry.context ? `[${typeof entry.context === 'object' ? JSON.stringify(entry.context) : entry.context}]` : '';
@@ -991,7 +911,7 @@ export class NLog extends NObject {
      * @returns {{ stack: string|null, caller: string|null }} Objet contenant la trace propre et l'appelant.
      * @private
      */
-    #captureTrace(existingStack = null) {
+    static #captureTrace(existingStack = null) {
         try {
             const rawStack = existingStack || (new Error().stack);
             if (!rawStack || typeof rawStack !== 'string') {
@@ -1065,7 +985,7 @@ export class NLog extends NObject {
      * @returns {string} Nom du niveau en majuscules (ex: `'INFO'`, `'ERROR'`).
      * @private
      */
-    #getLevelLabel(num) {
+    static #getLevelLabel(num) {
         switch (num) {
             case NLog.LEVEL.DEBUG: return 'DEBUG';
             case NLog.LEVEL.INFO: return 'INFO';
@@ -1074,28 +994,6 @@ export class NLog extends NObject {
             case NLog.LEVEL.NONE: return 'NONE';
             default: return 'INFO';
         }
-    }
-
-    // =========================================================================
-    // Méthode statique de fabrique
-    // =========================================================================
-
-    /**
-     * Méthode de fabrique standard permettant d'instancier la classe sans utiliser directement le mot-clé `new`.
-     *
-     * @param {Object} [options={}] - Options de configuration identiques au constructeur.
-     * @returns {NLog} Nouvelle instance configurée de `NLog`.
-     *
-     * @example <caption>Exemple 1 : Création directe via la méthode statique create</caption>
-     * const logger = NLog.create({ consoleEnabled: true });
-     * logger.info('Logger créé via factory');
-     *
-     * @example <caption>Exemple 2 : Création avec un contexte et une limite mémoire</caption>
-     * const logger = NLog.create({ context: 'WorkerCalcul', maxLogs: 200 });
-     * logger.debug('Traitement démarré');
-     */
-    static create(options = {}) {
-        return new this(options);
     }
 }
 

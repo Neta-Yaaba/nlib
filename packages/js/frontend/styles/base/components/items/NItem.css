@@ -1,0 +1,33 @@
+/**
+ * @file NItem.css
+ * @package @nlib/js-frontend
+ * @description Styles structurels partagés pour `NItem` (`.n-item`).
+ */
+
+.n-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--n-space-2);
+    padding: var(--n-space-2) var(--n-space-3);
+    color: var(--n-text);
+    background: var(--n-surface);
+    border-radius: var(--n-radius-md);
+    transition:
+        background-color var(--n-duration-fast) var(--n-ease-default),
+        opacity var(--n-duration-fast) var(--n-ease-default);
+}
+
+.n-item--selected {
+    background: var(--n-primary-soft);
+}
+
+.n-item--loading {
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+.n-item--disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}

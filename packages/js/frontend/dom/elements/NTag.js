@@ -1034,14 +1034,14 @@ export class NTag extends NObject {
      * @example <caption>Exemple 1 : Redéfinir applyLanguage dans une sous-classe</caption>
      * class SaveButton extends NTag {
      *     applyLanguage() {
-     *         return this.setText(this.util.lang.get('actions.save'));
+     *         return this.setText(this.lang.get('actions.save'));
      *     }
      * }
      *
      * @example <caption>Exemple 2 : Fournir applyLanguage via les options</caption>
      * const title = new NTag({
      *     tagName: 'h1',
-     *     applyLanguage: (tag) => tag.setText(tag.util.lang.get('home.title'))
+     *     applyLanguage: (tag) => tag.setText(tag.lang.get('home.title'))
      * });
      */
     applyLanguage() {

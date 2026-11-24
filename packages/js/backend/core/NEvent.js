@@ -5,7 +5,7 @@
  * dans l'écosystème NLib.
  *
  * Gestion des erreurs :
- * - Les erreurs survenues dans les fonctions de rappel (listeners) sont capturées et journalisées via `NUtil.log.error`
+ * - Les erreurs survenues dans les fonctions de rappel (listeners) sont capturées et journalisées via `NLog.error`
  *   tout en poursuivant l'exécution des autres écouteurs.
  */
 
@@ -359,7 +359,7 @@ export class NEvent {
      *
      * @example <caption>Exemple 2 : Émettre un événement avec un objet de données</caption>
      * const evt = new NEvent();
-     * evt.on('erreur', ({ code, message }) => NUtil.log.error(`Erreur ${code} : ${message}`));
+     * evt.on('erreur', ({ code, message }) => NLog.error(`Erreur ${code} : ${message}`));
      * evt.emit('erreur', { code: 500, message: 'Serveur indisponible' });
      */
     emit(event, data = null) {
@@ -431,7 +431,7 @@ export class NEvent {
 
     /**
      * Enregistre la façade utilitaire `NUtil` auprès de `NEvent` pour permettre l'accès
-     * via `evt.util` et la journalisation via `NUtil.log` sans import circulaire.
+     * via `evt.util` et la journalisation via `NLog` sans import circulaire.
      *
      * @param {any} util - Classe ou façade `NUtil` à associer.
      * @returns {typeof NEvent} La classe `NEvent` pour permettre le chaînage.

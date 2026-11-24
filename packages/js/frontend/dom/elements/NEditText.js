@@ -1,11 +1,9 @@
 import { NTag } from './NTag.js';
 
-const TEXT_TYPES = new Set(['text', 'email', 'password', 'search', 'tel', 'url']);
-
 /**
  * @class NEditText
  * @extends NTag
- * @description �l�ment natif `<input>` de saisie textuelle (`text`, `email`, `password`, `search`, `tel`, `url`, `.n-edittext`) h�ritant de `NTag`.
+ * @description Élément natif `<input>` de saisie textuelle (`text`, `email`, `password`, `search`, `tel`, `url`, `.n-edittext`) héritant de `NTag`.
  *
  * @example <caption>Exemple 1 : Champ texte standard</caption>
  * const username = new NEditText({ name: 'username', placeholder: 'Nom d\'utilisateur' });
@@ -16,7 +14,14 @@ const TEXT_TYPES = new Set(['text', 'email', 'password', 'search', 'tel', 'url']
 export class NEditText extends NTag {
 
     /**
-     * Cr�e une nouvelle instance `NEditText`.
+     * Types HTML textuels pris en charge.
+     * @type {Set<string>}
+     * @private
+     */
+    static #TYPES = new Set(['text', 'email', 'password', 'search', 'tel', 'url']);
+
+    /**
+     * Crée une nouvelle instance `NEditText`.
      *
      * @constructor
      * @param {Object} [options={}] - Options de configuration.
@@ -26,10 +31,10 @@ export class NEditText extends NTag {
      * @param {string} [options.placeholder] - Texte indicatif.
      * @param {number} [options.minLength] - Longueur minimale.
      * @param {number} [options.maxLength] - Longueur maximale.
-     * @param {string} [options.pattern] - Expression r�guli�re de validation.
+     * @param {string} [options.pattern] - Expression régulière de validation.
      * @param {string} [options.autocomplete] - Attribut `autocomplete`.
      * @param {boolean} [options.autofocus=false] - Focus automatique.
-     * @param {boolean} [options.disabled=false] - D�sactive le champ.
+     * @param {boolean} [options.disabled=false] - Désactive le champ.
      * @param {boolean} [options.readonly=false] - Passe en lecture seule.
      * @param {boolean} [options.required=false] - Rend le champ obligatoire.
      *
@@ -132,7 +137,7 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit le type de saisie textuelle (`text`, `email`, `password`, `search`, `tel`, `url`).
+     * Définit le type de saisie textuelle (`text`, `email`, `password`, `search`, `tel`, `url`).
      *
      * @param {string} type - Type de saisie.
      * @returns {this} L'instance courante.
@@ -145,17 +150,17 @@ export class NEditText extends NTag {
      */
     setType(type) {
         const clean = typeof type === 'string' ? type.trim().toLowerCase() : 'text';
-        const resolved = TEXT_TYPES.has(clean) ? clean : 'text';
+        const resolved = NEditText.#TYPES.has(clean) ? clean : 'text';
         return this.setAttr('type', resolved);
     }
 
     /**
-     * D�finit ou retire l'attribut `name`.
+     * Définit ou retire l'attribut `name`.
      *
      * @param {string|null} name - Nom du champ.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir le nom</caption>
+     * @example <caption>Exemple 1 : Définir le nom</caption>
      * tb.setName('username');
      *
      * @example <caption>Exemple 2 : Retirer le nom</caption>
@@ -169,12 +174,12 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit la valeur textuelle du champ.
+     * Définit la valeur textuelle du champ.
      *
-     * @param {*} value - Valeur � assigner.
+     * @param {*} value - Valeur à assigner.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir une valeur</caption>
+     * @example <caption>Exemple 1 : Définir une valeur</caption>
      * tb.setValue('Jean');
      *
      * @example <caption>Exemple 2 : Vider avec null</caption>
@@ -195,7 +200,7 @@ export class NEditText extends NTag {
      * @example <caption>Exemple 1 : Lire la valeur</caption>
      * const val = tb.getValue();
      *
-     * @example <caption>Exemple 2 : V�rifier apr�s modification</caption>
+     * @example <caption>Exemple 2 : Vérifier après modification</caption>
      * tb.setValue('test');
      * console.log(tb.getValue()); // 'test'
      */
@@ -204,12 +209,12 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit ou retire l'attribut `placeholder`.
+     * Définit ou retire l'attribut `placeholder`.
      *
      * @param {string|null} placeholder - Texte indicatif.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir le placeholder</caption>
+     * @example <caption>Exemple 1 : Définir le placeholder</caption>
      * tb.setPlaceholder('Votre e-mail');
      *
      * @example <caption>Exemple 2 : Retirer le placeholder</caption>
@@ -223,12 +228,12 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit la longueur minimale (`minlength`).
+     * Définit la longueur minimale (`minlength`).
      *
-     * @param {number|null} length - Nombre minimal de caract�res.
+     * @param {number|null} length - Nombre minimal de caractères.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : Imposer 6 caract�res</caption>
+     * @example <caption>Exemple 1 : Imposer 6 caractères</caption>
      * tb.setMinLength(6);
      *
      * @example <caption>Exemple 2 : Supprimer la limite</caption>
@@ -243,12 +248,12 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit la longueur maximale (`maxlength`).
+     * Définit la longueur maximale (`maxlength`).
      *
-     * @param {number|null} length - Nombre maximal de caract�res.
+     * @param {number|null} length - Nombre maximal de caractères.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : Limiter � 100 caract�res</caption>
+     * @example <caption>Exemple 1 : Limiter à 100 caractères</caption>
      * tb.setMaxLength(100);
      *
      * @example <caption>Exemple 2 : Supprimer la limite</caption>
@@ -263,12 +268,12 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit ou retire le motif de validation (`pattern`).
+     * Définit ou retire le motif de validation (`pattern`).
      *
-     * @param {string|null} pattern - Expression r�guli�re HTML5.
+     * @param {string|null} pattern - Expression régulière HTML5.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : Code postal � 5 chiffres</caption>
+     * @example <caption>Exemple 1 : Code postal à 5 chiffres</caption>
      * tb.setPattern('\\d{5}');
      *
      * @example <caption>Exemple 2 : Retirer le motif</caption>
@@ -282,12 +287,12 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit ou retire l'attribut `autocomplete`.
+     * Définit ou retire l'attribut `autocomplete`.
      *
      * @param {string|null} value - Valeur `autocomplete`.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir autocomplete</caption>
+     * @example <caption>Exemple 1 : Définir autocomplete</caption>
      * tb.setAutocomplete('email');
      *
      * @example <caption>Exemple 2 : Retirer autocomplete</caption>
@@ -301,15 +306,15 @@ export class NEditText extends NTag {
     }
 
     /**
-     * Active ou d�sactive le champ.
+     * Active ou désactive le champ.
      *
-     * @param {boolean} [disabled=true] - `true` pour d�sactiver.
+     * @param {boolean} [disabled=true] - `true` pour désactiver.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�sactiver</caption>
+     * @example <caption>Exemple 1 : Désactiver</caption>
      * tb.setDisabled(true);
      *
-     * @example <caption>Exemple 2 : R�activer</caption>
+     * @example <caption>Exemple 2 : Réactiver</caption>
      * tb.setDisabled(false);
      */
     setDisabled(disabled = true) {
@@ -320,14 +325,14 @@ export class NEditText extends NTag {
     }
 
     /**
-     * Indique si le champ est d�sactiv�.
+     * Indique si le champ est désactivé.
      *
-     * @returns {boolean} `true` si d�sactiv�.
+     * @returns {boolean} `true` si désactivé.
      *
-     * @example <caption>Exemple 1 : V�rifier l'�tat</caption>
+     * @example <caption>Exemple 1 : Vérifier l'état</caption>
      * console.log(tb.isDisabled());
      *
-     * @example <caption>Exemple 2 : Apr�s setDisabled</caption>
+     * @example <caption>Exemple 2 : Après setDisabled</caption>
      * tb.setDisabled(true);
      * console.log(tb.isDisabled()); // true
      */
@@ -336,7 +341,7 @@ export class NEditText extends NTag {
     }
 
     /**
-     * Passe le champ en lecture seule ou �ditable.
+     * Passe le champ en lecture seule ou éditable.
      *
      * @param {boolean} [readonly=true] - `true` pour lecture seule.
      * @returns {this} L'instance courante.
@@ -344,7 +349,7 @@ export class NEditText extends NTag {
      * @example <caption>Exemple 1 : Activer la lecture seule</caption>
      * tb.setReadOnly(true);
      *
-     * @example <caption>Exemple 2 : Autoriser l'�dition</caption>
+     * @example <caption>Exemple 2 : Autoriser l'édition</caption>
      * tb.setReadOnly(false);
      */
     setReadOnly(readonly = true) {
@@ -359,10 +364,10 @@ export class NEditText extends NTag {
      *
      * @returns {boolean} `true` si en lecture seule.
      *
-     * @example <caption>Exemple 1 : V�rifier l'�tat</caption>
+     * @example <caption>Exemple 1 : Vérifier l'état</caption>
      * console.log(tb.isReadOnly());
      *
-     * @example <caption>Exemple 2 : Apr�s setReadOnly</caption>
+     * @example <caption>Exemple 2 : Après setReadOnly</caption>
      * tb.setReadOnly(true);
      * console.log(tb.isReadOnly()); // true
      */
@@ -371,7 +376,7 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit le caract�re obligatoire (`required`).
+     * Définit le caractère obligatoire (`required`).
      *
      * @param {boolean} [required=true] - `true` pour rendre obligatoire.
      * @returns {this} L'instance courante.
@@ -389,12 +394,12 @@ export class NEditText extends NTag {
     /**
      * Indique si le champ est obligatoire.
      *
-     * @returns {boolean} `true` si `required` est pr�sent.
+     * @returns {boolean} `true` si `required` est présent.
      *
-     * @example <caption>Exemple 1 : V�rifier l'obligation</caption>
+     * @example <caption>Exemple 1 : Vérifier l'obligation</caption>
      * console.log(tb.isRequired());
      *
-     * @example <caption>Exemple 2 : Apr�s setRequired</caption>
+     * @example <caption>Exemple 2 : Après setRequired</caption>
      * tb.setRequired(true);
      * console.log(tb.isRequired()); // true
      */
@@ -403,14 +408,14 @@ export class NEditText extends NTag {
     }
 
     /**
-     * S�lectionne le texte contenu dans le champ.
+     * Sélectionne le texte contenu dans le champ.
      *
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : S�lectionner le texte</caption>
+     * @example <caption>Exemple 1 : Sélectionner le texte</caption>
      * tb.select();
      *
-     * @example <caption>Exemple 2 : Focus puis s�lection</caption>
+     * @example <caption>Exemple 2 : Focus puis sélection</caption>
      * tb.focus().select();
      */
     select() {
@@ -421,7 +426,7 @@ export class NEditText extends NTag {
     }
 
     /**
-     * V�rifie la validit� HTML5 du champ.
+     * Vérifie la validité HTML5 du champ.
      *
      * @returns {boolean} `true` si valide.
      *
@@ -439,11 +444,11 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�clenche l'affichage natif du message de validation.
+     * Déclenche l'affichage natif du message de validation.
      *
      * @returns {boolean} `true` si valide.
      *
-     * @example <caption>Exemple 1 : Reporter la validit�</caption>
+     * @example <caption>Exemple 1 : Reporter la validité</caption>
      * tb.reportValidity();
      *
      * @example <caption>Exemple 2 : Avant soumission</caption>
@@ -456,13 +461,13 @@ export class NEditText extends NTag {
     }
 
     /**
-     * D�finit un message de validation personnalis�.
+     * Définit un message de validation personnalisé.
      *
-     * @param {string} [message=''] - Message d'erreur ou cha�ne vide.
+     * @param {string} [message=''] - Message d'erreur ou chaîne vide.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir une erreur</caption>
-     * tb.setCustomValidity('Identifiant d�j� pris.');
+     * @example <caption>Exemple 1 : Définir une erreur</caption>
+     * tb.setCustomValidity('Identifiant déjà pris.');
      *
      * @example <caption>Exemple 2 : Effacer l'erreur</caption>
      * tb.setCustomValidity('');
@@ -482,7 +487,7 @@ export class NEditText extends NTag {
      * @example <caption>Exemple 1 : Lire le message</caption>
      * console.log(tb.getValidationMessage());
      *
-     * @example <caption>Exemple 2 : Apr�s erreur personnalis�e</caption>
+     * @example <caption>Exemple 2 : Après erreur personnalisée</caption>
      * tb.setCustomValidity('Invalide');
      * console.log(tb.getValidationMessage()); // 'Invalide'
      */
@@ -498,7 +503,7 @@ export class NEditText extends NTag {
      * @example <caption>Exemple 1 : Vider le champ</caption>
      * tb.clear();
      *
-     * @example <caption>Exemple 2 : V�rifier apr�s vidage</caption>
+     * @example <caption>Exemple 2 : Vérifier après vidage</caption>
      * tb.clear();
      * console.log(tb.getValue()); // ''
      */

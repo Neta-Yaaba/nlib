@@ -24,7 +24,7 @@ import { NImage } from './NImage.js';
  * @example <caption>Exemple 2 : Bouton avec état de chargement et traduction</caption>
  * const submitBtn = new NButton({
  *     type: 'submit',
- *     applyLanguage: (btn) => btn.setText(btn.util.lang.get('actions.submit'))
+ *     applyLanguage: (btn) => btn.setText(btn.lang.get('actions.submit'))
  * });
  * submitBtn.applyLanguage().setLoading(true);
  */

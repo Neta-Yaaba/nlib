@@ -562,7 +562,7 @@ export class NFrame extends NTag {
      */
     verifyAlert(data, emptyMessage = '') {
         if (!emptyMessage) {
-            emptyMessage = this.util.lang.get('no_data');
+            emptyMessage = this.lang.get('no_data');
         }
         if (data && typeof data === 'object' && !Array.isArray(data) && data.error) {
             this.showAlert(String(data.message || data.error), data.icon ?? null);

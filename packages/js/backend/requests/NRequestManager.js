@@ -6,6 +6,7 @@
  */
 
 import { NObject } from '../core/NObject.js';
+import { NLog } from '../log/NLog.js';
 import { NTableRequest } from './NTableRequest.js';
 import { NDataSynchronizer } from './NDataSynchronizer.js';
 
@@ -185,14 +186,14 @@ export class NRequestManager extends NObject {
      */
     addTableRequest(tableName, tableRequest) {
         if (typeof tableName !== 'string' || !tableName.trim()) {
-            this.util.log.error('NRequestManager.addTableRequest : le nom de la table doit être une chaîne valide.', {
+            NLog.error('NRequestManager.addTableRequest : le nom de la table doit être une chaîne valide.', {
                 code: 'INVALID_TABLE_NAME',
                 tableName
             });
             return null;
         }
         if (!(tableRequest instanceof NTableRequest)) {
-            this.util.log.error('NRequestManager.addTableRequest : tableRequest doit être une instance de NTableRequest.', {
+            NLog.error('NRequestManager.addTableRequest : tableRequest doit être une instance de NTableRequest.', {
                 code: 'INVALID_TABLE_REQUEST_INSTANCE',
                 tableName,
                 tableRequest
@@ -247,7 +248,7 @@ export class NRequestManager extends NObject {
      */
     getTableRequest(tableName) {
         if (typeof tableName !== 'string' || !tableName.trim()) {
-            this.util.log.error('NRequestManager.getTableRequest : le nom de la table doit être une chaîne valide.', {
+            NLog.error('NRequestManager.getTableRequest : le nom de la table doit être une chaîne valide.', {
                 code: 'INVALID_TABLE_NAME',
                 tableName
             });
@@ -362,7 +363,7 @@ export class NRequestManager extends NObject {
     async execute(req = {}) {
         const tableName = this.#resolveTableName(req);
         if (!tableName) {
-            this.util.log.error('NRequestManager.execute : le nom de la table doit être fourni via req.table ou req.type.table.', {
+            NLog.error('NRequestManager.execute : le nom de la table doit être fourni via req.table ou req.type.table.', {
                 code: 'MISSING_TABLE_PARAMETER',
                 req
             });

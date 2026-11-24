@@ -1,4 +1,4 @@
-﻿import { describe, it, assert } from '../index.js';
+import { describe, it, assert } from '../index.js';
 import { NConfig } from '../../index.js';
 
 describe('NConfig (config/NConfig.js)', () => {
@@ -72,5 +72,26 @@ describe('NConfig (config/NConfig.js)', () => {
         cfg.destroy();
         assert.equal(cfg.isDestroyed, true);
         assert.equal(cfg.isEmpty, true);
+    });
+
+    it('fournit une instance statique initialisée avec les options du premier appel', () => {
+        NConfig.instance().destroy();
+        const inst1 = NConfig.instance({
+            defaults: { app: { locale: 'fr', timeout: 3000 } },
+            data: { app: { port: 8080 } }
+        });
+        assert.equal(inst1 instanceof NConfig, true);
+        assert.equal(inst1.getInt(['app', 'port']), 8080);
+        assert.equal(inst1.getInt(['app', 'timeout']), 3000);
+
+        const inst2 = NConfig.instance({ data: { app: { port: 9999 } } });
+        assert.equal(inst2, inst1);
+        assert.equal(inst2.getInt(['app', 'port']), 8080);
+
+        inst1.destroy();
+        const inst3 = NConfig.instance({ data: { app: { port: 4000 } } });
+        assert.equal(inst3 !== inst1, true);
+        assert.equal(inst3.getInt(['app', 'port']), 4000);
+        inst3.destroy();
     });
 });

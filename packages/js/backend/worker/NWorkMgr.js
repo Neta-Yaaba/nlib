@@ -1,36 +1,36 @@
 /**
- * @file NWorkerManager.js
+ * @file NWorkMgr.js
  * @package @nlib/js-backend
- * @description Gestionnaire centralisé des workers de l'écosystème NLib, exposé via `NUtil.worker` :
+ * @description Gestionnaire centralisé des workers de l'écosystème NLib :
  * - Thread principal : création et registre nommé de workers (`create`, `add`, `get`, `has`, `terminate`, `terminateAll`),
  *   pools de workers avec répartition sur le moins occupé (`createPool`) et requêtes directes (`request`).
  * - Contexte Worker : transmission des requêtes du Worker vers le thread principal via `NWorker.requestMain()`.
- * - Traitement par défaut des requêtes inverses : relaie `'requestApp'` / `'invokeNative'` vers `NUtil.sys.invokeNative(params)`.
+ * - Traitement par défaut des requêtes inverses : relaie `'requestApp'` / `'invokeNative'` vers `NSys.invokeNative(params)`.
  */
 
-import { NObject } from '../core/NObject.js';
 import { NWorker } from './NWorker.js';
-import { NUtil } from '../utils/NUtil.js';
+import { NLog } from '../log/NLog.js';
+import { NEnv } from '../environment/NEnv.js';
+import { NSys } from '../system/NSys.js';
 
 /**
- * @class NWorkerManager
- * @extends NObject
+ * @class NWorkMgr
  * @description Registre, pools et routage centralisé des workers NLib (thread principal) et pont de communication.
  *
  * @example <caption>Exemple 1 : Créer un worker nommé et exécuter une action</caption>
- * NUtil.worker.create('sql', { url: './workers/sql.js' });
- * const res = await NUtil.worker.request('sql', 'query', { sql: 'SELECT * FROM users' });
+ * NWorkMgr.create('sql', { url: './workers/sql.js' });
+ * const res = await NWorkMgr.request('sql', 'query', { sql: 'SELECT * FROM users' });
  * console.log(res.result);
  *
  * @example <caption>Exemple 2 : Créer un pool de workers réparti sur les cœurs CPU</caption>
- * NUtil.worker.createPool('image', { url: './workers/image.js' }, 4);
- * const results = await Promise.all(files.map((f) => NUtil.worker.request('image', 'resize', f)));
+ * NWorkMgr.createPool('image', { url: './workers/image.js' }, 4);
+ * const results = await Promise.all(files.map((f) => NWorkMgr.request('image', 'resize', f)));
  *
  * @example <caption>Exemple 3 : Côté Worker — solliciter l'application native (requestApp) via requestMain</caption>
  * // Dans le Worker :
  * const info = await NWorker.requestMain('requestApp', { action: 'getDeviceInfo' });
  */
-export class NWorkerManager extends NObject {
+export class NWorkMgr {
 
     // =========================================================================
     // Propriétés privées (Allocation paresseuse)
@@ -41,44 +41,28 @@ export class NWorkerManager extends NObject {
      * @type {Map<string, NWorker>|null}
      * @private
      */
-    #workers = null;
+    static #workers = null;
 
     /**
      * Registre des pools (`nom -> NWorker[]`).
      * @type {Map<string, NWorker[]>|null}
      * @private
      */
-    #pools = null;
+    static #pools = null;
 
     /**
      * Actions du thread principal exposées aux requêtes inverses des workers (`action -> handler`).
      * @type {Map<string, Function>|null}
      * @private
      */
-    #actions = null;
+    static #actions = null;
 
-    // =========================================================================
-    // Constructeur
-    // =========================================================================
-
-    /**
-     * Crée le gestionnaire et enregistre l'action par défaut `'invokeNative'`
-     * (redirigée vers `NUtil.sys.invokeNative(params)` sur le thread principal).
-     *
-     * @example <caption>Exemple 1 : Instance partagée (recommandé)</caption>
-     * const manager = NUtil.worker;
-     *
-     * @example <caption>Exemple 2 : Instance indépendante</caption>
-     * const manager = new NWorkerManager();
-     * console.log(manager.hasAction('invokeNative')); // true
-     */
-    constructor() {
-        super();
-        this.registerAction('invokeNative', async (params) => {
-            return NUtil.sys.invokeNative(params);
+    static {
+        NWorkMgr.registerAction('invokeNative', async (params) => {
+            return NSys.invokeNative(params);
         });
-        this.registerAction('requestApp', async (params) => {
-            return NUtil.sys.invokeNative(params);
+        NWorkMgr.registerAction('requestApp', async (params) => {
+            return NSys.invokeNative(params);
         });
     }
 
@@ -92,15 +76,15 @@ export class NWorkerManager extends NObject {
      * @returns {boolean} `true` dans un Web Worker.
      *
      * @example <caption>Exemple 1 : Tester le contexte</caption>
-     * console.log(NUtil.worker.isWorkerContext);
+     * console.log(NWorkMgr.isWorkerContext);
      *
      * @example <caption>Exemple 2 : Conditionnement</caption>
-     * if (NUtil.worker.isWorkerContext) {
+     * if (NWorkMgr.isWorkerContext) {
      *     const res = await NWorker.requestMain('getConfig');
      * }
      */
-    get isWorkerContext() {
-        return NUtil.env.isWorker;
+    static get isWorkerContext() {
+        return NEnv.isWorker;
     }
 
     /**
@@ -109,13 +93,13 @@ export class NWorkerManager extends NObject {
      * @returns {boolean} `true` si `Worker` existe.
      *
      * @example <caption>Exemple 1 : Vérifier le support</caption>
-     * console.log(NUtil.worker.isSupported);
+     * console.log(NWorkMgr.isSupported);
      *
      * @example <caption>Exemple 2 : Repli transparent</caption>
      * // NWorker gère automatiquement le repli local si isSupported est faux
-     * const res = await NUtil.worker.request('calc', 'add', { a: 1, b: 2 });
+     * const res = await NWorkMgr.request('calc', 'add', { a: 1, b: 2 });
      */
-    get isSupported() {
+    static get isSupported() {
         return typeof Worker !== 'undefined';
     }
 
@@ -125,16 +109,16 @@ export class NWorkerManager extends NObject {
      * @returns {number} Nombre de workers.
      *
      * @example <caption>Exemple 1 : Aucun worker</caption>
-     * console.log(new NWorkerManager().size); // 0
+     * console.log(NWorkMgr.size); // 0
      *
      * @example <caption>Exemple 2 : Après création d'un pool de 4</caption>
-     * NUtil.worker.createPool('img', { url: './img.js' }, 4);
-     * console.log(NUtil.worker.size); // 4
+     * NWorkMgr.createPool('img', { url: './img.js' }, 4);
+     * console.log(NWorkMgr.size); // 4
      */
-    get size() {
-        let total = this.#workers ? this.#workers.size : 0;
-        if (this.#pools) {
-            for (const list of this.#pools.values()) total += list.length;
+    static get size() {
+        let total = NWorkMgr.#workers ? NWorkMgr.#workers.size : 0;
+        if (NWorkMgr.#pools) {
+            for (const list of NWorkMgr.#pools.values()) total += list.length;
         }
         return total;
     }
@@ -145,15 +129,15 @@ export class NWorkerManager extends NObject {
      * @returns {string[]} Liste des noms.
      *
      * @example <caption>Exemple 1 : Lister les noms</caption>
-     * console.log(NUtil.worker.names); // ['sql', 'image']
+     * console.log(NWorkMgr.names); // ['sql', 'image']
      *
      * @example <caption>Exemple 2 : Aucun nom</caption>
-     * console.log(new NWorkerManager().names); // []
+     * console.log(NWorkMgr.names); // []
      */
-    get names() {
+    static get names() {
         return [
-            ...(this.#workers ? this.#workers.keys() : []),
-            ...(this.#pools ? this.#pools.keys() : [])
+            ...(NWorkMgr.#workers ? NWorkMgr.#workers.keys() : []),
+            ...(NWorkMgr.#pools ? NWorkMgr.#pools.keys() : [])
         ];
     }
 
@@ -169,26 +153,26 @@ export class NWorkerManager extends NObject {
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Enregistrer une action de journalisation</caption>
-     * NUtil.worker.registerAction('log', (params) => {
+     * NWorkMgr.registerAction('log', (params) => {
      *     console.log('Log depuis le worker :', params.message);
      *     return { logged: true };
      * });
      *
      * @example <caption>Exemple 2 : Action avec progression</caption>
-     * NUtil.worker.registerAction('heavyTask', async (params, onUpdate) => {
+     * NWorkMgr.registerAction('heavyTask', async (params, onUpdate) => {
      *     onUpdate?.({ progress: 50 });
      *     return { done: true };
      * });
      */
-    registerAction(action, handler) {
+    static registerAction(action, handler) {
         if (typeof action !== 'string' || !action.trim() || typeof handler !== 'function') {
-            return this;
+            return NWorkMgr;
         }
-        if (!this.#actions) {
-            this.#actions = new Map();
+        if (!NWorkMgr.#actions) {
+            NWorkMgr.#actions = new Map();
         }
-        this.#actions.set(action.trim(), handler);
-        return this;
+        NWorkMgr.#actions.set(action.trim(), handler);
+        return NWorkMgr;
     }
 
     /**
@@ -198,19 +182,19 @@ export class NWorkerManager extends NObject {
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Retirer une action</caption>
-     * NUtil.worker.unregisterAction('log');
+     * NWorkMgr.unregisterAction('log');
      *
      * @example <caption>Exemple 2 : Vérification</caption>
-     * console.log(NUtil.worker.hasAction('log')); // false
+     * console.log(NWorkMgr.hasAction('log')); // false
      */
-    unregisterAction(action) {
-        if (this.#actions) {
-            this.#actions.delete(action);
-            if (this.#actions.size === 0) {
-                this.#actions = null;
+    static unregisterAction(action) {
+        if (NWorkMgr.#actions) {
+            NWorkMgr.#actions.delete(action);
+            if (NWorkMgr.#actions.size === 0) {
+                NWorkMgr.#actions = null;
             }
         }
-        return this;
+        return NWorkMgr;
     }
 
     /**
@@ -220,13 +204,13 @@ export class NWorkerManager extends NObject {
      * @returns {boolean} `true` si l'action est enregistrée.
      *
      * @example <caption>Exemple 1 : Action par défaut</caption>
-     * console.log(NUtil.worker.hasAction('requestApp')); // true
+     * console.log(NWorkMgr.hasAction('requestApp')); // true
      *
      * @example <caption>Exemple 2 : Action inexistante</caption>
-     * console.log(NUtil.worker.hasAction('inconnu')); // false
+     * console.log(NWorkMgr.hasAction('inconnu')); // false
      */
-    hasAction(action) {
-        return Boolean(this.#actions && this.#actions.has(action));
+    static hasAction(action) {
+        return Boolean(NWorkMgr.#actions && NWorkMgr.#actions.has(action));
     }
 
     /**
@@ -238,16 +222,16 @@ export class NWorkerManager extends NObject {
      * @returns {Promise<any>} Résultat de l'action.
      *
      * @example <caption>Exemple 1 : Exécution directe</caption>
-     * const res = await NUtil.worker.executeAction('requestApp', { action: 'vibrate' });
+     * const res = await NWorkMgr.executeAction('requestApp', { action: 'vibrate' });
      *
      * @example <caption>Exemple 2 : Action inconnue</caption>
-     * const res = await NUtil.worker.executeAction('nonEnregistree');
+     * const res = await NWorkMgr.executeAction('nonEnregistree');
      * console.log(res.error); // 'ACTION_NOT_FOUND'
      */
-    async executeAction(action, params = {}, onUpdate = null) {
-        const handler = this.#actions?.get(action);
+    static async executeAction(action, params = {}, onUpdate = null) {
+        const handler = NWorkMgr.#actions?.get(action);
         if (typeof handler !== 'function') {
-            NUtil.log.warn(`NWorkerManager: Action "${action}" non enregistrée.`);
+            NLog.warn(`NWorkMgr: Action "${action}" non enregistrée.`);
             return {
                 success: false,
                 code: 'ACTION_NOT_FOUND',
@@ -259,7 +243,7 @@ export class NWorkerManager extends NObject {
             const res = await handler(params, onUpdate);
             return res;
         } catch (err) {
-            NUtil.log.error(`NWorkerManager: Erreur lors de l'exécution de l'action "${action}".`, {
+            NLog.error(`NWorkMgr: Erreur lors de l'exécution de l'action "${action}".`, {
                 code: 'ACTION_EXECUTION_ERROR',
                 cause: err
             });
@@ -285,28 +269,28 @@ export class NWorkerManager extends NObject {
      * @returns {NWorker} Instance du worker créé.
      *
      * @example <caption>Exemple 1 : Worker depuis un fichier script</caption>
-     * const sql = NUtil.worker.create('sql', { url: './workers/sql.js' });
+     * const sql = NWorkMgr.create('sql', { url: './workers/sql.js' });
      *
      * @example <caption>Exemple 2 : Worker depuis une fonction inline</caption>
-     * NUtil.worker.create('tmp', { source: () => { console.log('worker'); } });
+     * NWorkMgr.create('tmp', { source: () => { console.log('worker'); } });
      */
     /**
      * Instancie un `NWorker` rattaché à ce gestionnaire en redirigeant `onRequest`
-     * vers les actions enregistrées dans ce `NWorkerManager`.
+     * vers les actions enregistrées dans ce `NWorkMgr`.
      *
      * @param {Object} options - Options transmises à `NWorker`.
      * @returns {NWorker}
      * @private
      */
-    #createManagedWorker(options) {
+    static #createManagedWorker(options) {
         const worker = new NWorker(options);
         const defaultOnRequest = worker.onRequest.bind(worker);
         worker.onRequest = async (action, params, onUpdate) => {
-            if (this.hasAction(action)) {
+            if (NWorkMgr.hasAction(action)) {
                 try {
-                    return await this.executeAction(action, params, onUpdate);
+                    return await NWorkMgr.executeAction(action, params, onUpdate);
                 } catch (err) {
-                    NUtil.log.error(`NWorkerManager [${worker.name}]: Erreur lors de la délégation de l'action "${action}".`, {
+                    NLog.error(`NWorkMgr [${worker.name}]: Erreur lors de la délégation de l'action "${action}".`, {
                         code: 'ERR_MANAGED_ACTION_EXEC',
                         cause: err
                     });
@@ -331,13 +315,13 @@ export class NWorkerManager extends NObject {
      * @returns {NWorker|null} Worker enregistré ou `null` si le nom est invalide.
      *
      * @example <caption>Exemple 1 : Créer un worker dédié</caption>
-     * const w = NUtil.worker.create('compute', { url: './compute-worker.js' });
+     * const w = NWorkMgr.create('compute', { url: './compute-worker.js' });
      *
      * @example <caption>Exemple 2 : Créer un worker avec repli local</caption>
-     * const local = NUtil.worker.create('math');
+     * const local = NWorkMgr.create('math');
      */
-    create(name, options = {}) {
-        return this.add(name, this.#createManagedWorker({ ...options, name }));
+    static create(name, options = {}) {
+        return NWorkMgr.add(name, NWorkMgr.#createManagedWorker({ ...options, name }));
     }
 
     /**
@@ -349,37 +333,37 @@ export class NWorkerManager extends NObject {
      *
      * @example <caption>Exemple 1 : Enregistrer une sous-classe personnalisée de NWorker</caption>
      * class MyWorker extends NWorker {}
-     * NUtil.worker.add('custom', new MyWorker({ url: './custom.js' }));
+     * NWorkMgr.add('custom', new MyWorker({ url: './custom.js' }));
      *
      * @example <caption>Exemple 2 : Remplacement automatique</caption>
-     * NUtil.worker.add('sql', newWorker); // Arrête et remplace l'ancien 'sql'
+     * NWorkMgr.add('sql', newWorker); // Arrête et remplace l'ancien 'sql'
      */
-    add(name, worker) {
+    static add(name, worker) {
         if (!(worker instanceof NWorker)) {
-            NUtil.log.error('NWorkerManager.add : instance NWorker attendue.', {
+            NLog.error('NWorkMgr.add : instance NWorker attendue.', {
                 code: 'WORKER_INVALID',
                 name,
                 target: worker
             });
             return null;
         }
-        if (this.has(name)) {
-            this.terminate(name);
+        if (NWorkMgr.has(name)) {
+            NWorkMgr.terminate(name);
         }
 
         const onBeforeDestroy = () => {
             worker.event.off('beforeDestroy', onBeforeDestroy);
-            if (this.#workers?.get(name) === worker) {
-                this.#workers.delete(name);
-                if (this.#workers.size === 0) this.#workers = null;
+            if (NWorkMgr.#workers?.get(name) === worker) {
+                NWorkMgr.#workers.delete(name);
+                if (NWorkMgr.#workers.size === 0) NWorkMgr.#workers = null;
             }
         };
         worker.event.on('beforeDestroy', onBeforeDestroy);
 
-        if (!this.#workers) {
-            this.#workers = new Map();
+        if (!NWorkMgr.#workers) {
+            NWorkMgr.#workers = new Map();
         }
-        this.#workers.set(name, worker);
+        NWorkMgr.#workers.set(name, worker);
         return worker;
     }
 
@@ -389,44 +373,44 @@ export class NWorkerManager extends NObject {
      *
      * @param {string} name - Nom du pool.
      * @param {Object} options - Options de création communes à tous les membres.
-     * @param {number} [size=NUtil.sys.cpuCores] - Nombre de workers dans le pool.
+     * @param {number} [size=NSys.cpuCores] - Nombre de workers dans le pool.
      * @returns {NWorker[]} Membres du pool créés.
      *
      * @example <caption>Exemple 1 : Pool dimensionné sur les cœurs CPU</caption>
-     * NUtil.worker.createPool('hash', { url: './workers/hash.js' });
+     * NWorkMgr.createPool('hash', { url: './workers/hash.js' });
      *
      * @example <caption>Exemple 2 : Pool de 2 workers</caption>
-     * const pool = NUtil.worker.createPool('pdf', { url: './pdf.js' }, 2);
+     * const pool = NWorkMgr.createPool('pdf', { url: './pdf.js' }, 2);
      * console.log(pool.length); // 2
      */
-    createPool(name, options = {}, size = NUtil.sys.cpuCores) {
-        if (this.has(name)) {
-            this.terminate(name);
+    static createPool(name, options = {}, size = NSys.cpuCores) {
+        if (NWorkMgr.has(name)) {
+            NWorkMgr.terminate(name);
         }
         const count = Math.max(1, Math.trunc(Number(size) || 1));
         const list = [];
 
         for (let i = 0; i < count; i++) {
-            const worker = this.#createManagedWorker({ ...options, name: `${name}#${i}` });
+            const worker = NWorkMgr.#createManagedWorker({ ...options, name: `${name}#${i}` });
             const onDestroy = () => {
                 worker.event.off('destroy', onDestroy);
-                const pool = this.#pools?.get(name);
+                const pool = NWorkMgr.#pools?.get(name);
                 if (!pool) return;
                 const idx = pool.indexOf(worker);
                 if (idx !== -1) pool.splice(idx, 1);
                 if (pool.length === 0) {
-                    this.#pools.delete(name);
-                    if (this.#pools.size === 0) this.#pools = null;
+                    NWorkMgr.#pools.delete(name);
+                    if (NWorkMgr.#pools.size === 0) NWorkMgr.#pools = null;
                 }
             };
             worker.event.on('destroy', onDestroy);
             list.push(worker);
         }
 
-        if (!this.#pools) {
-            this.#pools = new Map();
+        if (!NWorkMgr.#pools) {
+            NWorkMgr.#pools = new Map();
         }
-        this.#pools.set(name, list);
+        NWorkMgr.#pools.set(name, list);
         return list;
     }
 
@@ -437,13 +421,13 @@ export class NWorkerManager extends NObject {
      * @returns {boolean} `true` s'il existe.
      *
      * @example <caption>Exemple 1 : Worker existant</caption>
-     * console.log(NUtil.worker.has('sql')); // true
+     * console.log(NWorkMgr.has('sql')); // true
      *
      * @example <caption>Exemple 2 : Nom inconnu</caption>
-     * console.log(NUtil.worker.has('inconnu')); // false
+     * console.log(NWorkMgr.has('inconnu')); // false
      */
-    has(name) {
-        return Boolean(this.#workers?.has(name) || this.#pools?.has(name));
+    static has(name) {
+        return Boolean(NWorkMgr.#workers?.has(name) || NWorkMgr.#pools?.has(name));
     }
 
     /**
@@ -453,18 +437,18 @@ export class NWorkerManager extends NObject {
      * @returns {NWorker|null} Worker trouvé ou `null`.
      *
      * @example <caption>Exemple 1 : Récupérer un worker</caption>
-     * const sql = NUtil.worker.get('sql');
+     * const sql = NWorkMgr.get('sql');
      *
      * @example <caption>Exemple 2 : Membre le moins occupé d'un pool</caption>
-     * const member = NUtil.worker.get('hash');
+     * const member = NWorkMgr.get('hash');
      * console.log(member.name); // ex: 'hash#1'
      */
-    get(name) {
-        const single = this.#workers?.get(name);
+    static get(name) {
+        const single = NWorkMgr.#workers?.get(name);
         if (single) {
             return single;
         }
-        const pool = this.#pools?.get(name);
+        const pool = NWorkMgr.#pools?.get(name);
         if (!pool || pool.length === 0) {
             return null;
         }
@@ -490,18 +474,18 @@ export class NWorkerManager extends NObject {
      * @returns {Promise<{ id?: string, action: string, params: any, result: any, error?: any, success?: boolean, code?: string }>}
      *
      * @example <caption>Exemple 1 : Requête vers un worker</caption>
-     * const res = await NUtil.worker.request('sql', 'query', { sql: 'SELECT * FROM users' });
+     * const res = await NWorkMgr.request('sql', 'query', { sql: 'SELECT * FROM users' });
      * console.log(res.result);
      *
      * @example <caption>Exemple 2 : Requête avec notification de progression et délai</caption>
-     * const res = await NUtil.worker.request('download', 'fetch', { url: '...' }, (step) => {
+     * const res = await NWorkMgr.request('download', 'fetch', { url: '...' }, (step) => {
      *     console.log('Avancement :', step.result);
      * }, 15000);
      */
-    async request(name, action, params = {}, onUpdate = null, timeout = null) {
-        const worker = this.get(name);
+    static async request(name, action, params = {}, onUpdate = null, timeout = null) {
+        const worker = NWorkMgr.get(name);
         if (!worker) {
-            NUtil.log.warn(`NWorkerManager.request: Aucun worker ou pool nommé "${name}".`);
+            NLog.warn(`NWorkMgr.request: Aucun worker ou pool nommé "${name}".`);
             return {
                 success: false,
                 code: 'WORKER_NOT_FOUND',
@@ -527,22 +511,22 @@ export class NWorkerManager extends NObject {
      * @returns {boolean} `true` si le worker/pool a été trouvé et arrêté.
      *
      * @example <caption>Exemple 1 : Arrêter un worker</caption>
-     * NUtil.worker.terminate('sql');
+     * NWorkMgr.terminate('sql');
      *
      * @example <caption>Exemple 2 : Arrêter un pool</caption>
-     * NUtil.worker.terminate('image'); // true
+     * NWorkMgr.terminate('image'); // true
      */
-    terminate(name) {
-        const single = this.#workers?.get(name);
+    static terminate(name) {
+        const single = NWorkMgr.#workers?.get(name);
         if (single) {
             single.destroy();
             return true;
         }
-        const pool = this.#pools?.get(name);
+        const pool = NWorkMgr.#pools?.get(name);
         if (pool) {
             [...pool].forEach((w) => w.destroy());
-            this.#pools?.delete(name);
-            if (this.#pools && this.#pools.size === 0) this.#pools = null;
+            NWorkMgr.#pools?.delete(name);
+            if (NWorkMgr.#pools && NWorkMgr.#pools.size === 0) NWorkMgr.#pools = null;
             return true;
         }
         return false;
@@ -554,18 +538,18 @@ export class NWorkerManager extends NObject {
      * @returns {number} Nombre de workers arrêtés.
      *
      * @example <caption>Exemple 1 : Arrêt général à la fermeture de l'application</caption>
-     * NUtil.worker.terminateAll();
-     * console.log(NUtil.worker.size); // 0
+     * NWorkMgr.terminateAll();
+     * console.log(NWorkMgr.size); // 0
      *
      * @example <caption>Exemple 2 : Chaînage avant nettoyage</caption>
-     * if (NUtil.worker.size > 0) { NUtil.worker.terminateAll(); }
+     * if (NWorkMgr.size > 0) { NWorkMgr.terminateAll(); }
      */
-    terminateAll() {
+    static terminateAll() {
         const all = [];
-        this.#each((w) => all.push(w));
+        NWorkMgr.#each((w) => all.push(w));
         all.forEach((w) => w.destroy());
-        this.#workers = null;
-        this.#pools = null;
+        NWorkMgr.#workers = null;
+        NWorkMgr.#pools = null;
         return all.length;
     }
 
@@ -575,15 +559,15 @@ export class NWorkerManager extends NObject {
      * @returns {{ size: number, workers: Object[], pools: Object<string, Object[]>, actions: string[] }}
      *
      * @example <caption>Exemple 1 : Diagnostic du gestionnaire</caption>
-     * console.log(JSON.stringify(NUtil.worker));
+     * console.log(JSON.stringify(NWorkMgr.toJSON()));
      *
      * @example <caption>Exemple 2 : Vérifier les actions enregistrées</caption>
-     * console.log(NUtil.worker.toJSON().actions); // ['requestApp', ...]
+     * console.log(NWorkMgr.toJSON().actions); // ['requestApp', ...]
      */
-    toJSON() {
+    static toJSON() {
         const pools = {};
-        if (this.#pools) {
-            for (const [name, list] of this.#pools) {
+        if (NWorkMgr.#pools) {
+            for (const [name, list] of NWorkMgr.#pools) {
                 pools[name] = list.map((w) => ({
                     name: w.name,
                     isRunning: w.isRunning,
@@ -592,16 +576,16 @@ export class NWorkerManager extends NObject {
             }
         }
         return {
-            size: this.size,
-            workers: this.#workers
-                ? Array.from(this.#workers.values()).map((w) => ({
+            size: NWorkMgr.size,
+            workers: NWorkMgr.#workers
+                ? Array.from(NWorkMgr.#workers.values()).map((w) => ({
                     name: w.name,
                     isRunning: w.isRunning,
                     pendingCount: w.pendingCount
                 }))
                 : [],
             pools,
-            actions: this.#actions ? Array.from(this.#actions.keys()) : []
+            actions: NWorkMgr.#actions ? Array.from(NWorkMgr.#actions.keys()) : []
         };
     }
 
@@ -615,39 +599,17 @@ export class NWorkerManager extends NObject {
      * @private
      * @param {Function} fn - Fonction exécutée pour chaque worker `(worker) => void`.
      */
-    #each(fn) {
-        if (this.#workers) {
-            for (const w of Array.from(this.#workers.values())) fn(w);
+    static #each(fn) {
+        if (NWorkMgr.#workers) {
+            for (const w of Array.from(NWorkMgr.#workers.values())) fn(w);
         }
-        if (this.#pools) {
-            for (const list of Array.from(this.#pools.values())) {
+        if (NWorkMgr.#pools) {
+            for (const list of Array.from(NWorkMgr.#pools.values())) {
                 for (const w of [...list]) fn(w);
             }
         }
     }
 
-    /**
-     * Termine tous les workers et pools actifs, vide les actions enregistrées
-     * et libère les ressources de l'instance.
-     *
-     * @returns {void}
-     *
-     * @example <caption>Exemple 1 : Détruire le gestionnaire de workers</caption>
-     * const manager = new NWorkerManager();
-     * manager.destroy();
-     * console.log(manager.isDestroyed); // true
-     *
-     * @example <caption>Exemple 2 : Arrêt complet lors de la fermeture</caption>
-     * if (!manager.isDestroyed) {
-     *     manager.destroy();
-     * }
-     */
-    destroy() {
-        this.terminateAll();
-        this.#actions?.clear?.();
-        this.#actions = null;
-        super.destroy();
-    }
 }
 
-export default NWorkerManager;
+export default NWorkMgr;

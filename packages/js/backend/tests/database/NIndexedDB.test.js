@@ -1,4 +1,4 @@
-﻿import { describe, it, assert } from '../index.js';
+import { describe, it, assert } from '../index.js';
 import { NIndexedDB } from '../../index.js';
 
 describe('NIndexedDB (database/NIndexedDB.js)', () => {
@@ -16,8 +16,8 @@ describe('NIndexedDB (database/NIndexedDB.js)', () => {
         assert.equal(idb.isKeyEncrypted, true);
 
         const idbPlain = new NIndexedDB({ name: 'TestIDBPlain', encryptData: false, encryptKey: false });
-        assert.equal(idbPlain.isDataEncrypted, false);
-        assert.equal(idbPlain.isKeyEncrypted, false);
+        assert.ok(idbPlain.isDataEncrypted === false, `idbPlain.isDataEncrypted doit être false (reçu: ${idbPlain.isDataEncrypted})`);
+        assert.ok(idbPlain.isKeyEncrypted === false, `idbPlain.isKeyEncrypted doit être false (reçu: ${idbPlain.isKeyEncrypted})`);
 
         if (idb.isAvailable) {
             const put1 = await idb.put('kv', { id: 'k1', secret: 'val123' }, 'k1');
@@ -41,7 +41,7 @@ describe('NIndexedDB (database/NIndexedDB.js)', () => {
 
             // Store inexistant -> échec explicite (ok: false)
             const badStore = await idb.get('inexistant_store', 'k1');
-            assert.equal(badStore.ok, false);
+            assert.ok(badStore.ok === false, `badStore.ok doit être false (reçu: ${JSON.stringify(badStore)})`);
 
             // Persistance d'une CryptoKey AES-GCM non extractible
             if (typeof globalThis.crypto?.subtle?.generateKey === 'function') {
@@ -58,5 +58,18 @@ describe('NIndexedDB (database/NIndexedDB.js)', () => {
             const val = await idb.get('kv', 'k1');
             assert.equal(val.ok, false);
         }
+    });
+
+    it('fournit une instance statique partagée réinitialisable à la destruction', () => {
+        const inst1 = NIndexedDB.instance;
+        const inst2 = NIndexedDB.instance;
+        assert.equal(inst1 instanceof NIndexedDB, true);
+        assert.equal(inst1, inst2);
+
+        inst1.destroy();
+        const inst3 = NIndexedDB.instance;
+        assert.equal(inst3 instanceof NIndexedDB, true);
+        assert.equal(inst3 !== inst1, true);
+        inst3.destroy();
     });
 });

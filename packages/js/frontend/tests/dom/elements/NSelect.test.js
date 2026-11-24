@@ -32,6 +32,16 @@ describe('NSelect (dom/elements/NSelect.js)', () => {
         sel.clearOptions();
         assert.equal(sel.element.options.length, 0);
 
+        const multi = new NSelect({
+            multiple: true,
+            options: ['js', 'css', 'html'],
+            value: ['js', 'html']
+        });
+        assert.deepEqual(multi.getSelectedValues(), ['js', 'html']);
+        multi.setValue(['css']);
+        assert.deepEqual(multi.getSelectedValues(), ['css']);
+        multi.destroy();
+
         sel.destroy();
     });
 });

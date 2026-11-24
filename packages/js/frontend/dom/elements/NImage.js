@@ -191,7 +191,7 @@ export class NImage extends NTag {
      * console.log(img.alt); // 'Logo NLib'
      *
      * @example <caption>Exemple 2 : Utiliser dans applyLanguage()</caption>
-     * img.setText(img.util.lang.get('brand.logoAlt'));
+     * img.setText(img.lang.get('brand.logoAlt'));
      */
     setText(text) {
         return this.setAlt(text);

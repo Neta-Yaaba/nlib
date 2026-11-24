@@ -6,7 +6,7 @@
  * l'historique interne et navigateur, le cycle de vie de l'onglet et le pull-to-refresh.
  */
 
-import { NUtil } from '../../backend/index.js';
+import { NSys, NStr, NWorkMgr, NService, NServiceWorker } from '../../backend/index.js';
 import { NTag } from './elements/NTag.js';
 
 /**
@@ -100,6 +100,18 @@ export class NWindow extends NTag {
      */
     #globalBridges = null;
 
+    /**
+     * Instance `NService` initialisée par `initService()`.
+     * @type {NService|null}
+     */
+    #service = null;
+
+    /**
+     * Instance `NServiceWorker` initialisée par `initServiceWorker()`.
+     * @type {NServiceWorker|null}
+     */
+    #serviceWorker = null;
+
     // =========================================================================
     // Constructeur
     // =========================================================================
@@ -115,7 +127,9 @@ export class NWindow extends NTag {
      * @param {string} [options.theme] - Thème appliqué à la fenêtre (`light`, `dark`, `auto`, `system`).
      * @param {string} [options.styleName] - Style visuel appliqué à la fenêtre (`default`, `glass`).
      * @param {Object<string, string>} [options.style] - Styles CSS inline appliqués à la balise racine.
-     * @param {object} [options.config] - Paires clé/valeur injectées dans `NUtil.config` (ex. `{ baseUrl }`).
+     * @param {object} [options.config] - Paires clé/valeur injectées dans `this.config` (ex. `{ baseUrl }`).
+     * @param {boolean} [options.withWorker=false] - Active l'appel à `initWorker(null)` lors de l'instanciation.
+     * @param {boolean} [options.withService=false] - Active l'appel à `initService(null)` lors de l'instanciation.
      * @param {Array<Array|object>|Object<string, Function|Array|object>} [options.frames] - Dictionnaire `{ route: FrameClass }` ou tableau d'entrées `[routes, FrameClass, overlay?]` enregistrées au démarrage.
      * @param {object} [options.state] - État initial transmis à `NTag` / `NObject`.
      *
@@ -148,7 +162,7 @@ export class NWindow extends NTag {
 
         if (opts.config && typeof opts.config === 'object') {
             for (const [key, value] of Object.entries(opts.config)) {
-                this.util.config.set(key, value);
+                this.config.set(key, value);
             }
         }
 
@@ -183,7 +197,7 @@ export class NWindow extends NTag {
             }
         }
 
-        const currentUrl = NUtil.sys.getBrowserUrl();
+        const currentUrl = NSys.getBrowserUrl();
         const welcomeLink = this.getWelcomeUrl();
         if (welcomeLink && currentUrl.includes(welcomeLink)) {
             this.setInitialUrl(this.getHomeUrl() || '');
@@ -200,8 +214,41 @@ export class NWindow extends NTag {
             }
         }
 
+        if (opts.withWorker === true) {
+            this.initServiceWorker(null).then(() => {
+                this.initWorker(null).then((workerIsInit) => {
+                    if (this.isDestroyed) {
+                        return;
+                    }
+                    const ok = Boolean(workerIsInit);
+                    this.initDatabase(null, ok).then(() => {
+                        if (!this.isDestroyed) {
+                            this.initLanguage(null, ok);
+                            if (opts.withService === true) {
+                                this.initService(null);
+                            }
+
+                        }
+                    });
+                });
+            });
+        } else {
+            this.initServiceWorker(null).then(() => {
+                this.initDatabase(null, false).then(() => {
+                    if (!this.isDestroyed) {
+                        this.initLanguage(null, false);
+                        if (opts.withService === true) {
+                            this.initService(null);
+                        }
+                        this.initServiceWorker(null);
+                    }
+                });
+            });
+        }
+
         this.#bindBrowserEvents();
         this.#bindPullToRefresh();
+
         queueMicrotask(() => {
             if (this.isDestroyed) {
                 return;
@@ -241,6 +288,173 @@ export class NWindow extends NTag {
 
     }
 
+    /**
+     * Point d'extension synchrone appelé après l'initialisation des workers (`initWorker`).
+     * Permet de configurer `this.lang` (`NLang`) en redéfinissant cette méthode.
+     *
+     * @param {object|null} [options=null] - Options transmises à `this.lang.init(...)`.
+     * @param {boolean} [workerIsInit=false] - Indique si `initWorker` a abouti avec succès.
+     * @returns {this} L'instance courante.
+     *
+     * @example <caption>Exemple 1 : Surcharger initLanguage dans une sous-classe</caption>
+     * class AppWindow extends NWindow {
+     *     initLanguage(options = null, workerIsInit = false) {
+     *         return super.initLanguage({
+     *             fallback: 'fr',
+     *             languages: { fr: { title: 'Accueil' } }
+     *         }, workerIsInit);
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Appeler avec des options personnalisées</caption>
+     * win.initLanguage({ language: 'en', fallback: 'fr' }, true);
+     */
+    initLanguage(options = null, workerIsInit = false) {
+        if (options && typeof options === 'object') {
+            this.lang.init(options);
+        }
+        return this;
+    }
+
+    /**
+     * Point d'extension asynchrone appelé avec `null` lorsque `options.withWorker` vaut `true`.
+     * Permet de configurer `NWorkMgr` (`NWorkMgr`) en redéfinissant cette méthode.
+     *
+     * @async
+     * @param {object|null} [options=null] - Options de configuration des workers.
+     * @returns {Promise<boolean>} `true` si l'initialisation des workers a réussi.
+     *
+     * @example <caption>Exemple 1 : Surcharger initWorker dans une sous-classe</caption>
+     * class AppWindow extends NWindow {
+     *     async initWorker(options = null) {
+     *         NWorkMgr.createWorker('sql', '/workers/sql.worker.js');
+     *         return await super.initWorker(options);
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Activer via le constructeur</caption>
+     * const app = new AppWindow({ withWorker: true });
+     */
+    async initWorker(options = null) {
+        return Boolean(NWorkMgr);
+    }
+
+    /**
+     * Point d'extension asynchrone appelé après l'initialisation des workers (`initWorker`).
+     * Permet d'initialiser `this.idb` (`NIndexedDB / NSql / NStorage`) en redéfinissant cette méthode.
+     *
+     * @async
+     * @param {object|null} [options=null] - Options de configuration de la base de données.
+     * @param {boolean} [workerIsInit=false] - Indique si `initWorker` a abouti avec succès.
+     * @returns {Promise<boolean>} `true` si l'initialisation de la base a réussi.
+     *
+     * @example <caption>Exemple 1 : Surcharger initDatabase dans une sous-classe</caption>
+     * class AppWindow extends NWindow {
+     *     async initDatabase(options = null, workerIsInit = false) {
+     *         await this.idb.open();
+     *         return await super.initDatabase(options, workerIsInit);
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Appeler directement avec des options</caption>
+     * await win.initDatabase({ name: 'app_db' }, true);
+     */
+    async initDatabase(options = null, workerIsInit = false) {
+        return Boolean(this.idb || this.sql || this.storage);
+    }
+
+    /**
+     * Point d'extension asynchrone appelé lorsque `options.withService` vaut `true`.
+     * Instancie `NService` avec les options fournies et démarre le service si une URL est configurée.
+     *
+     * @async
+     * @param {object|null} [options=null] - Options transmises au constructeur de `NService`.
+     * @returns {Promise<boolean>} `true` si l'initialisation du service a réussi.
+     *
+     * @example <caption>Exemple 1 : Surcharger initService dans une sous-classe</caption>
+     * class AppWindow extends NWindow {
+     *     async initService(options = null) {
+     *         return await super.initService({
+     *             id: 'orders_sync',
+     *             url: 'https://app.example.com/events'
+     *         });
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Activer via le constructeur</caption>
+     * const app = new AppWindow({ withService: true });
+     */
+    async initService(options = null) {
+        if (this.#service && !this.#service.isDestroyed) {
+            this.#service.destroy();
+        }
+        const opts = (options && typeof options === 'object') ? options : {};
+        this.#service = new NService(opts);
+        if (opts.url && opts.autoStart !== false) {
+            await this.#service.start();
+        }
+        return Boolean(this.#service);
+    }
+
+    /**
+     * Retourne l'instance `NService` initialisée par `initService()`, ou `null`.
+     *
+     * @returns {NService|null} Instance `NService` active ou `null`.
+     *
+     * @example <caption>Exemple 1 : Accéder au service actif</caption>
+     * const service = win.getService();
+     *
+     * @example <caption>Exemple 2 : Écouter les changements d'identifiant</caption>
+     * win.getService()?.on('change', (id) => console.log('Nouvel ID :', id));
+     */
+    getService() {
+        return this.#service;
+    }
+
+    /**
+     * Point d'extension asynchrone appelé lors de l'instanciation pour initialiser `NServiceWorker`.
+     * Instancie `NServiceWorker` lorsque `options` est un objet de configuration.
+     *
+     * @async
+     * @param {object|null} [options=null] - Options transmises au constructeur de `NServiceWorker`.
+     * @returns {Promise<boolean>} `true` si l'initialisation du service worker a réussi.
+     *
+     * @example <caption>Exemple 1 : Surcharger initServiceWorker dans une sous-classe</caption>
+     * class AppWindow extends NWindow {
+     *     async initServiceWorker(options = null) {
+     *         return await super.initServiceWorker({ entryPoint: '/index.html', cacheName: 'app-v1' });
+     *     }
+     * }
+     *
+     * @example <caption>Exemple 2 : Appeler directement avec des options</caption>
+     * await win.initServiceWorker({ entryPoint: '/app.html' });
+     */
+    async initServiceWorker(options = null) {
+        if (options && typeof options === 'object') {
+            if (this.#serviceWorker && !this.#serviceWorker.isDestroyed) {
+                this.#serviceWorker.destroy();
+            }
+            this.#serviceWorker = new NServiceWorker(options);
+            return Boolean(this.#serviceWorker);
+        }
+        return true;
+    }
+
+    /**
+     * Retourne l'instance `NServiceWorker` initialisée par `initServiceWorker()`, ou `null`.
+     *
+     * @returns {NServiceWorker|null} Instance `NServiceWorker` active ou `null`.
+     *
+     * @example <caption>Exemple 1 : Accéder au service worker actif</caption>
+     * const sw = win.getServiceWorker();
+     *
+     * @example <caption>Exemple 2 : Vérifier l'existence d'un service worker</caption>
+     * if (win.getServiceWorker()) console.log('Service worker configuré');
+     */
+    getServiceWorker() {
+        return this.#serviceWorker;
+    }
+
     // =========================================================================
     // Accesseur statique
     // =========================================================================
@@ -269,7 +483,7 @@ export class NWindow extends NTag {
     // =========================================================================
 
     /**
-     * Retourne l'URL de base configurée dans `this.util.config` (clé `'baseUrl'`), ou `window.location.origin` par défaut.
+     * Retourne l'URL de base configurée dans `this.config` (clé `'baseUrl'`), ou `window.location.origin` par défaut.
      *
      * @returns {string} URL de base.
      *
@@ -281,7 +495,7 @@ export class NWindow extends NTag {
      */
     getBaseUrl() {
         const fallback = typeof window !== 'undefined' && window.location ? window.location.origin : '';
-        return this.util.config.get('baseUrl', fallback) || fallback;
+        return this.config.get('baseUrl', fallback) || fallback;
     }
 
     /**
@@ -597,9 +811,9 @@ export class NWindow extends NTag {
             : (typeof linkOrParams?.link === 'string' ? linkOrParams.link.trim() : '');
         const baseUrl = this.getBaseUrl();
 
-        if (rawLink && /^https?:\/\//i.test(rawLink) && baseUrl && !rawLink.startsWith(baseUrl)) {
+        if (this.#isExternalUrl(rawLink, baseUrl)) {
             const target = typeof linkOrParams === 'object' ? linkOrParams?.target : undefined;
-            NUtil.sys.openUrl(rawLink, target);
+            NSys.openUrl(rawLink, target);
             return null;
         }
 
@@ -729,13 +943,13 @@ export class NWindow extends NTag {
         }
 
         if (frame.getTitle()) {
-            NUtil.sys.setBrowserTitle(frame.getTitle());
+            NSys.setBrowserTitle(frame.getTitle());
         }
 
         const resolvedLink = this.#parseLinkString(String(params.link || frame.getUrl() || '/')).link;
 
         if (isBack) {
-            NUtil.sys.setBrowserUrl(resolvedLink, { link: resolvedLink });
+            NSys.setBrowserUrl(resolvedLink, { link: resolvedLink });
             if (this.#history.length > 0) {
                 this.#history[this.#history.length - 1] = resolvedLink;
             } else {
@@ -743,7 +957,7 @@ export class NWindow extends NTag {
             }
         } else {
             this.#history.push(resolvedLink);
-            NUtil.sys.pushBrowserUrl(resolvedLink, { link: resolvedLink });
+            NSys.pushBrowserUrl(resolvedLink, { link: resolvedLink });
         }
 
         this.emit('frame:change', {
@@ -772,7 +986,7 @@ export class NWindow extends NTag {
         if (!current) {
             const b = defaultLink ? this.navigate({ link: defaultLink, isBack: true }) !== null : false;
             if (!b) {
-                this.util.sys.browserBack();
+                NSys.browserBack();
             }
             return b;
         }
@@ -782,7 +996,7 @@ export class NWindow extends NTag {
         if (!defaultLink) {
             defaultLink = current.getBackUrl();
         }
-        if (!defaultLink && !this.util.str.equals(current.getUrl(), this.getHomeUrl())) {
+        if (!defaultLink && !NStr.equals(current.getUrl(), this.getHomeUrl())) {
             defaultLink = this.getHomeUrl();
         }
 
@@ -809,12 +1023,12 @@ export class NWindow extends NTag {
         if (defaultLink) {
             const b = this.navigate({ link: defaultLink, isBack: true }) !== null;
             if (!b) {
-                this.util.sys.browserBack();
+                NSys.browserBack();
             }
             return b;
         }
 
-        this.util.sys.browserBack();
+        NSys.browserBack();
         return true;
     }
 
@@ -1093,6 +1307,12 @@ export class NWindow extends NTag {
         this.#pullIndicatorTag?.destroy();
         this.#pullIndicatorTag = null;
 
+        this.#service?.destroy();
+        this.#service = null;
+
+        this.#serviceWorker?.destroy();
+        this.#serviceWorker = null;
+
         for (const frame of [...this.#frames]) {
             this.removeFrame(frame, true);
         }
@@ -1111,6 +1331,39 @@ export class NWindow extends NTag {
     // =========================================================================
     // Méthodes privées
     // =========================================================================
+
+    /**
+     * Détermine de manière sûre si une URL est externe par rapport à `baseUrl` en comparant `origin` et le préfixe de chemin.
+     *
+     * @param {string} rawLink - URL à vérifier.
+     * @param {string} baseUrl - URL de base de l'application.
+     * @returns {boolean} `true` si l'URL pointe vers une origine ou un sous-chemin externe.
+     *
+     * @example <caption>Exemple 1 : Détection d'un domaine usurpé</caption>
+     * this.#isExternalUrl('https://app.example.com.evil.com/home', 'https://app.example.com'); // true
+     *
+     * @example <caption>Exemple 2 : URL interne valide</caption>
+     * this.#isExternalUrl('https://app.example.com/home', 'https://app.example.com'); // false
+     */
+    #isExternalUrl(rawLink, baseUrl) {
+        if (!rawLink || !baseUrl || !/^[a-z][a-z\d+\-.]*:\/\//i.test(rawLink)) {
+            return false;
+        }
+        try {
+            const target = new URL(rawLink);
+            const base = new URL(baseUrl);
+            if (target.origin !== base.origin) {
+                return true;
+            }
+            const basePath = base.pathname.replace(/\/+$/, '');
+            if (basePath) {
+                return target.pathname !== basePath && !target.pathname.startsWith(`${basePath}/`);
+            }
+            return false;
+        } catch {
+            return true;
+        }
+    }
 
     /**
      * Analyse une chaîne de lien en URL complète normalisée, chemin relatif et paramètres query.

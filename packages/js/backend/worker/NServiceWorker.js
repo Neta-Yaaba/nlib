@@ -9,15 +9,20 @@
  * 1. Si l'API native `navigator.serviceWorker` est disponible et qu'un script `swUrl` est fourni (ou si exécuté
  *    dans un `ServiceWorkerGlobalScope`), pilote le Service Worker natif (`install`, `activate`, `fetch`, `message`).
  * 2. Sinon, active un **système de Monkey Patching** sur `globalThis.fetch` et `globalThis.XMLHttpRequest`
- *    adossé à `NUtil.cache` et `NUtil.file`.
+ *    adossé à `NCache` et `NFile`.
  * - **Point d'entrée unique pour les pages (`entryPoint`)** : sert une page maîtresse (ex: `'/index.html'`)
  *   pour toute navigation de page (`mode === 'navigate'` ou `Accept: text/html`).
- * - Les erreurs sont capturées et journalisées via `NUtil.log`.
+ * - Les erreurs sont capturées et journalisées via `NLog`.
  */
 
 import { NEvent } from '../core/NEvent.js';
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NCache } from '../cache/NCache.js';
+import { NEnv } from '../environment/NEnv.js';
+import { NFile } from '../filesystem/NFile.js';
+import { NLog } from '../log/NLog.js';
+import { NNet } from '../requests/NNet.js';
 
 /**
  * Règle de routage et de mise en cache pour l'interception des requêtes.
@@ -33,7 +38,7 @@ import { NUtil } from '../utils/NUtil.js';
  * @class NServiceWorker
  * @extends NObject
  * @description Système complet de gestion du mode hors-ligne (Offline), d'interception et mise en cache automatique
- * des requêtes/fichiers (`NUtil.cache` / `NUtil.file`), de point d'entrée unique pour les pages (`entryPoint`),
+ * des requêtes/fichiers (`NCache` / `NFile`), de point d'entrée unique pour les pages (`entryPoint`),
  * et de Monkey Patching (`fetch` / `XMLHttpRequest`) lorsque `ServiceWorker` n'est pas disponible.
  *
  * @example <caption>Exemple 1 : Activer le mode Offline avec un point d'entrée unique pour toutes les pages</caption>
@@ -254,7 +259,7 @@ export class NServiceWorker extends NObject {
         if (typeof location !== 'undefined' && location.protocol === 'file:') {
             return false;
         }
-        return Boolean(NUtil.env.isSecureContext);
+        return Boolean(NEnv.isSecureContext);
     }
 
     /**
@@ -503,7 +508,7 @@ export class NServiceWorker extends NObject {
      *    - Tente d'enregistrer le Service Worker natif si `isNativeSupported` est vrai et que `swUrl` est défini.
      *    - Active systématiquement le **Monkey Patching** (`fetch` + `XMLHttpRequest`) si le Service Worker natif
      *      n'est pas disponible, si aucun `swUrl` n'est fourni, ou si `options.monkeyPatch !== false`,
-     *      afin que l'interception par `NUtil.cache` et `NUtil.file` fonctionne **immédiatement et partout**
+     *      afin que l'interception par `NCache` et `NFile` fonctionne **immédiatement et partout**
      *      (y compris dès le premier chargement de page et dans les WebViews/environnements sans SW).
      *    - Pré-met en cache (`precache`) le `entryPoint` et toutes les ressources déclarées dans `precache`.
      *
@@ -548,7 +553,7 @@ export class NServiceWorker extends NObject {
                     nativeRegistered = true;
                     this.#syncConfigToNativeSw();
                 } catch (swErr) {
-                    NUtil.log.warn(`NServiceWorker.enable : Échec d'enregistrement du Service Worker "${this.#swUrl}". Bascule sur Monkey Patching.`, {
+                    NLog.warn(`NServiceWorker.enable : Échec d'enregistrement du Service Worker "${this.#swUrl}". Bascule sur Monkey Patching.`, {
                         code: 'WARN_SW_REGISTER_FALLBACK',
                         swUrl: this.#swUrl,
                         error: swErr?.message
@@ -576,7 +581,7 @@ export class NServiceWorker extends NObject {
                 error: null
             };
         } catch (err) {
-            NUtil.log.error('NServiceWorker.enable : Erreur lors de l\'activation.', {
+            NLog.error('NServiceWorker.enable : Erreur lors de l\'activation.', {
                 code: 'ERR_SW_ENABLE',
                 error: err?.message
             });
@@ -781,7 +786,7 @@ export class NServiceWorker extends NObject {
                 this.#precacheUrls.push(cleanUrl);
             }
 
-            const data = await NUtil.cache.cacheUrl(cleanUrl, {
+            const data = await NCache.cacheUrl(cleanUrl, {
                 ttl: options?.ttl ?? this.#defaultTtl,
                 forceRefresh: Boolean(options?.forceRefresh),
                 tags: ['__precache__']
@@ -802,7 +807,7 @@ export class NServiceWorker extends NObject {
 
     /**
      * Traite une requête (URL ou objet `Request`) selon les règles d'interception, le point d'entrée unique (`entryPoint`),
-     * les stratégies de cache (`NUtil.cache`) et les fichiers locaux (`NUtil.file`), et retourne une `Response`.
+     * les stratégies de cache (`NCache`) et les fichiers locaux (`NFile`), et retourne une `Response`.
      *
      * @param {string|Request} requestOrUrl - URL ou instance `Request`.
      * @param {Object} [init={}] - Options de la requête (`{ method, headers, mode, strategy, ttl }`).
@@ -862,8 +867,8 @@ export class NServiceWorker extends NObject {
     /**
      * Résout une URL ou un chemin de fichier en une URL directement utilisable dans le DOM (`src`, `href`)
      * même hors-ligne ou sans Service Worker :
-     * - Cherche d'abord dans `NUtil.cache` (`matchUrl`), puis dans `NUtil.file` (`readDataUrl`),
-     *   sinon télécharge et met en cache via `NUtil.cache.cacheUrl` et retourne une Data URL (ou l'URL d'origine).
+     * - Cherche d'abord dans `NCache` (`matchUrl`), puis dans `NFile` (`readDataUrl`),
+     *   sinon télécharge et met en cache via `NCache.cacheUrl` et retourne une Data URL (ou l'URL d'origine).
      *
      * @param {string} urlOrPath - URL ou chemin de fichier local.
      * @param {Object} [options={}] - Options (`{ ttl: 0, forceRefresh: false }`).
@@ -873,8 +878,8 @@ export class NServiceWorker extends NObject {
      * const src = await sw.resolveFileUrl('/assets/logo.png');
      * console.log(typeof src); // 'string'
      *
-     * @example <caption>Exemple 2 : Résoudre un fichier enregistré dans NUtil.file</caption>
-     * await NUtil.file.writeText('local/hello.txt', 'Contenu local');
+     * @example <caption>Exemple 2 : Résoudre un fichier enregistré dans NFile</caption>
+     * await NFile.writeText('local/hello.txt', 'Contenu local');
      * const fileUrl = await sw.resolveFileUrl('local/hello.txt');
      * console.log(fileUrl.startsWith('data:')); // true
      */
@@ -885,24 +890,24 @@ export class NServiceWorker extends NObject {
         const target = urlOrPath.trim();
 
         try {
-            // 1. Vérifier dans NUtil.cache
+            // 1. Vérifier dans NCache
             if (!options?.forceRefresh) {
-                const cachedDataUrl = await NUtil.cache.matchUrl(target, { format: 'dataUrl' });
+                const cachedDataUrl = await NCache.matchUrl(target, { format: 'dataUrl' });
                 if (cachedDataUrl) {
                     return cachedDataUrl;
                 }
             }
 
-            // 2. Vérifier dans NUtil.file (fichiers locaux)
-            if (await NUtil.file.exists(target)) {
-                const fileDataUrl = await NUtil.file.readDataUrl(target);
+            // 2. Vérifier dans NFile (fichiers locaux)
+            if (await NFile.exists(target)) {
+                const fileDataUrl = await NFile.readDataUrl(target);
                 if (fileDataUrl) {
                     return fileDataUrl;
                 }
             }
 
-            // 3. Télécharger et mettre en cache via NUtil.cache.cacheUrl
-            const fetchedDataUrl = await NUtil.cache.cacheUrl(target, {
+            // 3. Télécharger et mettre en cache via NCache.cacheUrl
+            const fetchedDataUrl = await NCache.cacheUrl(target, {
                 ttl: options?.ttl ?? this.#defaultTtl,
                 forceRefresh: Boolean(options?.forceRefresh),
                 format: 'dataUrl'
@@ -1003,7 +1008,7 @@ export class NServiceWorker extends NObject {
         const entryUrl = this.#entryPoint;
 
         // Si hors-ligne ou stratégie cache-first/cache-only, servir immédiatement le point d'entrée depuis le cache
-        if (NUtil.env.isOffline || strategy === 'cache-first' || strategy === 'cache-only') {
+        if (NEnv.isOffline || strategy === 'cache-first' || strategy === 'cache-only') {
             const cachedEntry = await this.#readCachedOrFileResponse(entryUrl);
             if (cachedEntry) {
                 this.#emit('offlineFallback', { url: parsed.url, entryPoint: entryUrl });
@@ -1015,7 +1020,7 @@ export class NServiceWorker extends NObject {
         try {
             const netRes = await this.#performNetworkFetch(parsed.url, parsed);
             if (netRes && netRes.ok) {
-                await NUtil.cache.putResponse(parsed.url, netRes.clone ? netRes.clone() : netRes.data, { ttl });
+                await NCache.putResponse(parsed.url, netRes.clone ? netRes.clone() : netRes.data, { ttl });
                 return netRes;
             }
         } catch {
@@ -1038,7 +1043,7 @@ export class NServiceWorker extends NObject {
     }
 
     /**
-     * Stratégie `cache-first` : cherche dans `NUtil.cache` / `NUtil.file`, sinon interroge le réseau et met en cache.
+     * Stratégie `cache-first` : cherche dans `NCache` / `NFile`, sinon interroge le réseau et met en cache.
      * @private
      * @param {Object} parsed - Requête analysée.
      * @param {number} ttl - TTL en secondes.
@@ -1062,11 +1067,11 @@ export class NServiceWorker extends NObject {
      * @returns {Promise<Response>}
      */
     async #strategyNetworkFirst(parsed, ttl, tags) {
-        if (!NUtil.env.isOffline) {
+        if (!NEnv.isOffline) {
             try {
                 const netRes = await this.#performNetworkFetch(parsed.url, parsed);
                 if (netRes && netRes.ok) {
-                    await NUtil.cache.putResponse(
+                    await NCache.putResponse(
                         parsed.url,
                         typeof netRes.clone === 'function' ? netRes.clone() : netRes,
                         { ttl, tags }
@@ -1106,7 +1111,7 @@ export class NServiceWorker extends NObject {
     }
 
     /**
-     * Stratégie `cache-only` : lit uniquement depuis `NUtil.cache` ou `NUtil.file`.
+     * Stratégie `cache-only` : lit uniquement depuis `NCache` ou `NFile`.
      * @private
      * @param {string} url - URL recherchée.
      * @returns {Promise<Response>}
@@ -1132,7 +1137,7 @@ export class NServiceWorker extends NObject {
     }
 
     /**
-     * Exécute la requête réseau et enregistre la réponse dans `NUtil.cache`.
+     * Exécute la requête réseau et enregistre la réponse dans `NCache`.
      * @private
      * @param {Object} parsed - Requête analysée.
      * @param {number} ttl - TTL en secondes.
@@ -1143,7 +1148,7 @@ export class NServiceWorker extends NObject {
         try {
             const netRes = await this.#performNetworkFetch(parsed.url, parsed);
             if (netRes && netRes.ok) {
-                await NUtil.cache.putResponse(
+                await NCache.putResponse(
                     parsed.url,
                     typeof netRes.clone === 'function' ? netRes.clone() : netRes,
                     { ttl, tags }
@@ -1159,7 +1164,7 @@ export class NServiceWorker extends NObject {
     }
 
     /**
-     * Cherche une réponse dans `NUtil.cache` (`matchUrl`) ou dans `NUtil.file` (si le chemin correspond à un fichier local).
+     * Cherche une réponse dans `NCache` (`matchUrl`) ou dans `NFile` (si le chemin correspond à un fichier local).
      * @private
      * @param {string} url - URL ou chemin.
      * @returns {Promise<Response|null>}
@@ -1169,19 +1174,19 @@ export class NServiceWorker extends NObject {
             return null;
         }
 
-        // 1. Recherche dans NUtil.cache
-        const cachedRes = await NUtil.cache.matchUrl(url, { format: 'response' });
+        // 1. Recherche dans NCache
+        const cachedRes = await NCache.matchUrl(url, { format: 'response' });
         if (cachedRes) {
             return cachedRes;
         }
 
-        // 2. Recherche sans paramètres de query ou chemin relatif dans NUtil.file
+        // 2. Recherche sans paramètres de query ou chemin relatif dans NFile
         const cleanPath = url.split('?')[0].split('#')[0];
-        if (await NUtil.file.exists(cleanPath)) {
-            const fileRead = await NUtil.file.read(cleanPath, { format: 'bytes' });
+        if (await NFile.exists(cleanPath)) {
+            const fileRead = await NFile.read(cleanPath, { format: 'bytes' });
             if (fileRead.ok && fileRead.data) {
                 return this.#buildResponse(fileRead.data, 200, {
-                    'content-type': fileRead.mimeType || NUtil.file.getMimeType(cleanPath)
+                    'content-type': fileRead.mimeType || NFile.getMimeType(cleanPath)
                 });
             }
         }
@@ -1202,7 +1207,7 @@ export class NServiceWorker extends NObject {
             return await fetchFn(parsed.rawInput || url, parsed.rawInit);
         }
 
-        const netRes = await NUtil.net.get(url, {
+        const netRes = await NNet.get(url, {
             headers: parsed.headers,
             responseType: 'arraybuffer'
         });
@@ -1254,7 +1259,7 @@ export class NServiceWorker extends NObject {
             bytes = new Uint8Array(buf);
         } else {
             Object.assign(headers, response.headers || {});
-            bytes = await NUtil.file.toUint8Array(response.data);
+            bytes = await NFile.toUint8Array(response.data);
         }
 
         const mimeType = headers['content-type'] || 'application/octet-stream';
@@ -1264,16 +1269,16 @@ export class NServiceWorker extends NObject {
         if (respType === 'arraybuffer') {
             responseValue = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
         } else if (respType === 'blob') {
-            responseValue = await NUtil.file.toBlob(bytes, mimeType);
+            responseValue = await NFile.toBlob(bytes, mimeType);
         } else if (respType === 'json') {
-            const text = await NUtil.file.toText(bytes);
+            const text = await NFile.toText(bytes);
             try {
                 responseValue = JSON.parse(text);
             } catch {
                 responseValue = null;
             }
         } else {
-            responseValue = await NUtil.file.toText(bytes);
+            responseValue = await NFile.toText(bytes);
         }
 
         const rawHeadersStr = Object.entries(headers)
@@ -1352,7 +1357,7 @@ export class NServiceWorker extends NObject {
 
         const accept = headers['accept'] || '';
         const cleanPath = url.split('?')[0].split('#')[0];
-        const ext = NUtil.file.getExtension(cleanPath);
+        const ext = NFile.getExtension(cleanPath);
         const isNavigation =
             mode === 'navigate' ||
             accept.includes('text/html') ||

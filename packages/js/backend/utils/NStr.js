@@ -1,37 +1,32 @@
 /**
- * @file NString.js
+ * @file NStr.js
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la manipulation, la validation, le nettoyage
  * et le formatage des chaînes de caractères dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
+import { NLog } from '../log/NLog.js';
 
 /**
- * @class NString
- * @extends NObject
+ * @class NStr
  * @description Utilitaire de traitement de texte.
  *
  * @example <caption>Exemple 1 : Nettoyage d'accents et génération d'un slug d'URL</caption>
- * const str = new NString();
- * const sansAccents = str.removeAccents('Écosystème Universel Événement');
- * const slug = str.slugify('Écosystème Universel Événement !');
+ * const sansAccents = NStr.removeAccents('Écosystème Universel Événement');
+ * const slug = NStr.slugify('Écosystème Universel Événement !');
  * console.log(sansAccents); // 'Ecosysteme Universel Evenement'
  * console.log(slug);        // 'ecosysteme-universel-evenement'
  *
  * @example <caption>Exemple 2 : Conversion de casse pour le code (camelCase, PascalCase, snake_case, kebab-case)</caption>
- * const str = new NString();
- * console.log(str.toCamelCase('date_creation_utilisateur'));  // 'dateCreationUtilisateur'
- * console.log(str.toPascalCase('date_creation_utilisateur')); // 'DateCreationUtilisateur'
- * console.log(str.toKebabCase('DateCreationUtilisateur'));    // 'date-creation-utilisateur'
+ * console.log(NStr.toCamelCase('date_creation_utilisateur'));  // 'dateCreationUtilisateur'
+ * console.log(NStr.toPascalCase('date_creation_utilisateur')); // 'DateCreationUtilisateur'
+ * console.log(NStr.toKebabCase('DateCreationUtilisateur'));    // 'date-creation-utilisateur'
  *
  * @example <caption>Exemple 3 : Interpolation de gabarit (template) et troncature</caption>
- * const str = new NString();
- * const message = str.template('Bonjour {nom}, vous avez {nb} messages.', { nom: 'Neta', nb: 5 });
- * console.log(str.truncate(message, 20)); // 'Bonjour Neta, vou...'
+ * const message = NStr.template('Bonjour {nom}, vous avez {nb} messages.', { nom: 'Neta', nb: 5 });
+ * console.log(NStr.truncate(message, 20)); // 'Bonjour Neta, vou...'
  */
-export class NString extends NObject {
+export class NStr {
 
     // =========================================================================
     // Méthodes publiques — Vérifications (Validation)
@@ -44,16 +39,14 @@ export class NString extends NObject {
      * @returns {boolean} `true` si `value` est une chaîne de caractères, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tester une chaîne valide</caption>
-     * const str = new NString();
-     * console.log(str.isString('NLib')); // true
-     * console.log(str.isString(''));     // true
+         * console.log(NStr.isString('NLib')); // true
+     * console.log(NStr.isString(''));     // true
      *
      * @example <caption>Exemple 2 : Tester des valeurs qui ne sont pas des chaînes</caption>
-     * const str = new NString();
-     * console.log(str.isString(123));  // false
-     * console.log(str.isString(null)); // false
+         * console.log(NStr.isString(123));  // false
+     * console.log(NStr.isString(null)); // false
      */
-    isString(value) {
+    static isString(value) {
         return typeof value === 'string' || value instanceof String;
     }
 
@@ -64,16 +57,14 @@ export class NString extends NObject {
      * @returns {boolean} `true` si le texte est vide ou ne contient que des espaces, sinon `false`.
      *
      * @example <caption>Exemple 1 : Chaînes vides, espaces ou null</caption>
-     * const str = new NString();
-     * console.log(str.isEmpty(''));      // true
-     * console.log(str.isEmpty('   '));   // true
-     * console.log(str.isEmpty(null));    // true
+         * console.log(NStr.isEmpty(''));      // true
+     * console.log(NStr.isEmpty('   '));   // true
+     * console.log(NStr.isEmpty(null));    // true
      *
      * @example <caption>Exemple 2 : Chaîne contenant du texte</caption>
-     * const str = new NString();
-     * console.log(str.isEmpty('NLib'));  // false
+         * console.log(NStr.isEmpty('NLib'));  // false
      */
-    isEmpty(text) {
+    static isEmpty(text) {
         if (text === null || text === undefined) {
             return true;
         }
@@ -94,23 +85,20 @@ export class NString extends NObject {
      * @returns {boolean} `true` si les deux chaînes sont égales selon les options, sinon `false`.
      *
      * @example <caption>Exemple 1 : Comparaison stricte par défaut</caption>
-     * const str = new NString();
-     * console.log(str.equals('NLib', 'NLib')); // true
-     * console.log(str.equals('NLib', 'nlib')); // false
+         * console.log(NStr.equals('NLib', 'NLib')); // true
+     * console.log(NStr.equals('NLib', 'nlib')); // false
      *
      * @example <caption>Exemple 2 : Comparaison insensible à la casse</caption>
-     * const str = new NString();
-     * console.log(str.equals('NLib', 'nlib', { caseSensitive: false })); // true
+         * console.log(NStr.equals('NLib', 'nlib', { caseSensitive: false })); // true
      *
      * @example <caption>Exemple 3 : Ignorer les caractères spéciaux, les accents et la casse</caption>
-     * const str = new NString();
-     * console.log(str.equals('Éléphant #1 !', 'elephant 1', {
+         * console.log(NStr.equals('Éléphant #1 !', 'elephant 1', {
      *     caseSensitive: false,
      *     ignoreSpecialChars: true,
      *     ignoreAccents: true
      * })); // true
      */
-    equals(textA, textB, options = {}) {
+    static equals(textA, textB, options = {}) {
         if (textA === null || textA === undefined || textB === null || textB === undefined) {
             return false;
         }
@@ -132,24 +120,21 @@ export class NString extends NObject {
      * @returns {boolean} `true` si `search` est trouvé dans `text` selon les options, sinon `false`.
      *
      * @example <caption>Exemple 1 : Recherche sensible à la casse (par défaut)</caption>
-     * const str = new NString();
-     * console.log(str.contains('Architecture NLib', 'NLib')); // true
-     * console.log(str.contains('Architecture NLib', 'nlib')); // false
+         * console.log(NStr.contains('Architecture NLib', 'NLib')); // true
+     * console.log(NStr.contains('Architecture NLib', 'nlib')); // false
      *
      * @example <caption>Exemple 2 : Recherche insensible à la casse et aux accents</caption>
-     * const str = new NString();
-     * console.log(str.contains('Écosystème NLib', 'ecosysteme', {
+         * console.log(NStr.contains('Écosystème NLib', 'ecosysteme', {
      *     caseSensitive: false,
      *     ignoreAccents: true
      * })); // true
      *
      * @example <caption>Exemple 3 : Recherche en ignorant les caractères spéciaux (tirets, espaces, symboles)</caption>
-     * const str = new NString();
-     * console.log(str.contains('Tel : +226 70-12-34-56', '701234', {
+         * console.log(NStr.contains('Tel : +226 70-12-34-56', '701234', {
      *     ignoreSpecialChars: true
      * })); // true
      */
-    contains(text, search, options = {}) {
+    static contains(text, search, options = {}) {
         if (text === null || text === undefined || search === null || search === undefined) {
             return false;
         }
@@ -170,17 +155,15 @@ export class NString extends NObject {
      * @returns {boolean} `true` si `text` commence par `prefix` selon les options, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérification standard sensible à la casse</caption>
-     * const str = new NString();
-     * console.log(str.startsWith('NObject.js', 'NObject')); // true
+         * console.log(NStr.startsWith('NObject.js', 'NObject')); // true
      *
      * @example <caption>Exemple 2 : Vérification en ignorant la casse et les accents</caption>
-     * const str = new NString();
-     * console.log(str.startsWith('Événement système', 'evenement', {
+         * console.log(NStr.startsWith('Événement système', 'evenement', {
      *     caseSensitive: false,
      *     ignoreAccents: true
      * })); // true
      */
-    startsWith(text, prefix, options = {}) {
+    static startsWith(text, prefix, options = {}) {
         if (text === null || text === undefined || prefix === null || prefix === undefined) {
             return false;
         }
@@ -201,14 +184,12 @@ export class NString extends NObject {
      * @returns {boolean} `true` si `text` se termine par `suffix` selon les options, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier l'extension d'un fichier</caption>
-     * const str = new NString();
-     * console.log(str.endsWith('NString.js', '.js')); // true
+         * console.log(NStr.endsWith('NStr.js', '.js')); // true
      *
      * @example <caption>Exemple 2 : Vérification insensible à la casse</caption>
-     * const str = new NString();
-     * console.log(str.endsWith('IMAGE.PNG', '.png', { caseSensitive: false })); // true
+         * console.log(NStr.endsWith('IMAGE.PNG', '.png', { caseSensitive: false })); // true
      */
-    endsWith(text, suffix, options = {}) {
+    static endsWith(text, suffix, options = {}) {
         if (text === null || text === undefined || suffix === null || suffix === undefined) {
             return false;
         }
@@ -227,14 +208,12 @@ export class NString extends NObject {
      * @returns {boolean} `true` si le format e-mail est valide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Adresse e-mail valide</caption>
-     * const str = new NString();
-     * console.log(str.isEmail('contact@nlib.dev')); // true
+         * console.log(NStr.isEmail('contact@nlib.dev')); // true
      *
      * @example <caption>Exemple 2 : Adresse e-mail invalide</caption>
-     * const str = new NString();
-     * console.log(str.isEmail('contact@nlib')); // false
+         * console.log(NStr.isEmail('contact@nlib')); // false
      */
-    isEmail(text) {
+    static isEmail(text) {
         const source = String(text ?? '').trim();
         return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(source);
     }
@@ -246,14 +225,12 @@ export class NString extends NObject {
      * @returns {boolean} `true` si la chaîne est strictement alphanumérique et non vide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Chaîne alphanumérique valide</caption>
-     * const str = new NString();
-     * console.log(str.isAlphanumeric('NLib2026')); // true
+         * console.log(NStr.isAlphanumeric('NLib2026')); // true
      *
      * @example <caption>Exemple 2 : Chaîne contenant des symboles ou espaces</caption>
-     * const str = new NString();
-     * console.log(str.isAlphanumeric('NLib 2026!')); // false
+         * console.log(NStr.isAlphanumeric('NLib 2026!')); // false
      */
-    isAlphanumeric(text) {
+    static isAlphanumeric(text) {
         const source = String(text ?? '');
         return /^[a-zA-Z0-9]+$/.test(source);
     }
@@ -272,22 +249,19 @@ export class NString extends NObject {
      * @returns {number} Index de l'occurrence trouvée, ou `-1` si absente.
      *
      * @example <caption>Exemple 1 : Recherche standard de la position d'un mot</caption>
-     * const str = new NString();
-     * console.log(str.indexOf('Architecture NLib', 'NLib')); // 13
-     * console.log(str.indexOf('Architecture NLib', 'xyz'));  // -1
+         * console.log(NStr.indexOf('Architecture NLib', 'NLib')); // 13
+     * console.log(NStr.indexOf('Architecture NLib', 'xyz'));  // -1
      *
      * @example <caption>Exemple 2 : Recherche insensible à la casse et aux accents</caption>
-     * const str = new NString();
-     * console.log(str.indexOf('Un Éléphant', 'elephant', {
+         * console.log(NStr.indexOf('Un Éléphant', 'elephant', {
      *     caseSensitive: false,
      *     ignoreAccents: true
      * })); // 3
      *
      * @example <caption>Exemple 3 : Recherche de la dernière occurrence (last: true)</caption>
-     * const str = new NString();
-     * console.log(str.indexOf('a/b/c', '/', { last: true })); // 3
+         * console.log(NStr.indexOf('a/b/c', '/', { last: true })); // 3
      */
-    indexOf(text, search, options = {}) {
+    static indexOf(text, search, options = {}) {
         if (text === null || text === undefined || search === null || search === undefined) {
             return -1;
         }
@@ -325,14 +299,12 @@ export class NString extends NObject {
      * @returns {string} Texte en majuscules.
      *
      * @example <caption>Exemple 1 : Conversion simple</caption>
-     * const str = new NString();
-     * console.log(str.toUpper('nlib')); // 'NLIB'
+         * console.log(NStr.toUpper('nlib')); // 'NLIB'
      *
      * @example <caption>Exemple 2 : Gestion sécurisée d'une valeur vide ou null</caption>
-     * const str = new NString();
-     * console.log(str.toUpper(null)); // ''
+         * console.log(NStr.toUpper(null)); // ''
      */
-    toUpper(text) {
+    static toUpper(text) {
         return String(text ?? '').toUpperCase();
     }
 
@@ -343,14 +315,12 @@ export class NString extends NObject {
      * @returns {string} Texte en minuscules.
      *
      * @example <caption>Exemple 1 : Conversion simple</caption>
-     * const str = new NString();
-     * console.log(str.toLower('NLIB')); // 'nlib'
+         * console.log(NStr.toLower('NLIB')); // 'nlib'
      *
      * @example <caption>Exemple 2 : Normalisation d'une entrée utilisateur</caption>
-     * const str = new NString();
-     * console.log(str.toLower('Admin@Domaine.COM')); // 'admin@domaine.com'
+         * console.log(NStr.toLower('Admin@Domaine.COM')); // 'admin@domaine.com'
      */
-    toLower(text) {
+    static toLower(text) {
         return String(text ?? '').toLowerCase();
     }
 
@@ -361,14 +331,12 @@ export class NString extends NObject {
      * @returns {string} Texte avec initiale majuscule.
      *
      * @example <caption>Exemple 1 : Mot tout en minuscules</caption>
-     * const str = new NString();
-     * console.log(str.capitalize('bonjour')); // 'Bonjour'
+         * console.log(NStr.capitalize('bonjour')); // 'Bonjour'
      *
      * @example <caption>Exemple 2 : Mot tout en majuscules</caption>
-     * const str = new NString();
-     * console.log(str.capitalize('BONJOUR MONDE')); // 'Bonjour monde'
+         * console.log(NStr.capitalize('BONJOUR MONDE')); // 'Bonjour monde'
      */
-    capitalize(text) {
+    static capitalize(text) {
         const source = String(text ?? '');
         if (source.length === 0) {
             return '';
@@ -383,14 +351,12 @@ export class NString extends NObject {
      * @returns {string} Texte en Title Case.
      *
      * @example <caption>Exemple 1 : Formater un titre</caption>
-     * const str = new NString();
-     * console.log(str.toTitleCase('bienvenue dans nlib')); // 'Bienvenue Dans Nlib'
+         * console.log(NStr.toTitleCase('bienvenue dans nlib')); // 'Bienvenue Dans Nlib'
      *
      * @example <caption>Exemple 2 : Formater un nom complet</caption>
-     * const str = new NString();
-     * console.log(str.toTitleCase('JEAN PIERRE')); // 'Jean Pierre'
+         * console.log(NStr.toTitleCase('JEAN PIERRE')); // 'Jean Pierre'
      */
-    toTitleCase(text) {
+    static toTitleCase(text) {
         const source = String(text ?? '').toLowerCase();
         return source.replace(/(?:^|\s|-|_)\S/g, (match) => match.toUpperCase());
     }
@@ -402,14 +368,12 @@ export class NString extends NObject {
      * @returns {string} Texte au format `camelCase`.
      *
      * @example <caption>Exemple 1 : Depuis du snake_case</caption>
-     * const str = new NString();
-     * console.log(str.toCamelCase('user_first_name')); // 'userFirstName'
+         * console.log(NStr.toCamelCase('user_first_name')); // 'userFirstName'
      *
      * @example <caption>Exemple 2 : Depuis une phrase avec espaces ou tirets</caption>
-     * const str = new NString();
-     * console.log(str.toCamelCase('background-color-primary')); // 'backgroundColorPrimary'
+         * console.log(NStr.toCamelCase('background-color-primary')); // 'backgroundColorPrimary'
      */
-    toCamelCase(text) {
+    static toCamelCase(text) {
         const words = this.#splitWords(text);
         return words
             .map((word, index) => (index === 0 ? word.toLowerCase() : this.capitalize(word)))
@@ -423,14 +387,12 @@ export class NString extends NObject {
      * @returns {string} Texte au format `PascalCase`.
      *
      * @example <caption>Exemple 1 : Depuis du kebab-case</caption>
-     * const str = new NString();
-     * console.log(str.toPascalCase('n-data-table')); // 'NDataTable'
+         * console.log(NStr.toPascalCase('n-data-table')); // 'NDataTable'
      *
      * @example <caption>Exemple 2 : Depuis une chaîne avec espaces</caption>
-     * const str = new NString();
-     * console.log(str.toPascalCase('service utilisateur')); // 'ServiceUtilisateur'
+         * console.log(NStr.toPascalCase('service utilisateur')); // 'ServiceUtilisateur'
      */
-    toPascalCase(text) {
+    static toPascalCase(text) {
         const words = this.#splitWords(text);
         return words.map((word) => this.capitalize(word)).join('');
     }
@@ -442,14 +404,12 @@ export class NString extends NObject {
      * @returns {string} Texte au format `snake_case`.
      *
      * @example <caption>Exemple 1 : Depuis du camelCase</caption>
-     * const str = new NString();
-     * console.log(str.toSnakeCase('dateCreationCompte')); // 'date_creation_compte'
+         * console.log(NStr.toSnakeCase('dateCreationCompte')); // 'date_creation_compte'
      *
      * @example <caption>Exemple 2 : Depuis une phrase avec espaces</caption>
-     * const str = new NString();
-     * console.log(str.toSnakeCase('Code Postal Client')); // 'code_postal_client'
+         * console.log(NStr.toSnakeCase('Code Postal Client')); // 'code_postal_client'
      */
-    toSnakeCase(text) {
+    static toSnakeCase(text) {
         return this.#splitWords(text).map((w) => w.toLowerCase()).join('_');
     }
 
@@ -460,14 +420,12 @@ export class NString extends NObject {
      * @returns {string} Texte au format `kebab-case`.
      *
      * @example <caption>Exemple 1 : Convertir une propriété CSS camelCase en kebab-case</caption>
-     * const str = new NString();
-     * console.log(str.toKebabCase('backgroundColor')); // 'background-color'
+         * console.log(NStr.toKebabCase('backgroundColor')); // 'background-color'
      *
      * @example <caption>Exemple 2 : Depuis du PascalCase</caption>
-     * const str = new NString();
-     * console.log(str.toKebabCase('NWindowManager')); // 'n-window-manager'
+         * console.log(NStr.toKebabCase('NWindowManager')); // 'n-window-manager'
      */
-    toKebabCase(text) {
+    static toKebabCase(text) {
         return this.#splitWords(text).map((w) => w.toLowerCase()).join('-');
     }
 
@@ -483,14 +441,12 @@ export class NString extends NObject {
      * @returns {string} Texte nettoyé.
      *
      * @example <caption>Exemple 1 : Suppression des espaces en début et fin</caption>
-     * const str = new NString();
-     * console.log(str.trim('   NLib   ')); // 'NLib'
+         * console.log(NStr.trim('   NLib   ')); // 'NLib'
      *
      * @example <caption>Exemple 2 : Suppression de barres obliques '/' aux extrémités</caption>
-     * const str = new NString();
-     * console.log(str.trim('///api/v1/users///', '/')); // 'api/v1/users'
+         * console.log(NStr.trim('///api/v1/users///', '/')); // 'api/v1/users'
      */
-    trim(text, chars = null) {
+    static trim(text, chars = null) {
         const source = String(text ?? '');
         if (!chars) {
             return source.trim();
@@ -507,14 +463,12 @@ export class NString extends NObject {
      * @returns {string} Texte avec espacement normalisé.
      *
      * @example <caption>Exemple 1 : Nettoyer des espaces multiples</caption>
-     * const str = new NString();
-     * console.log(str.cleanSpaces('  Bonjour    tout   le   monde  ')); // 'Bonjour tout le monde'
+         * console.log(NStr.cleanSpaces('  Bonjour    tout   le   monde  ')); // 'Bonjour tout le monde'
      *
      * @example <caption>Exemple 2 : Nettoyer des tabulations et retours à la ligne</caption>
-     * const str = new NString();
-     * console.log(str.cleanSpaces('Ligne 1\n\t  Ligne 2')); // 'Ligne 1 Ligne 2'
+         * console.log(NStr.cleanSpaces('Ligne 1\n\t  Ligne 2')); // 'Ligne 1 Ligne 2'
      */
-    cleanSpaces(text) {
+    static cleanSpaces(text) {
         return String(text ?? '').replace(/\s+/g, ' ').trim();
     }
 
@@ -525,14 +479,12 @@ export class NString extends NObject {
      * @returns {string} Texte sans accents.
      *
      * @example <caption>Exemple 1 : Retirer les accents français</caption>
-     * const str = new NString();
-     * console.log(str.removeAccents('À bientôt à l\'école d\'été')); // 'A bientot a l\'ecole d\'ete'
+         * console.log(NStr.removeAccents('À bientôt à l\'école d\'été')); // 'A bientot a l\'ecole d\'ete'
      *
      * @example <caption>Exemple 2 : Normaliser pour une recherche</caption>
-     * const str = new NString();
-     * console.log(str.removeAccents('Cœur & Ça')); // 'Coeur & Ca'
+         * console.log(NStr.removeAccents('Cœur & Ça')); // 'Coeur & Ca'
      */
-    removeAccents(text) {
+    static removeAccents(text) {
         return String(text ?? '')
             .replace(/œ/g, 'oe')
             .replace(/Œ/g, 'OE')
@@ -550,16 +502,14 @@ export class NString extends NObject {
      * @returns {string} Slug normalisé en minuscules.
      *
      * @example <caption>Exemple 1 : Générer un slug d'article avec tirets</caption>
-     * const str = new NString();
-     * console.log(str.slugify('L\'architecture NLib : 100% Hors-Ligne !'));
+         * console.log(NStr.slugify('L\'architecture NLib : 100% Hors-Ligne !'));
      * // 'l-architecture-nlib-100-hors-ligne'
      *
      * @example <caption>Exemple 2 : Générer un slug avec underscore '_'</caption>
-     * const str = new NString();
-     * console.log(str.slugify('Catégorie : Électronique & Audio', '_'));
+         * console.log(NStr.slugify('Catégorie : Électronique & Audio', '_'));
      * // 'categorie_electronique_audio'
      */
-    slugify(text, separator = '-') {
+    static slugify(text, separator = '-') {
         const sep = String(separator || '-');
         const escapedSep = sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return this.removeAccents(text)
@@ -575,15 +525,13 @@ export class NString extends NObject {
      * @returns {string} Texte sécurisé avec entités HTML.
      *
      * @example <caption>Exemple 1 : Neutraliser une balise script</caption>
-     * const str = new NString();
-     * console.log(str.escapeHtml('<script>alert("XSS")</script>'));
+         * console.log(NStr.escapeHtml('<script>alert("XSS")</script>'));
      * // '&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;'
      *
      * @example <caption>Exemple 2 : Échapper une chaîne contenant des esperluettes et apostrophes</caption>
-     * const str = new NString();
-     * console.log(str.escapeHtml("L'eau & le feu")); // 'L&#39;eau &amp; le feu'
+         * console.log(NStr.escapeHtml("L'eau & le feu")); // 'L&#39;eau &amp; le feu'
      */
-    escapeHtml(text) {
+    static escapeHtml(text) {
         const map = {
             '&': '&amp;',
             '<': '&lt;',
@@ -601,14 +549,12 @@ export class NString extends NObject {
      * @returns {string} Texte décodé.
      *
      * @example <caption>Exemple 1 : Décoder des balises échappées</caption>
-     * const str = new NString();
-     * console.log(str.unescapeHtml('&lt;div&gt;Test&lt;/div&gt;')); // '<div>Test</div>'
+         * console.log(NStr.unescapeHtml('&lt;div&gt;Test&lt;/div&gt;')); // '<div>Test</div>'
      *
      * @example <caption>Exemple 2 : Décoder les guillemets et esperluettes</caption>
-     * const str = new NString();
-     * console.log(str.unescapeHtml('A &amp; B &quot;OK&quot;')); // 'A & B "OK"'
+         * console.log(NStr.unescapeHtml('A &amp; B &quot;OK&quot;')); // 'A & B "OK"'
      */
-    unescapeHtml(text) {
+    static unescapeHtml(text) {
         const map = {
             '&amp;': '&',
             '&lt;': '<',
@@ -632,14 +578,12 @@ export class NString extends NObject {
      * @returns {string[]} Tableau contenant les segments découpés.
      *
      * @example <caption>Exemple 1 : Découper une liste séparée par des virgules</caption>
-     * const str = new NString();
-     * console.log(str.split('pomme,banane,orange', ',')); // ['pomme', 'banane', 'orange']
+         * console.log(NStr.split('pomme,banane,orange', ',')); // ['pomme', 'banane', 'orange']
      *
      * @example <caption>Exemple 2 : Découper avec une limite maximale de segments</caption>
-     * const str = new NString();
-     * console.log(str.split('a-b-c-d', '-', 2)); // ['a', 'b']
+         * console.log(NStr.split('a-b-c-d', '-', 2)); // ['a', 'b']
      */
-    split(text, separator = ' ', limit = undefined) {
+    static split(text, separator = ' ', limit = undefined) {
         const source = String(text ?? '');
         if (source === '') {
             return [];
@@ -660,19 +604,16 @@ export class NString extends NObject {
      * @returns {string|any} L'élément trouvé à l'index donné ou `defaultValue`.
      *
      * @example <caption>Exemple 1 : Récupérer un élément par son index positif</caption>
-     * const str = new NString();
-     * console.log(str.splitAt('2026-11-10', '-', 0)); // '2026'
-     * console.log(str.splitAt('2026-11-10', '-', 1)); // '11'
+         * console.log(NStr.splitAt('2026-11-10', '-', 0)); // '2026'
+     * console.log(NStr.splitAt('2026-11-10', '-', 1)); // '11'
      *
      * @example <caption>Exemple 2 : Récupérer le dernier élément avec un index négatif (-1)</caption>
-     * const str = new NString();
-     * console.log(str.splitAt('packages/js/backend/NString.js', '/', -1)); // 'NString.js'
+         * console.log(NStr.splitAt('packages/js/backend/NStr.js', '/', -1)); // 'NStr.js'
      *
      * @example <caption>Exemple 3 : Valeur par défaut lorsque l'index est hors limites</caption>
-     * const str = new NString();
-     * console.log(str.splitAt('a:b', ':', 5, 'aucun')); // 'aucun'
+         * console.log(NStr.splitAt('a:b', ':', 5, 'aucun')); // 'aucun'
      */
-    splitAt(text, separator, index, defaultValue = null) {
+    static splitAt(text, separator, index, defaultValue = null) {
         const parts = this.split(text, separator);
         if (parts.length === 0) {
             return defaultValue;
@@ -698,18 +639,15 @@ export class NString extends NObject {
      * @returns {string} Chaîne formatée avec le séparateur répété.
      *
      * @example <caption>Exemple 1 : Grouper par pas de 2 depuis la gauche ('12003' -> '12 00 3')</caption>
-     * const str = new NString();
-     * console.log(str.insertEvery('12003', 2, ' ')); // '12 00 3'
+         * console.log(NStr.insertEvery('12003', 2, ' ')); // '12 00 3'
      *
      * @example <caption>Exemple 2 : Formater un numéro ou code avec un tiret tous les 4 caractères</caption>
-     * const str = new NString();
-     * console.log(str.insertEvery('ABCD1234EFGH', 4, '-')); // 'ABCD-1234-EFGH'
+         * console.log(NStr.insertEvery('ABCD1234EFGH', 4, '-')); // 'ABCD-1234-EFGH'
      *
      * @example <caption>Exemple 3 : Grouper en partant de la droite (fromEnd = true, ex: milliers)</caption>
-     * const str = new NString();
-     * console.log(str.insertEvery('12003', 3, ' ', true)); // '12 003'
+         * console.log(NStr.insertEvery('12003', 3, ' ', true)); // '12 003'
      */
-    insertEvery(text, step = 2, separator = ' ', fromEnd = false) {
+    static insertEvery(text, step = 2, separator = ' ', fromEnd = false) {
         const chars = Array.from(String(text ?? ''));
         const size = Math.floor(Number(step) || 0);
         if (chars.length === 0 || size <= 0 || chars.length <= size) {
@@ -740,14 +678,12 @@ export class NString extends NObject {
      * @returns {string} Texte tronqué ou texte original s'il est déjà assez court.
      *
      * @example <caption>Exemple 1 : Troncature avec le suffixe par défaut '...'</caption>
-     * const str = new NString();
-     * console.log(str.truncate('Documentation complète de NLib', 16)); // 'Documentation...'
+         * console.log(NStr.truncate('Documentation complète de NLib', 16)); // 'Documentation...'
      *
      * @example <caption>Exemple 2 : Troncature avec un suffixe personnalisé</caption>
-     * const str = new NString();
-     * console.log(str.truncate('Texte très long à couper', 12, ' [suite]')); // 'Text [suite]'
+         * console.log(NStr.truncate('Texte très long à couper', 12, ' [suite]')); // 'Text [suite]'
      */
-    truncate(text, maxLength, suffix = '...') {
+    static truncate(text, maxLength, suffix = '...') {
         const source = String(text ?? '');
         const end = String(suffix ?? '...');
         if (source.length <= maxLength) {
@@ -766,19 +702,17 @@ export class NString extends NObject {
      * @returns {string} Chaîne complétée à gauche.
      *
      * @example <caption>Exemple 1 : Formater un numéro avec des zéros en tête</caption>
-     * const str = new NString();
-     * console.log(str.padStart(42, 5, '0')); // '00042'
+         * console.log(NStr.padStart(42, 5, '0')); // '00042'
      *
      * @example <caption>Exemple 2 : Aligner un texte à droite avec des espaces</caption>
-     * const str = new NString();
-     * console.log(str.padStart('NLib', 8, ' ')); // '    NLib'
+         * console.log(NStr.padStart('NLib', 8, ' ')); // '    NLib'
      */
-    padStart(text, length, padChar = ' ') {
+    static padStart(text, length, padChar = ' ') {
         const len = Math.max(0, Math.floor(Number(length) || 0));
         try {
             return String(text ?? '').padStart(len, String(padChar || ' '));
         } catch (err) {
-            NUtil.log.warn('NString.padStart: Paramètre de remplissage invalide.', {
+            NLog.warn('NStr.padStart: Paramètre de remplissage invalide.', {
                 code: 'WARN_STRING_PAD_ERROR',
                 length,
                 cause: err
@@ -796,19 +730,17 @@ export class NString extends NObject {
      * @returns {string} Chaîne complétée à droite.
      *
      * @example <caption>Exemple 1 : Compléter avec des points</caption>
-     * const str = new NString();
-     * console.log(str.padEnd('Chargement', 13, '.')); // 'Chargement...'
+         * console.log(NStr.padEnd('Chargement', 13, '.')); // 'Chargement...'
      *
      * @example <caption>Exemple 2 : Aligner une colonne de texte</caption>
-     * const str = new NString();
-     * console.log(str.padEnd('ID', 6, ' ') + '| Nom'); // 'ID    | Nom'
+         * console.log(NStr.padEnd('ID', 6, ' ') + '| Nom'); // 'ID    | Nom'
      */
-    padEnd(text, length, padChar = ' ') {
+    static padEnd(text, length, padChar = ' ') {
         const len = Math.max(0, Math.floor(Number(length) || 0));
         try {
             return String(text ?? '').padEnd(len, String(padChar || ' '));
         } catch (err) {
-            NUtil.log.warn('NString.padEnd: Paramètre de remplissage invalide.', {
+            NLog.warn('NStr.padEnd: Paramètre de remplissage invalide.', {
                 code: 'WARN_STRING_PAD_ERROR',
                 length,
                 cause: err
@@ -825,19 +757,17 @@ export class NString extends NObject {
      * @returns {string} Chaîne répétée.
      *
      * @example <caption>Exemple 1 : Créer une ligne de séparation</caption>
-     * const str = new NString();
-     * console.log(str.repeat('-', 10)); // '----------'
+         * console.log(NStr.repeat('-', 10)); // '----------'
      *
      * @example <caption>Exemple 2 : Répéter un motif</caption>
-     * const str = new NString();
-     * console.log(str.repeat('ab', 3)); // 'ababab'
+         * console.log(NStr.repeat('ab', 3)); // 'ababab'
      */
-    repeat(text, count) {
+    static repeat(text, count) {
         const n = Math.max(0, Math.floor(Number(count) || 0));
         try {
             return String(text ?? '').repeat(n);
         } catch (err) {
-            NUtil.log.warn('NString.repeat: Valeur de répétition invalide ou excessive.', {
+            NLog.warn('NStr.repeat: Valeur de répétition invalide ou excessive.', {
                 code: 'WARN_STRING_REPEAT_ERROR',
                 count,
                 cause: err
@@ -853,14 +783,12 @@ export class NString extends NObject {
      * @returns {string} Texte inversé.
      *
      * @example <caption>Exemple 1 : Inverser un mot</caption>
-     * const str = new NString();
-     * console.log(str.reverse('NLib')); // 'biLN'
+         * console.log(NStr.reverse('NLib')); // 'biLN'
      *
      * @example <caption>Exemple 2 : Vérifier un palindrome</caption>
-     * const str = new NString();
-     * console.log(str.reverse('radar') === 'radar'); // true
+         * console.log(NStr.reverse('radar') === 'radar'); // true
      */
-    reverse(text) {
+    static reverse(text) {
         return Array.from(String(text ?? '')).reverse().join('');
     }
 
@@ -873,14 +801,12 @@ export class NString extends NObject {
      * @returns {string} Texte modifié.
      *
      * @example <caption>Exemple 1 : Remplacer un mot partout dans une phrase</caption>
-     * const str = new NString();
-     * console.log(str.replaceAll('a-b-c', '-', '_')); // 'a_b_c'
+         * console.log(NStr.replaceAll('a-b-c', '-', '_')); // 'a_b_c'
      *
      * @example <caption>Exemple 2 : Supprimer toutes les occurrences d'une sous-chaîne</caption>
-     * const str = new NString();
-     * console.log(str.replaceAll('12 34 56', ' ', '')); // '123456'
+         * console.log(NStr.replaceAll('12 34 56', ' ', '')); // '123456'
      */
-    replaceAll(text, search, replacement) {
+    static replaceAll(text, search, replacement) {
         const source = String(text ?? '');
         const target = String(search ?? '');
         if (target === '') {
@@ -897,15 +823,13 @@ export class NString extends NObject {
      * @returns {string} Texte interpolé.
      *
      * @example <caption>Exemple 1 : Interpolation avec accolades simples {cle}</caption>
-     * const str = new NString();
-     * const res = str.template('Serveur {host} lancé sur le port {port}', { host: 'localhost', port: 8080 });
+         * const res = NStr.template('Serveur {host} lancé sur le port {port}', { host: 'localhost', port: 8080 });
      * console.log(res); // 'Serveur localhost lancé sur le port 8080'
      *
      * @example <caption>Exemple 2 : Interpolation avec doubles accolades {{cle}}</caption>
-     * const str = new NString();
-     * console.log(str.template('Bonjour {{utilisateur}} !', { utilisateur: 'Neta' })); // 'Bonjour Neta !'
+         * console.log(NStr.template('Bonjour {{utilisateur}} !', { utilisateur: 'Neta' })); // 'Bonjour Neta !'
      */
-    template(text, data = {}) {
+    static template(text, data = {}) {
         const source = String(text ?? '');
         if (!data || typeof data !== 'object') {
             return source;
@@ -929,18 +853,15 @@ export class NString extends NObject {
      * @returns {string} Chaîne masquée.
      *
      * @example <caption>Exemple 1 : Masquer un numéro en gardant uniquement les 4 derniers chiffres (par défaut)</caption>
-     * const str = new NString();
-     * console.log(str.mask('4532015112830366')); // '************0366'
+         * console.log(NStr.mask('4532015112830366')); // '************0366'
      *
      * @example <caption>Exemple 2 : Garder les 2 premiers et les 2 derniers caractères visibles</caption>
-     * const str = new NString();
-     * console.log(str.mask('70123456', { visibleStart: 2, visibleEnd: 2 })); // '70****56'
+         * console.log(NStr.mask('70123456', { visibleStart: 2, visibleEnd: 2 })); // '70****56'
      *
      * @example <caption>Exemple 3 : Masquer avec un caractère personnalisé '#'</caption>
-     * const str = new NString();
-     * console.log(str.mask('SECRET2026', { visibleStart: 0, visibleEnd: 4, maskChar: '#' })); // '######2026'
+         * console.log(NStr.mask('SECRET2026', { visibleStart: 0, visibleEnd: 4, maskChar: '#' })); // '######2026'
      */
-    mask(text, options = {}) {
+    static mask(text, options = {}) {
         const chars = Array.from(String(text ?? ''));
         if (chars.length === 0) {
             return '';
@@ -970,17 +891,15 @@ export class NString extends NObject {
      * @returns {number} Nombre d'occurrences trouvées.
      *
      * @example <caption>Exemple 1 : Compter une syllabe (sensible à la casse par défaut)</caption>
-     * const str = new NString();
-     * console.log(str.countOccurrences('banane', 'an')); // 2
+         * console.log(NStr.countOccurrences('banane', 'an')); // 2
      *
      * @example <caption>Exemple 2 : Compter en ignorant la casse et les accents</caption>
-     * const str = new NString();
-     * console.log(str.countOccurrences('Été, été, ETE', 'ete', {
+         * console.log(NStr.countOccurrences('Été, été, ETE', 'ete', {
      *     caseSensitive: false,
      *     ignoreAccents: true
      * })); // 3
      */
-    countOccurrences(text, subString, options = {}) {
+    static countOccurrences(text, subString, options = {}) {
         if (text === null || text === undefined || subString === null || subString === undefined) {
             return 0;
         }
@@ -999,14 +918,12 @@ export class NString extends NObject {
      * @returns {number} Nombre de mots.
      *
      * @example <caption>Exemple 1 : Phrase standard</caption>
-     * const str = new NString();
-     * console.log(str.wordCount('NLib est un écosystème universel')); // 5
+         * console.log(NStr.wordCount('NLib est un écosystème universel')); // 5
      *
      * @example <caption>Exemple 2 : Chaîne vide ou composée d'espaces</caption>
-     * const str = new NString();
-     * console.log(str.wordCount('    ')); // 0
+         * console.log(NStr.wordCount('    ')); // 0
      */
-    wordCount(text) {
+    static wordCount(text) {
         const cleaned = this.cleanSpaces(text);
         if (cleaned.length === 0) {
             return 0;
@@ -1022,16 +939,14 @@ export class NString extends NObject {
      * @returns {string} Chaîne aléatoire générée.
      *
      * @example <caption>Exemple 1 : Générer un identifiant alphanumérique de 12 caractères</caption>
-     * const str = new NString();
-     * const code = str.random(12);
+         * const code = NStr.random(12);
      * console.log(code.length); // 12
      *
      * @example <caption>Exemple 2 : Générer un code PIN numérique à 6 chiffres</caption>
-     * const str = new NString();
-     * const pin = str.random(6, '0123456789');
+         * const pin = NStr.random(6, '0123456789');
      * console.log(pin.length); // 6
      */
-    random(length = 16, charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') {
+    static random(length = 16, charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') {
         const size = Math.max(0, Math.floor(Number(length) || 0));
         const chars = String(charset || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789');
         if (size === 0 || chars.length === 0) {
@@ -1064,7 +979,7 @@ export class NString extends NObject {
      * @example <caption>Exemple 2 : Normalisation standard par défaut</caption>
      * // this.#prepareComparison('NLib') -> 'NLib'
      */
-    #prepareComparison(text, options = {}) {
+    static #prepareComparison(text, options = {}) {
         const opts = typeof options === 'boolean'
             ? { caseSensitive: options }
             : (options ?? {});
@@ -1103,7 +1018,7 @@ export class NString extends NObject {
      * @example <caption>Exemple 2 : Découpage interne d'une chaîne snake_case</caption>
      * // this.#splitWords('mon_texte_test') -> ['mon', 'texte', 'test']
      */
-    #splitWords(text) {
+    static #splitWords(text) {
         const clean = this.removeAccents(String(text ?? ''))
             .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
             .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
@@ -1113,5 +1028,5 @@ export class NString extends NObject {
     }
 }
 
-export default NString;
+export default NStr;
 

@@ -1,653 +1,39 @@
 /**
  * @file NUtil.js
  * @package @nlib/js-backend
- * @description Façade statique centrale regroupant toutes les classes utilitaires et services de l'écosystème NLib
- * (`NString`, `NNumber`, `NDateTime`, `NAmount`, `NEmail`, `NPhoneNumber`, `NCryptography`, `NUrl`,
- * `NJson`, `NPassword`, `NArray`, `NEnvironment`, `NConfig`, `NSystem`) sous forme de propriétés statiques
- * à initialisation paresseuse (`NUtil.str`, `NUtil.num`, `NUtil.date`, `NUtil.amount`, `NUtil.email`, `NUtil.phone`,
- * `NUtil.crypto`, `NUtil.url`, `NUtil.json`, `NUtil.password`, `NUtil.arr`, `NUtil.env`, `NUtil.config`, `NUtil.sys`),
- * ainsi que des méthodes utilitaires transversales statiques (UUID v4, vérification de types, temporisation
- * datetime-driven NUtil.setTimeout / clearTimeout, sleep, debounce, throttle, retry).
+ * @description Utilitaires transversaux statiques de NLib (génération UUID v4 et identifiants courts,
+ * vérification de types, temporisation datetime-driven `setTimeout` / `clearTimeout`, `sleep`,
+ * `debounce`, `throttle`, `retry`).
  */
 
 import { NEvent } from '../core/NEvent.js';
 import { NObject } from '../core/NObject.js';
-import { NString } from './NString.js';
-import { NNumber } from './NNumber.js';
-import { NDateTime } from './NDateTime.js';
-import { NAmount } from './NAmount.js';
-import { NEmail } from './NEmail.js';
-import { NPhoneNumber } from './NPhoneNumber.js';
-import { NCryptography } from './NCryptography.js';
-import { NUrl } from './NUrl.js';
+import { NStr } from './NStr.js';
+import { NCrypto } from './NCrypto.js';
 import { NJson } from './NJson.js';
-import { NPassword } from './NPassword.js';
-import { NArray } from './NArray.js';
-import { NEnvironment } from '../environment/NEnvironment.js';
-import { NConfig } from '../config/NConfig.js';
-import { NSystem } from '../system/NSystem.js';
-import { NWorkerManager } from '../worker/NWorkerManager.js';
-import { NNetwork } from '../requests/NNetwork.js';
-import { NCache } from '../cache/NCache.js';
-import { NDatabase } from '../database/NDatabase.js';
-import { NDirectory } from '../filesystem/NDirectory.js';
-import { NFile } from '../filesystem/NFile.js';
 import { NLog } from '../log/NLog.js';
-import { NLanguage } from '../language/NLanguage.js';
 
 /**
  * @class NUtil
- * @extends NObject
- * @description Point d'accès statique universel vers tous les utilitaires de NLib et fonctions
- * transversales générales.
+ * @description Classe statique regroupant les méthodes utilitaires transversales de NLib
+ * (identifiants uniques, inspection de types, temporisation et résilience).
  *
- * @example <caption>Exemple 1 : Utiliser les instances statiques de NString, NNumber, NDateTime et NAmount</caption>
- * console.log(NUtil.str.equals('NLib', 'nlib', { caseSensitive: false })); // true
- * console.log(NUtil.num.round(3.14159, 2));                                // 3.14
- * console.log(NUtil.date.nowDate());                                       // ex: '2026-11-11'
- * console.log(NUtil.amount.format(25000, 'XOF'));                          // '25 000 FCFA'
+ * @example <caption>Exemple 1 : Générer des identifiants et inspecter des types</caption>
+ * console.log(NUtil.uuid());             // ex: 'f47ac10b-58cc-4372-a567-0e02b2c3d479'
+ * console.log(NUtil.uid('usr_'));        // ex: 'usr_1731312000000_a1b2c3'
+ * console.log(NUtil.isEmpty(''));        // true
+ * console.log(NUtil.getType([1, 2, 3])); // 'array'
  *
- * @example <caption>Exemple 2 : Utiliser NEnvironment, NConfig et NSystem</caption>
- * console.log(NUtil.env.os, NUtil.env.type);
- * NUtil.config.set('app.name', 'NLib');
- * console.log(NUtil.config.getString('app.name')); // 'NLib'
- * console.log(NUtil.sys.cpuCores);                 // ex: 8
- *
- * @example <caption>Exemple 3 : Méthodes transversales statiques de NUtil (UUID, types, sleep, retry)</caption>
- * console.log(NUtil.uuid());                  // ex: 'f47ac10b-58cc-4372-a567-0e02b2c3d479'
- * console.log(NUtil.isEmpty(''));             // true
- * console.log(NUtil.getType([1, 2, 3]));      // 'array'
+ * @example <caption>Exemple 2 : Temporisation et nouvelles tentatives</caption>
  * await NUtil.sleep(100);
+ * const res = await NUtil.retry(async () => 'ok', { attempts: 3, delayMs: 100 });
  */
-export class NUtil extends NObject {
-
-    // =========================================================================
-    // Variables statiques privées (Lazy Singletons : initialisées au 1er appel)
-    // =========================================================================
-
-    /** @type {NString|null} */
-    static #str = null;
-
-    /** @type {NNumber|null} */
-    static #num = null;
-
-    /** @type {NDateTime|null} */
-    static #date = null;
-
-    /** @type {NAmount|null} */
-    static #amount = null;
-
-    /** @type {NEmail|null} */
-    static #email = null;
-
-    /** @type {NPhoneNumber|null} */
-    static #phone = null;
-
-    /** @type {NCryptography|null} */
-    static #crypto = null;
-
-    /** @type {NUrl|null} */
-    static #url = null;
-
-    /** @type {NJson|null} */
-    static #json = null;
-
-    /** @type {NPassword|null} */
-    static #password = null;
-
-    /** @type {NArray|null} */
-    static #arr = null;
-
-    /** @type {NEnvironment|null} */
-    static #env = null;
-
-    /** @type {NConfig|null} */
-    static #config = null;
-
-    /** @type {NSystem|null} */
-    static #sys = null;
-
-    /** @type {NWorkerManager|null} */
-    static #worker = null;
-
-    /** @type {NNetwork|null} */
-    static #network = null;
-
-    /** @type {NDatabase|null} */
-    static #database = null;
-
-    /** @type {NFile|null} */
-    static #file = null;
-
-    /** @type {NDirectory|null} */
-    static #dir = null;
-
-    /** @type {NCache|null} */
-    static #cache = null;
-
-    /** @type {NLog|null} */
-    static #log = null;
-
-    /** @type {NLanguage|null} */
-    static #lang = null;
-
-    /** @type {Map<number, Object>} */
-    static #activeTimers = new Map();
-
+export class NUtil {
     /** @type {number} */
     static #timerSeq = 0;
 
-    // =========================================================================
-    // Accesseurs statiques (Getters avec initialisation paresseuse au 1er appel)
-    // =========================================================================
-
-    /**
-     * Retourne l'instance partagée de `NString` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NString} Instance de `NString`.
-     *
-     * @example <caption>Exemple 1 : Comparer deux chaînes</caption>
-     * console.log(NUtil.str.equals('Bonjour', 'bonjour', { caseSensitive: false })); // true
-     *
-     * @example <caption>Exemple 2 : Masquer ou formater une chaîne</caption>
-     * console.log(NUtil.str.insertEvery('12003', ' ', 2)); // '12 00 3'
-     */
-    static get str() {
-        if (!this.#str) {
-            this.#str = new NString();
-        }
-        return this.#str;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NNumber` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NNumber} Instance de `NNumber`.
-     *
-     * @example <caption>Exemple 1 : Vérifier et arrondir un nombre</caption>
-     * console.log(NUtil.num.isNumeric('42.5')); // true
-     * console.log(NUtil.num.round(12.3456, 2)); // 12.35
-     *
-     * @example <caption>Exemple 2 : Formater une taille en octets</caption>
-     * console.log(NUtil.num.formatBytes(1048576)); // '1 MB'
-     */
-    static get num() {
-        if (!this.#num) {
-            this.#num = new NNumber();
-        }
-        return this.#num;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NDateTime` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NDateTime} Instance de `NDateTime`.
-     *
-     * @example <caption>Exemple 1 : Obtenir la date et l'heure actuelles</caption>
-     * console.log(NUtil.date.now());     // 'YYYY-MM-DD HH:mm:ss'
-     * console.log(NUtil.date.nowDate()); // 'YYYY-MM-DD'
-     *
-     * @example <caption>Exemple 2 : Ajouter des jours</caption>
-     * console.log(NUtil.date.format(NUtil.date.addDays('2026-11-10', 5), 'DD/MM/YYYY')); // '15/11/2026'
-     */
-    static get date() {
-        if (!this.#date) {
-            this.#date = new NDateTime();
-        }
-        return this.#date;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NAmount` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NAmount} Instance de `NAmount`.
-     *
-     * @example <caption>Exemple 1 : Additionner et formater un montant</caption>
-     * const total = NUtil.amount.add(19.99, 5.01);
-     * console.log(NUtil.amount.format(total, 'EUR')); // '25,00 €'
-     *
-     * @example <caption>Exemple 2 : Calculer la TVA</caption>
-     * console.log(NUtil.amount.addTax(100, 18)); // 118
-     */
-    static get amount() {
-        if (!this.#amount) {
-            this.#amount = new NAmount();
-        }
-        return this.#amount;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NEmail` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NEmail} Instance de `NEmail`.
-     *
-     * @example <caption>Exemple 1 : Valider et normaliser un e-mail</caption>
-     * console.log(NUtil.email.isValid('Contact@NLib.dev'));  // true
-     * console.log(NUtil.email.normalize(' Contact@NLib.dev ')); // 'contact@nlib.dev'
-     *
-     * @example <caption>Exemple 2 : Masquer un e-mail</caption>
-     * console.log(NUtil.email.mask('contact@nlib.dev')); // 'co****t@nlib.dev'
-     */
-    static get email() {
-        if (!this.#email) {
-            this.#email = new NEmail();
-        }
-        return this.#email;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NPhoneNumber` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NPhoneNumber} Instance de `NPhoneNumber`.
-     *
-     * @example <caption>Exemple 1 : Normaliser en E.164</caption>
-     * console.log(NUtil.phone.toE164('70 12 34 56', '226')); // '+22670123456'
-     *
-     * @example <caption>Exemple 2 : Formater par groupes de 2 chiffres</caption>
-     * console.log(NUtil.phone.format('70123456')); // '70 12 34 56'
-     */
-    static get phone() {
-        if (!this.#phone) {
-            this.#phone = new NPhoneNumber();
-        }
-        return this.#phone;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NCryptography` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NCryptography} Instance de `NCryptography`.
-     *
-     * @example <caption>Exemple 1 : Hacher en SHA-256</caption>
-     * const hash = await NUtil.crypto.sha256('MonSecret');
-     *
-     * @example <caption>Exemple 2 : Chiffrement local</caption>
-     * const enc = await NUtil.crypto.encryptLocal('Donnée');
-     * console.log(await NUtil.crypto.decryptLocal(enc)); // 'Donnée'
-     */
-    static get crypto() {
-        if (!this.#crypto) {
-            this.#crypto = new NCryptography();
-        }
-        return this.#crypto;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NUrl` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NUrl} Instance de `NUrl`.
-     *
-     * @example <caption>Exemple 1 : Joindre des chemins d'URL</caption>
-     * console.log(NUtil.url.join('https://api.nlib.dev/', '/v1/', '/users'));
-     * // 'https://api.nlib.dev/v1/users'
-     *
-     * @example <caption>Exemple 2 : Masquer et décoder un ID de table dans une URL</caption>
-     * const token = NUtil.url.encodeId(42, 'cle');
-     * console.log(NUtil.url.decodeId(token, 'cle', true)); // 42
-     */
-    static get url() {
-        if (!this.#url) {
-            this.#url = new NUrl();
-        }
-        return this.#url;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NJson` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NJson} Instance de `NJson`.
-     *
-     * @example <caption>Exemple 1 : Lire dans un objet ou tableau via un chemin</caption>
-     * console.log(NUtil.json.getString({ users: ['Ali', 'Neta'] }, ['users', 1])); // 'Neta'
-     *
-     * @example <caption>Exemple 2 : Compter le nombre d'entrées</caption>
-     * console.log(NUtil.json.size({ a: 1, b: 2 })); // 2
-     */
-    static get json() {
-        if (!this.#json) {
-            this.#json = new NJson();
-        }
-        return this.#json;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NPassword` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NPassword} Instance de `NPassword`.
-     *
-     * @example <caption>Exemple 1 : Générer un mot de passe fort</caption>
-     * console.log(NUtil.password.generate(16));
-     *
-     * @example <caption>Exemple 2 : Générer un code PIN</caption>
-     * console.log(NUtil.password.generatePin(6));
-     */
-    static get password() {
-        if (!this.#password) {
-            this.#password = new NPassword();
-        }
-        return this.#password;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NArray` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NArray} Instance de `NArray`.
-     *
-     * @example <caption>Exemple 1 : Dédoublonner et compter un tableau</caption>
-     * console.log(NUtil.arr.unique([1, 2, 2, 3])); // [1, 2, 3]
-     * console.log(NUtil.arr.size([1, 2, 3]));      // 3
-     *
-     * @example <caption>Exemple 2 : Découper en lots</caption>
-     * console.log(NUtil.arr.chunk([1, 2, 3, 4], 2)); // [[1, 2], [3, 4]]
-     */
-    static get arr() {
-        if (!this.#arr) {
-            this.#arr = new NArray();
-        }
-        return this.#arr;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NEnvironment` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NEnvironment} Instance de `NEnvironment`.
-     *
-     * @example <caption>Exemple 1 : Détecter l'OS, le navigateur et le type d'environnement</caption>
-     * console.log(NUtil.env.type);    // 'browser' | 'node' | 'worker' | 'unknown'
-     * console.log(NUtil.env.os);      // 'windows' | 'android' | 'ios' | 'macos' | 'linux' | 'harmonyos'
-     * console.log(NUtil.env.browser); // 'chrome' | 'edge' | 'firefox' | 'safari' | 'opera'
-     *
-     * @example <caption>Exemple 2 : Vérifier l'état de connexion et WebView</caption>
-     * console.log(NUtil.env.isOnline);
-     * console.log(NUtil.env.isWebView);
-     */
-    static get env() {
-        if (!this.#env) {
-            this.#env = new NEnvironment();
-        }
-        return this.#env;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NConfig` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NConfig} Instance de `NConfig`.
-     *
-     * @example <caption>Exemple 1 : Définir et lire des paramètres de configuration</caption>
-     * NUtil.config.set('server.port', 8080);
-     * console.log(NUtil.config.getInt('server.port')); // 8080
-     *
-     * @example <caption>Exemple 2 : Charger un contenu .env</caption>
-     * NUtil.config.loadFromDotEnv('APP_NAME="NLib"\nDEBUG=true');
-     * console.log(NUtil.config.getBoolean('DEBUG')); // true
-     */
-    static get config() {
-        if (!this.#config) {
-            this.#config = new NConfig();
-        }
-        return this.#config;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NSystem` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NSystem} Instance de `NSystem`.
-     *
-     * @example <caption>Exemple 1 : Inspecter le CPU, la mémoire et l'écran</caption>
-     * console.log(NUtil.sys.cpuCores);
-     * console.log(NUtil.sys.memory.formattedUsed);
-     *
-     * @example <caption>Exemple 2 : Mesurer une tâche</caption>
-     * const report = await NUtil.sys.measure('Test', () => 42);
-     * console.log(report.durationMs);
-     */
-    static get sys() {
-        if (!this.#sys) {
-            this.#sys = new NSystem();
-        }
-        return this.#sys;
-    }
-
-    /**
-     * Alias de `NUtil.sys` retournant la même instance partagée de `NSystem`.
-     *
-     * @returns {NSystem} Instance de `NSystem`.
-     *
-     * @example <caption>Exemple 1 : Obtenir l'état réseau via NUtil.system</caption>
-     * console.log(NUtil.system.network.online);
-     *
-     * @example <caption>Exemple 2 : Obtenir un rapport complet du système</caption>
-     * const snap = await NUtil.system.getSnapshot();
-     */
-    static get system() {
-        return this.sys;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NWorkerManager` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NWorkerManager} Instance de `NWorkerManager`.
-     *
-     * @example <caption>Exemple 1 : Thread principal — créer et appeler un worker</caption>
-     * NUtil.worker.create('sql', { url: './workers/sql.js' });
-     * const rows = await NUtil.worker.call('sql', 'query', { sql: 'SELECT 1' });
-     *
-     * @example <caption>Exemple 2 : Côté Worker — exposer une méthode au thread principal</caption>
-     * NUtil.worker.parent.handle('query', async ({ sql }) => db.exec(sql));
-     */
-    static get worker() {
-        if (!this.#worker) {
-            this.#worker = new NWorkerManager();
-        }
-        return this.#worker;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NNetwork` (instanciée uniquement lors du premier accès).
-     *
-     * @returns {NNetwork} Instance de `NNetwork`.
-     *
-     * @example <caption>Exemple 1 : Requête GET simple avec NUtil.network</caption>
-     * const res = await NUtil.network.get('https://api.example.com/items');
-     * console.log(res.data);
-     *
-     * @example <caption>Exemple 2 : Téléchargement avec chunks de 1 Mo max</caption>
-     * const file = await NUtil.network.downloadFile('https://example.com/archive.zip', {
-     *     onProgress: ({ percent }) => console.log(`Téléchargement : ${percent}%`)
-     * });
-     */
-    static get network() {
-        if (!this.#network) {
-            this.#network = new NNetwork();
-        }
-        return this.#network;
-    }
-
-    /**
-     * Alias court vers `NUtil.network`.
-     *
-     * @returns {NNetwork} Instance de `NNetwork`.
-     *
-     * @example <caption>Exemple 1 : Requête POST via alias net</caption>
-     * const res = await NUtil.net.post('/api/save', { status: 'ok' });
-     *
-     * @example <caption>Exemple 2 : Téléversement par chunk</caption>
-     * await NUtil.net.uploadFile('/api/upload', myFile);
-     */
-    static get net() {
-        return this.network;
-    }
-
-    /**
-     * Retourne l'instance partagée par défaut de `NDatabase` (instanciée uniquement lors du premier accès).
-     * Regroupe de manière centralisée les sous-moteurs `sql`, `idb` (`indexed`) et `store` (`storage`).
-     *
-     * @returns {NDatabase} Instance de `NDatabase`.
-     *
-     * @example <caption>Exemple 1 : Utiliser les sous-moteurs via NUtil.database</caption>
-     * await NUtil.database.sql.insert('users', { name: 'Alice' });
-     * await NUtil.database.idb.add('logs', { action: 'start' });
-     * NUtil.database.store.set('theme', 'dark');
-     *
-     * @example <caption>Exemple 2 : Initialisation coordonnée</caption>
-     * await NUtil.database.init();
-     */
-    static get database() {
-        if (!this.#database) {
-            this.#database = new NDatabase();
-        }
-        return this.#database;
-    }
-
-    /**
-     * Alias court vers `NUtil.database`.
-     * Donne un accès direct aux trois sous-moteurs : `NUtil.db.sql`, `NUtil.db.idb`, `NUtil.db.store`.
-     *
-     * @returns {NDatabase} Instance de `NDatabase`.
-     *
-     * @example <caption>Exemple 1 : Requête SQL via NUtil.db.sql</caption>
-     * const user = await NUtil.db.sql.selectOne('SELECT * FROM users WHERE id = ?', [1]);
-     *
-     * @example <caption>Exemple 2 : Stockage clé-valeur via NUtil.db.store et IndexedDB via NUtil.db.idb</caption>
-     * NUtil.db.store.set('lang', 'fr');
-     * await NUtil.db.idb.put('cart', { item: 'pain' });
-     */
-    static get db() {
-        return this.database;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NFile` (gestionnaire de fichiers multiplateforme instancié au premier accès).
-     * Bascule automatiquement entre le pont natif (`invokeNative`), File System Access API (`navigator.storage`) et `IndexedDB`.
-     *
-     * @returns {NFile} Instance partagée de `NFile`.
-     *
-     * @example <caption>Exemple 1 : Écrire et lire un fichier texte via NUtil.file</caption>
-     * await NUtil.file.writeText('docs/note.txt', 'Bonjour NLib');
-     * console.log(await NUtil.file.readText('docs/note.txt')); // 'Bonjour NLib'
-     *
-     * @example <caption>Exemple 2 : Manipuler des chemins et extensions</caption>
-     * console.log(NUtil.file.getExtension('rapport.pdf')); // 'pdf'
-     * console.log(NUtil.file.getMimeType('rapport.pdf'));  // 'application/pdf'
-     */
-    static get file() {
-        if (!this.#file) {
-            this.#file = new NFile();
-        }
-        return this.#file;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NDirectory` (gestionnaire de répertoires multiplateforme instancié au premier accès).
-     * Bascule automatiquement entre le pont natif (`invokeNative`), File System Access API (`navigator.storage`) et `IndexedDB`.
-     *
-     * @returns {NDirectory} Instance partagée de `NDirectory`.
-     *
-     * @example <caption>Exemple 1 : Créer et lister un répertoire via NUtil.dir</caption>
-     * await NUtil.dir.create('projets/2026');
-     * const res = await NUtil.dir.list('projets');
-     * console.log(res.data);
-     *
-     * @example <caption>Exemple 2 : Rechercher des fichiers dans un répertoire</caption>
-     * const pdfs = await NUtil.dir.find('projets', { extension: 'pdf' });
-     * console.log(pdfs.length);
-     */
-    static get dir() {
-        if (!this.#dir) {
-            this.#dir = new NDirectory();
-        }
-        return this.#dir;
-    }
-
-    /**
-     * Alias explicite vers `NUtil.dir` retournant la même instance partagée de `NDirectory`.
-     *
-     * @returns {NDirectory} Instance partagée de `NDirectory`.
-     *
-     * @example <caption>Exemple 1 : Vérifier l'existence d'un dossier via NUtil.directory</caption>
-     * console.log(await NUtil.directory.exists('projets/2026'));
-     *
-     * @example <caption>Exemple 2 : Calculer la taille totale d'un dossier</caption>
-     * console.log(await NUtil.directory.size('projets'));
-     */
-    static get directory() {
-        return this.dir;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NCache` (gestionnaire universel de cache multi-niveaux instancié au premier accès).
-     * Combine automatiquement L1 Mémoire vive (LRU) + CacheStorage API + NStorage + NFile / IndexedDB.
-     *
-     * @returns {NCache} Instance partagée de `NCache`.
-     *
-     * @example <caption>Exemple 1 : Mettre en cache et lire une donnée avec TTL</caption>
-     * await NUtil.cache.set('session:user', { id: 1, name: 'Neta' }, 300);
-     * console.log(await NUtil.cache.get('session:user'));
-     *
-     * @example <caption>Exemple 2 : Mettre en cache une URL ou réponse HTTP</caption>
-     * await NUtil.cache.putResponse('https://api.nlib.dev/v1/conf', { env: 'prod' }, { ttl: 600 });
-     * console.log(await NUtil.cache.matchUrl('https://api.nlib.dev/v1/conf', { format: 'json' }));
-     */
-    static get cache() {
-        if (!this.#cache) {
-            this.#cache = new NCache();
-        }
-        return this.#cache;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NLog` (système universel de journalisation de NLib).
-     *
-     * @returns {NLog} Instance partagée de `NLog`.
-     *
-     * @example <caption>Exemple 1 : Journaliser un message ou une anomalie</caption>
-     * NUtil.log.info('Opération réussie', { id: 123 });
-     * NUtil.log.error('Échec de validation', { champ: 'nom' });
-     *
-     * @example <caption>Exemple 2 : Consulter les derniers logs enregistrés</caption>
-     * const recents = NUtil.log.getLogs({ level: 'warn' });
-     * console.log(recents.length);
-     */
-    static get log() {
-        if (!this.#log) {
-            this.#log = new NLog();
-        }
-        return this.#log;
-    }
-
-    /**
-     * Retourne l'instance partagée de `NLanguage` (moteur d'internationalisation i18n instancié au premier accès).
-     *
-     * @returns {NLanguage} Instance partagée de `NLanguage`.
-     *
-     * @example <caption>Exemple 1 : Ajouter et lire une traduction via NUtil.lang</caption>
-     * NUtil.lang.addLanguage('fr', { save: 'Enregistrer' });
-     * console.log(NUtil.lang.get('save')); // 'Enregistrer'
-     *
-     * @example <caption>Exemple 2 : Utiliser l'alias NUtil.language</caption>
-     * console.log(NUtil.language === NUtil.lang); // true
-     */
-    static get lang() {
-        if (!this.#lang) {
-            this.#lang = new NLanguage();
-        }
-        return this.#lang;
-    }
-
-    /**
-     * Alias de `NUtil.lang` retournant l'instance partagée de `NLanguage`.
-     *
-     * @returns {NLanguage} Instance partagée de `NLanguage`.
-     *
-     * @example <caption>Exemple 1 : Lire la langue active</caption>
-     * console.log(NUtil.language.getLanguage());
-     *
-     * @example <caption>Exemple 2 : Traduire une clé</caption>
-     * console.log(NUtil.language.get('save'));
-     */
-    static get language() {
-        return this.lang;
-    }
+    /** @type {Map<number, Object>} */
+    static #activeTimers = new Map();
 
     // =========================================================================
     // Méthodes statiques transversales — Identifiants Uniques (UUID & Short ID)
@@ -670,7 +56,7 @@ export class NUtil extends NObject {
         if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
             return globalThis.crypto.randomUUID();
         }
-        const bytes = NUtil.crypto.randomBytes(16);
+        const bytes = NCrypto.randomBytes(16);
         bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
         bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant RFC 4122
         const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -712,7 +98,7 @@ export class NUtil extends NObject {
      */
     static uid(prefix = '', randomLength = 8) {
         const timePart = Date.now().toString(36);
-        const randPart = NUtil.str.random(Math.max(4, Math.trunc(randomLength)));
+        const randPart = NStr.random(Math.max(4, Math.trunc(randomLength)));
         return prefix ? `${prefix}${timePart}_${randPart}` : `${timePart}_${randPart}`;
     }
 
@@ -767,7 +153,7 @@ export class NUtil extends NObject {
             return Number.isNaN(value);
         }
         if (typeof value === 'string') {
-            return NUtil.str.isEmpty(value);
+            return NStr.isEmpty(value);
         }
         if (Array.isArray(value)) {
             return value.length === 0;
@@ -775,7 +161,7 @@ export class NUtil extends NObject {
         if (value instanceof Map || value instanceof Set) {
             return value.size === 0;
         }
-        if (NUtil.json.isPlainObject(value)) {
+        if (NJson.isPlainObject(value)) {
             return Object.keys(value).length === 0;
         }
         return false;
@@ -924,7 +310,7 @@ export class NUtil extends NObject {
      */
     static setTimeout(callback, delayOrTarget = 0, ...args) {
         if (typeof callback !== 'function') {
-            NUtil.log.error('NUtil.setTimeout: Le paramètre callback doit être une fonction', {
+            NLog.error('NUtil.setTimeout: Le paramètre callback doit être une fonction', {
                 code: 'ERR_INVALID_ARGUMENT',
                 callback
             });
@@ -963,7 +349,7 @@ export class NUtil extends NObject {
             targetTime = now;
         }
 
-        const timerId = ++this.#timerSeq;
+        const timerId = ++NUtil.#timerSeq;
         let nativeTimeoutId = null;
         let isActive = true;
 
@@ -973,7 +359,7 @@ export class NUtil extends NObject {
                 clearTimeout(nativeTimeoutId);
                 nativeTimeoutId = null;
             }
-            this.#activeTimers.delete(timerId);
+            NUtil.#activeTimers.delete(timerId);
         };
 
         const tick = () => {
@@ -988,7 +374,7 @@ export class NUtil extends NObject {
                 try {
                     callback(...args);
                 } catch (err) {
-                    NUtil.log.error('NUtil.setTimeout: Erreur lors de l\'exécution du callback', {
+                    NLog.error('NUtil.setTimeout: Erreur lors de l\'exécution du callback', {
                         timerId,
                         targetTime,
                         error: err?.message || String(err)
@@ -1015,7 +401,7 @@ export class NUtil extends NObject {
             clear: () => cleanup()
         };
 
-        this.#activeTimers.set(timerId, timerHandle);
+        NUtil.#activeTimers.set(timerId, timerHandle);
 
         const initialRemaining = targetTime - now;
         if (initialRemaining <= 0) {
@@ -1052,8 +438,8 @@ export class NUtil extends NObject {
         }
 
         const id = Number(timerOrId);
-        if (!Number.isNaN(id) && this.#activeTimers.has(id)) {
-            const handle = this.#activeTimers.get(id);
+        if (!Number.isNaN(id) && NUtil.#activeTimers.has(id)) {
+            const handle = NUtil.#activeTimers.get(id);
             if (handle) {
                 const wasActive = handle.active;
                 handle.cancel();
@@ -1157,7 +543,7 @@ export class NUtil extends NObject {
     /**
      * Exécute une fonction asynchrone `fn` et réessaie automatiquement en cas d'échec
      * jusqu'à `attempts` tentatives avec un délai `delayMs` entre chaque essai.
-     * En cas d'échec total, consigne l'erreur via `NUtil.log.error` et retourne `options.fallback`
+     * En cas d'échec total, consigne l'erreur via `NLog.error` et retourne `options.fallback`
      * si défini, ou un objet d'erreur standard `{ success: false, code, error, attempts }`.
      *
      * @param {Function} fn - Fonction asynchrone `(attemptIndex) => Promise<any>`.
@@ -1177,7 +563,7 @@ export class NUtil extends NObject {
      */
     static async retry(fn, options = {}) {
         if (typeof fn !== 'function') {
-            NUtil.log.error('NUtil.retry: Le paramètre fn doit être une fonction', {
+            NLog.error('NUtil.retry: Le paramètre fn doit être une fonction', {
                 code: 'ERR_INVALID_ARGUMENT',
                 fn
             });
@@ -1202,7 +588,7 @@ export class NUtil extends NObject {
                 return await fn(attempt);
             } catch (err) {
                 lastError = err;
-                NUtil.log.warn('NUtil.retry: Échec de la tentative', {
+                NLog.warn('NUtil.retry: Échec de la tentative', {
                     attempt,
                     maxAttempts,
                     error: err?.message || String(err)
@@ -1214,7 +600,7 @@ export class NUtil extends NObject {
             }
         }
 
-        NUtil.log.error('NUtil.retry: Épuisement de toutes les tentatives', {
+        NLog.error('NUtil.retry: Épuisement de toutes les tentatives', {
             code: 'ERR_RETRY_EXHAUSTED',
             attempts: maxAttempts,
             error: lastError?.message || String(lastError)

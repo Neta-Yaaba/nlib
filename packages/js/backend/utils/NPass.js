@@ -1,39 +1,36 @@
 /**
- * @file NPassword.js
+ * @file NPass.js
  * @package @nlib/js-backend
- * @description Classe utilitaire pour la validation de politiques de mots de passe,
+ * @description Classe utilitaire statique pour la validation de politiques de mots de passe,
  * l'évaluation de robustesse (score 0-100, entropie en bits, niveau de sécurité), la génération
  * aléatoire cryptographique de mots de passe et de codes PIN / OTP, le hachage salé
  * PBKDF2-SHA256 via Web Crypto (compatible PHP `hash_pbkdf2`, Python `hashlib.pbkdf2_hmac` et Node.js)
  * et la comparaison en temps constant dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
+import { NLog } from '../log/NLog.js';
 import { NUtil } from './NUtil.js';
+import { NCrypto } from './NCrypto.js';
 
 /**
- * @class NPassword
- * @extends NObject
- * @description Utilitaire de validation, évaluation, génération et hachage PBKDF2-SHA256 de mots de passe.
+ * @class NPass
+ * @description Utilitaire statique de validation, évaluation, génération et hachage PBKDF2-SHA256 de mots de passe.
  *
  * @example <caption>Exemple 1 : Validation et évaluation de la robustesse d'un mot de passe</caption>
- * const pwdUtil = new NPassword();
- * console.log(pwdUtil.isValid('NLib#2026!Secure')); // true
- * console.log(pwdUtil.evaluate('NLib#2026!Secure'));
+ * console.log(NPass.isValid('NLib#2026!Secure')); // true
+ * console.log(NPass.evaluate('NLib#2026!Secure'));
  * // { score: 100, level: 'very-strong', entropy: 98.3, isValid: true, missingRules: [] }
  *
  * @example <caption>Exemple 2 : Génération de mot de passe fort et de code PIN / OTP</caption>
- * const pwdUtil = new NPassword();
- * console.log(pwdUtil.generate(16));    // ex: 'k9#Lm2!pQ8@vX4$z'
- * console.log(pwdUtil.generatePin(6));  // ex: '482910'
+ * console.log(NPass.generate(16));    // ex: 'k9#Lm2!pQ8@vX4$z'
+ * console.log(NPass.generatePin(6));  // ex: '482910'
  *
  * @example <caption>Exemple 3 : Hachage salé PBKDF2-SHA256 et vérification sécurisée</caption>
- * const pwdUtil = new NPassword();
- * const hashStr = await pwdUtil.hash('MonMotDePasseSecret!');
- * console.log(await pwdUtil.verify('MonMotDePasseSecret!', hashStr)); // true
- * console.log(await pwdUtil.verify('MauvaisMotDePasse', hashStr));    // false
+ * const hashStr = await NPass.hash('MonMotDePasseSecret!');
+ * console.log(await NPass.verify('MonMotDePasseSecret!', hashStr)); // true
+ * console.log(await NPass.verify('MauvaisMotDePasse', hashStr));    // false
  */
-export class NPassword extends NObject {
+export class NPass {
 
     // =========================================================================
     // Méthodes privées internes (Aléatoire cryptographique)
@@ -51,7 +48,7 @@ export class NPassword extends NObject {
      * @example <caption>Exemple 2 : Index sur alphabet de 64 caractères</caption>
      * // Interne : #randomIndex(64) -> 0..63
      */
-    #randomIndex(max) {
+    static #randomIndex(max) {
         const limit = Math.max(1, Math.trunc(max));
         if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
             const arr = new Uint32Array(1);
@@ -80,19 +77,17 @@ export class NPassword extends NObject {
      * @returns {boolean} `true` si tous les critères sont respectés, sinon `false`.
      *
      * @example <caption>Exemple 1 : Validation avec les règles strictes par défaut</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.isValid('NLib#2026')); // true
-     * console.log(pwdUtil.isValid('nlib2026'));  // false (manque majuscule et caractère spécial)
+     * console.log(NPass.isValid('NLib#2026')); // true
+     * console.log(NPass.isValid('nlib2026'));  // false (manque majuscule et caractère spécial)
      *
      * @example <caption>Exemple 2 : Validation personnalisée (sans caractère spécial obligatoire)</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.isValid('NLib2026', { requireSpecial: false })); // true
+     * console.log(NPass.isValid('NLib2026', { requireSpecial: false })); // true
      */
-    isValid(password, options = {}) {
+    static isValid(password, options = {}) {
         if (typeof password !== 'string') {
             return false;
         }
-        return this.evaluate(password, options).isValid;
+        return NPass.evaluate(password, options).isValid;
     }
 
     /**
@@ -111,16 +106,14 @@ export class NPassword extends NObject {
      * }} Rapport complet d'évaluation.
      *
      * @example <caption>Exemple 1 : Évaluer un mot de passe fort</caption>
-     * const pwdUtil = new NPassword();
-     * const res = pwdUtil.evaluate('NLib@2026#Framework!');
+     * const res = NPass.evaluate('NLib@2026#Framework!');
      * console.log(res.level, res.isValid); // 'very-strong' true
      *
      * @example <caption>Exemple 2 : Identifier les règles manquantes sur un mot de passe faible</caption>
-     * const pwdUtil = new NPassword();
-     * const res = pwdUtil.evaluate('abc');
+     * const res = NPass.evaluate('abc');
      * console.log(res.missingRules); // ['minLength', 'uppercase', 'number', 'special']
      */
-    evaluate(password, options = {}) {
+    static evaluate(password, options = {}) {
         if (typeof password !== 'string' || password.length === 0) {
             return {
                 score: 0,
@@ -154,7 +147,7 @@ export class NPassword extends NObject {
         if (requireSpecial && !hasSpecial) missingRules.push('special');
         if (disallowSpaces && hasSpace) missingRules.push('noSpaces');
 
-        const entropy = this.calculateEntropy(password);
+        const entropy = NPass.calculateEntropy(password);
 
         // Calcul du score sur 100
         let score = Math.min(40, password.length * 3);
@@ -167,7 +160,7 @@ export class NPassword extends NObject {
         if (/(.)\1{2,}/.test(password)) {
             score = Math.max(0, score - 15);
         }
-        if (this.isCommon(password)) {
+        if (NPass.isCommon(password)) {
             score = Math.min(score, 15);
         }
         score = Math.max(0, Math.min(100, score));
@@ -195,15 +188,13 @@ export class NPassword extends NObject {
      * @returns {number} Entropie en bits (arrondie à 1 décimale).
      *
      * @example <caption>Exemple 1 : Entropie d'un mot de passe simple vs complexe</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.calculateEntropy('123456'));          // ~19.9
-     * console.log(pwdUtil.calculateEntropy('NLib#2026! Framework')); // > 100
+     * console.log(NPass.calculateEntropy('123456'));          // ~19.9
+     * console.log(NPass.calculateEntropy('NLib#2026! Framework')); // > 100
      *
      * @example <caption>Exemple 2 : Chaîne vide retourne 0</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.calculateEntropy('')); // 0
+     * console.log(NPass.calculateEntropy('')); // 0
      */
-    calculateEntropy(password) {
+    static calculateEntropy(password) {
         if (typeof password !== 'string' || password.length === 0) {
             return 0;
         }
@@ -228,15 +219,13 @@ export class NPassword extends NObject {
      * @returns {boolean} `true` si le mot de passe est courant/vulnérable, sinon `false`.
      *
      * @example <caption>Exemple 1 : Mot de passe courant détecté</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.isCommon('Azerty123'));  // true
-     * console.log(pwdUtil.isCommon('123456789'));  // true
+     * console.log(NPass.isCommon('Azerty123'));  // true
+     * console.log(NPass.isCommon('123456789'));  // true
      *
      * @example <caption>Exemple 2 : Mot de passe robuste</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.isCommon('k9#Lm2!pQ8@vX4')); // false
+     * console.log(NPass.isCommon('k9#Lm2!pQ8@vX4')); // false
      */
-    isCommon(password) {
+    static isCommon(password) {
         if (typeof password !== 'string' || password.trim().length === 0) {
             return true;
         }
@@ -268,16 +257,14 @@ export class NPassword extends NObject {
      * @returns {string} Mot de passe aléatoire généré.
      *
      * @example <caption>Exemple 1 : Générer un mot de passe fort de 16 caractères</caption>
-     * const pwdUtil = new NPassword();
-     * const pwd = pwdUtil.generate(16);
-     * console.log(pwd.length, pwdUtil.isValid(pwd)); // 16 true
+     * const pwd = NPass.generate(16);
+     * console.log(pwd.length, NPass.isValid(pwd)); // 16 true
      *
      * @example <caption>Exemple 2 : Sans caractères ambigus ni symboles</caption>
-     * const pwdUtil = new NPassword();
-     * const code = pwdUtil.generate(12, { symbols: false, excludeSimilar: true });
+     * const code = NPass.generate(12, { symbols: false, excludeSimilar: true });
      * console.log(code.length); // 12
      */
-    generate(length = 16, options = {}) {
+    static generate(length = 16, options = {}) {
         const size = Math.max(4, Math.trunc(length));
         const useUpper = options?.uppercase ?? true;
         const useLower = options?.lowercase ?? true;
@@ -306,17 +293,17 @@ export class NPassword extends NObject {
         // Garantir au moins 1 caractère de chaque catégorie demandée
         for (let i = 0; i < pools.length && passwordChars.length < size; i++) {
             const pool = pools[i];
-            passwordChars.push(pool[this.#randomIndex(pool.length)]);
+            passwordChars.push(pool[NPass.#randomIndex(pool.length)]);
         }
 
         // Compléter le reste de la longueur
         while (passwordChars.length < size) {
-            passwordChars.push(allChars[this.#randomIndex(allChars.length)]);
+            passwordChars.push(allChars[NPass.#randomIndex(allChars.length)]);
         }
 
         // Mélange de Fisher-Yates cryptographique
         for (let i = passwordChars.length - 1; i > 0; i--) {
-            const j = this.#randomIndex(i + 1);
+            const j = NPass.#randomIndex(i + 1);
             const tmp = passwordChars[i];
             passwordChars[i] = passwordChars[j];
             passwordChars[j] = tmp;
@@ -332,18 +319,16 @@ export class NPassword extends NObject {
      * @returns {string} Code numérique de `length` chiffres.
      *
      * @example <caption>Exemple 1 : Code OTP à 6 chiffres</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.generatePin(6)); // ex: '049281'
+     * console.log(NPass.generatePin(6)); // ex: '049281'
      *
      * @example <caption>Exemple 2 : Code PIN à 4 chiffres</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.generatePin(4).length); // 4
+     * console.log(NPass.generatePin(4).length); // 4
      */
-    generatePin(length = 6) {
+    static generatePin(length = 6) {
         const size = Math.max(1, Math.trunc(length));
         let pin = '';
         for (let i = 0; i < size; i++) {
-            pin += String(this.#randomIndex(10));
+            pin += String(NPass.#randomIndex(10));
         }
         return pin;
     }
@@ -368,22 +353,20 @@ export class NPassword extends NObject {
      * @returns {Promise<string>} Empreinte complète `$pbkdf2-sha256$iterations$saltHex$hashHex`.
      *
      * @example <caption>Exemple 1 : Hacher un mot de passe avec sel automatique</caption>
-     * const pwdUtil = new NPassword();
-     * const hashed = await pwdUtil.hash('MonSecret#2026');
+     * const hashed = await NPass.hash('MonSecret#2026');
      * console.log(hashed.startsWith('$pbkdf2-sha256$')); // true
      *
      * @example <caption>Exemple 2 : Hacher avec un nombre d'itérations personnalisé</caption>
-     * const pwdUtil = new NPassword();
-     * const hashed = await pwdUtil.hash('MonSecret#2026', { iterations: 50000 });
-     * console.log(await pwdUtil.verify('MonSecret#2026', hashed)); // true
+     * const hashed = await NPass.hash('MonSecret#2026', { iterations: 50000 });
+     * console.log(await NPass.verify('MonSecret#2026', hashed)); // true
      */
-    async hash(password, options = {}) {
+    static async hash(password, options = {}) {
         if (typeof password !== 'string' || password.length === 0) {
             return '';
         }
 
-        if (!NUtil.crypto.isWebCryptoAvailable() || typeof globalThis.crypto.subtle.importKey !== 'function') {
-            NUtil.log.warn('NPassword.hash: Web Crypto indisponible.');
+        if (!NCrypto.isWebCryptoAvailable() || typeof globalThis.crypto.subtle.importKey !== 'function') {
+            NLog.warn('NPass.hash: Web Crypto indisponible.');
             return '';
         }
 
@@ -396,7 +379,7 @@ export class NPassword extends NObject {
                 saltBytes[i] = parseInt(options.saltHex.slice(i * 2, i * 2 + 2), 16);
             }
         } else {
-            saltBytes = NUtil.crypto.randomBytes(16);
+            saltBytes = NCrypto.randomBytes(16);
             if (!saltBytes.length) {
                 return '';
             }
@@ -433,7 +416,7 @@ export class NPassword extends NObject {
 
             return `$pbkdf2-sha256$${iterations}$${saltHex}$${hashHex}`;
         } catch (err) {
-            NUtil.log.error('NPassword.hash: Échec WebCrypto PBKDF2.', {
+            NLog.error('NPass.hash: Échec WebCrypto PBKDF2.', {
                 code: 'ERR_PBKDF2_FAILED',
                 cause: err
             });
@@ -450,16 +433,14 @@ export class NPassword extends NObject {
      * @returns {Promise<boolean>} `true` si le mot de passe est exact, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier un mot de passe valide</caption>
-     * const pwdUtil = new NPassword();
-     * const h = await pwdUtil.hash('Secret#2026!');
-     * console.log(await pwdUtil.verify('Secret#2026!', h)); // true
+     * const h = await NPass.hash('Secret#2026!');
+     * console.log(await NPass.verify('Secret#2026!', h)); // true
      *
      * @example <caption>Exemple 2 : Rejeter un mot de passe erroné</caption>
-     * const pwdUtil = new NPassword();
-     * const h = await pwdUtil.hash('Secret#2026!');
-     * console.log(await pwdUtil.verify('AutreMotDePasse', h)); // false
+     * const h = await NPass.hash('Secret#2026!');
+     * console.log(await NPass.verify('AutreMotDePasse', h)); // false
      */
-    async verify(plainPassword, storedHash) {
+    static async verify(plainPassword, storedHash) {
         if (typeof plainPassword !== 'string' || typeof storedHash !== 'string') {
             return false;
         }
@@ -474,8 +455,8 @@ export class NPassword extends NObject {
             return false;
         }
 
-        const recomputed = await this.hash(plainPassword, { iterations, saltHex });
-        return this.timingSafeEquals(recomputed, storedHash);
+        const recomputed = await NPass.hash(plainPassword, { iterations, saltHex });
+        return NPass.timingSafeEquals(recomputed, storedHash);
     }
 
     /**
@@ -487,14 +468,12 @@ export class NPassword extends NObject {
      * @returns {boolean} `true` si les deux chaînes sont strictement identiques, sinon `false`.
      *
      * @example <caption>Exemple 1 : Chaînes identiques</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.timingSafeEquals('token_123', 'token_123')); // true
+     * console.log(NPass.timingSafeEquals('token_123', 'token_123')); // true
      *
      * @example <caption>Exemple 2 : Chaînes différentes</caption>
-     * const pwdUtil = new NPassword();
-     * console.log(pwdUtil.timingSafeEquals('token_123', 'token_124')); // false
+     * console.log(NPass.timingSafeEquals('token_123', 'token_124')); // false
      */
-    timingSafeEquals(a, b) {
+    static timingSafeEquals(a, b) {
         if (typeof a !== 'string' || typeof b !== 'string' || a.length === 0) {
             return false;
         }
@@ -509,5 +488,5 @@ export class NPassword extends NObject {
     }
 }
 
-export default NPassword;
+export default NPass;
 

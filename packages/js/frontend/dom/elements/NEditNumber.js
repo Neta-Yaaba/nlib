@@ -1,13 +1,11 @@
 import { NTag } from './NTag.js';
 
-const NUMBER_TYPES = new Set(['number', 'range']);
-
 /**
  * @class NEditNumber
  * @extends NTag
- * @description �l�ment natif `<input>` num�rique (`number`, `range`, `.n-editnumber`) h�ritant de `NTag`.
+ * @description Élément natif `<input>` numérique (`number`, `range`, `.n-editnumber`) héritant de `NTag`.
  *
- * @example <caption>Exemple 1 : Champ quantit�</caption>
+ * @example <caption>Exemple 1 : Champ quantité</caption>
  * const qty = new NEditNumber({ name: 'qty', min: 1, max: 99, step: 1, value: 1 });
  *
  * @example <caption>Exemple 2 : Curseur de plage</caption>
@@ -16,24 +14,31 @@ const NUMBER_TYPES = new Set(['number', 'range']);
 export class NEditNumber extends NTag {
 
     /**
-     * Cr�e une nouvelle instance `NEditNumber`.
+     * Types HTML numériques pris en charge.
+     * @type {Set<string>}
+     * @private
+     */
+    static #TYPES = new Set(['number', 'range']);
+
+    /**
+     * Crée une nouvelle instance `NEditNumber`.
      *
      * @constructor
      * @param {Object} [options={}] - Options de configuration.
-     * @param {'number'|'range'} [options.type='number'] - Type num�rique.
+     * @param {'number'|'range'} [options.type='number'] - Type numérique.
      * @param {string} [options.name] - Nom du champ.
      * @param {number|string} [options.value] - Valeur initiale.
      * @param {string} [options.placeholder] - Texte indicatif.
      * @param {number|string} [options.min] - Valeur minimale.
      * @param {number|string} [options.max] - Valeur maximale.
-     * @param {number|string} [options.step] - Pas d'incr�mentation.
+     * @param {number|string} [options.step] - Pas d'incrémentation.
      * @param {string} [options.autocomplete] - Attribut `autocomplete`.
      * @param {boolean} [options.autofocus=false] - Focus automatique.
-     * @param {boolean} [options.disabled=false] - D�sactive le champ.
+     * @param {boolean} [options.disabled=false] - Désactive le champ.
      * @param {boolean} [options.readonly=false] - Passe en lecture seule.
      * @param {boolean} [options.required=false] - Rend le champ obligatoire.
      *
-     * @example <caption>Exemple 1 : Prix d�cimal</caption>
+     * @example <caption>Exemple 1 : Prix décimal</caption>
      * const price = new NEditNumber({ min: 0, step: 0.01, placeholder: '0.00' });
      *
      * @example <caption>Exemple 2 : Plage de pourcentage</caption>
@@ -132,9 +137,9 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit le type num�rique (`number` ou `range`).
+     * Définit le type numérique (`number` ou `range`).
      *
-     * @param {string} type - Type num�rique.
+     * @param {string} type - Type numérique.
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Passer en curseur range</caption>
@@ -145,17 +150,17 @@ export class NEditNumber extends NTag {
      */
     setType(type) {
         const clean = typeof type === 'string' ? type.trim().toLowerCase() : 'number';
-        const resolved = NUMBER_TYPES.has(clean) ? clean : 'number';
+        const resolved = NEditNumber.#TYPES.has(clean) ? clean : 'number';
         return this.setAttr('type', resolved);
     }
 
     /**
-     * D�finit ou retire l'attribut `name`.
+     * Définit ou retire l'attribut `name`.
      *
      * @param {string|null} name - Nom du champ.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir le nom</caption>
+     * @example <caption>Exemple 1 : Définir le nom</caption>
      * nb.setName('amount');
      *
      * @example <caption>Exemple 2 : Retirer le nom</caption>
@@ -169,9 +174,9 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit la valeur du champ num�rique.
+     * Définit la valeur du champ numérique.
      *
-     * @param {*} value - Nombre ou cha�ne num�rique.
+     * @param {*} value - Nombre ou chaîne numérique.
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Assigner un entier</caption>
@@ -188,14 +193,14 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * Retourne la valeur brute sous forme de cha�ne.
+     * Retourne la valeur brute sous forme de chaîne.
      *
      * @returns {string} Valeur courante.
      *
      * @example <caption>Exemple 1 : Lire la valeur</caption>
      * console.log(nb.getValue());
      *
-     * @example <caption>Exemple 2 : V�rifier apr�s affectation</caption>
+     * @example <caption>Exemple 2 : Vérifier après affectation</caption>
      * nb.setValue(12);
      * console.log(nb.getValue()); // '12'
      */
@@ -206,7 +211,7 @@ export class NEditNumber extends NTag {
     /**
      * Retourne la valeur convertie en nombre (`number` ou `null` si vide/invalide).
      *
-     * @returns {number|null} Valeur num�rique ou `null`.
+     * @returns {number|null} Valeur numérique ou `null`.
      *
      * @example <caption>Exemple 1 : Lire un nombre</caption>
      * nb.setValue('15.5');
@@ -229,13 +234,13 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit ou retire l'attribut `placeholder`.
+     * Définit ou retire l'attribut `placeholder`.
      *
      * @param {string|null} placeholder - Texte indicatif.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir le placeholder</caption>
-     * nb.setPlaceholder('Quantit�');
+     * @example <caption>Exemple 1 : Définir le placeholder</caption>
+     * nb.setPlaceholder('Quantité');
      *
      * @example <caption>Exemple 2 : Retirer le placeholder</caption>
      * nb.setPlaceholder(null);
@@ -248,12 +253,12 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit ou retire la borne minimale (`min`).
+     * Définit ou retire la borne minimale (`min`).
      *
      * @param {number|string|null} min - Borne minimale.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : Fixer un minimum � 0</caption>
+     * @example <caption>Exemple 1 : Fixer un minimum à 0</caption>
      * nb.setMin(0);
      *
      * @example <caption>Exemple 2 : Retirer le minimum</caption>
@@ -266,12 +271,12 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit ou retire la borne maximale (`max`).
+     * Définit ou retire la borne maximale (`max`).
      *
      * @param {number|string|null} max - Borne maximale.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : Fixer un maximum � 100</caption>
+     * @example <caption>Exemple 1 : Fixer un maximum à 100</caption>
      * nb.setMax(100);
      *
      * @example <caption>Exemple 2 : Retirer le maximum</caption>
@@ -284,9 +289,9 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit ou retire le pas (`step`).
+     * Définit ou retire le pas (`step`).
      *
-     * @param {number|string|null} step - Pas d'incr�mentation (`0.1`, `'any'`, etc.).
+     * @param {number|string|null} step - Pas d'incrémentation (`0.1`, `'any'`, etc.).
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Pas de 0.5</caption>
@@ -302,12 +307,12 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit ou retire l'attribut `autocomplete`.
+     * Définit ou retire l'attribut `autocomplete`.
      *
      * @param {string|null} value - Valeur `autocomplete`.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�sactiver l'autocompl�tion</caption>
+     * @example <caption>Exemple 1 : Désactiver l'autocomplétion</caption>
      * nb.setAutocomplete('off');
      *
      * @example <caption>Exemple 2 : Retirer l'attribut</caption>
@@ -321,15 +326,15 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * Active ou d�sactive le champ.
+     * Active ou désactive le champ.
      *
-     * @param {boolean} [disabled=true] - `true` pour d�sactiver.
+     * @param {boolean} [disabled=true] - `true` pour désactiver.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�sactiver</caption>
+     * @example <caption>Exemple 1 : Désactiver</caption>
      * nb.setDisabled(true);
      *
-     * @example <caption>Exemple 2 : R�activer</caption>
+     * @example <caption>Exemple 2 : Réactiver</caption>
      * nb.setDisabled(false);
      */
     setDisabled(disabled = true) {
@@ -340,14 +345,14 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * Indique si le champ est d�sactiv�.
+     * Indique si le champ est désactivé.
      *
-     * @returns {boolean} `true` si d�sactiv�.
+     * @returns {boolean} `true` si désactivé.
      *
-     * @example <caption>Exemple 1 : V�rifier l'�tat</caption>
+     * @example <caption>Exemple 1 : Vérifier l'état</caption>
      * console.log(nb.isDisabled());
      *
-     * @example <caption>Exemple 2 : Apr�s setDisabled</caption>
+     * @example <caption>Exemple 2 : Après setDisabled</caption>
      * nb.setDisabled(true);
      * console.log(nb.isDisabled()); // true
      */
@@ -356,7 +361,7 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * Passe le champ en lecture seule ou �ditable.
+     * Passe le champ en lecture seule ou éditable.
      *
      * @param {boolean} [readonly=true] - `true` pour lecture seule.
      * @returns {this} L'instance courante.
@@ -364,7 +369,7 @@ export class NEditNumber extends NTag {
      * @example <caption>Exemple 1 : Lecture seule</caption>
      * nb.setReadOnly(true);
      *
-     * @example <caption>Exemple 2 : �ditable</caption>
+     * @example <caption>Exemple 2 : éditable</caption>
      * nb.setReadOnly(false);
      */
     setReadOnly(readonly = true) {
@@ -379,10 +384,10 @@ export class NEditNumber extends NTag {
      *
      * @returns {boolean} `true` si en lecture seule.
      *
-     * @example <caption>Exemple 1 : V�rifier l'�tat</caption>
+     * @example <caption>Exemple 1 : Vérifier l'état</caption>
      * console.log(nb.isReadOnly());
      *
-     * @example <caption>Exemple 2 : Apr�s setReadOnly</caption>
+     * @example <caption>Exemple 2 : Après setReadOnly</caption>
      * nb.setReadOnly(true);
      * console.log(nb.isReadOnly()); // true
      */
@@ -391,7 +396,7 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit le caract�re obligatoire (`required`).
+     * Définit le caractère obligatoire (`required`).
      *
      * @param {boolean} [required=true] - `true` pour rendre obligatoire.
      * @returns {this} L'instance courante.
@@ -409,12 +414,12 @@ export class NEditNumber extends NTag {
     /**
      * Indique si le champ est obligatoire.
      *
-     * @returns {boolean} `true` si `required` est pr�sent.
+     * @returns {boolean} `true` si `required` est présent.
      *
-     * @example <caption>Exemple 1 : V�rifier l'obligation</caption>
+     * @example <caption>Exemple 1 : Vérifier l'obligation</caption>
      * console.log(nb.isRequired());
      *
-     * @example <caption>Exemple 2 : Apr�s setRequired</caption>
+     * @example <caption>Exemple 2 : Après setRequired</caption>
      * nb.setRequired(true);
      * console.log(nb.isRequired()); // true
      */
@@ -423,14 +428,14 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * S�lectionne le texte contenu dans le champ.
+     * Sélectionne le texte contenu dans le champ.
      *
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : S�lectionner</caption>
+     * @example <caption>Exemple 1 : Sélectionner</caption>
      * nb.select();
      *
-     * @example <caption>Exemple 2 : Focus puis s�lection</caption>
+     * @example <caption>Exemple 2 : Focus puis sélection</caption>
      * nb.focus().select();
      */
     select() {
@@ -441,7 +446,7 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * V�rifie la validit� HTML5 (bornes `min`, `max`, `step`, `required`).
+     * Vérifie la validité HTML5 (bornes `min`, `max`, `step`, `required`).
      *
      * @returns {boolean} `true` si valide.
      *
@@ -459,11 +464,11 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�clenche l'affichage natif du message de validation.
+     * Déclenche l'affichage natif du message de validation.
      *
      * @returns {boolean} `true` si valide.
      *
-     * @example <caption>Exemple 1 : Reporter la validit�</caption>
+     * @example <caption>Exemple 1 : Reporter la validité</caption>
      * nb.reportValidity();
      *
      * @example <caption>Exemple 2 : Avant soumission</caption>
@@ -476,12 +481,12 @@ export class NEditNumber extends NTag {
     }
 
     /**
-     * D�finit un message de validation personnalis�.
+     * Définit un message de validation personnalisé.
      *
-     * @param {string} [message=''] - Message d'erreur ou cha�ne vide.
+     * @param {string} [message=''] - Message d'erreur ou chaîne vide.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : D�finir une erreur</caption>
+     * @example <caption>Exemple 1 : Définir une erreur</caption>
      * nb.setCustomValidity('Montant insuffisant.');
      *
      * @example <caption>Exemple 2 : Effacer l'erreur</caption>
@@ -502,9 +507,9 @@ export class NEditNumber extends NTag {
      * @example <caption>Exemple 1 : Lire le message</caption>
      * console.log(nb.getValidationMessage());
      *
-     * @example <caption>Exemple 2 : Apr�s erreur personnalis�e</caption>
-     * nb.setCustomValidity('Trop �lev�');
-     * console.log(nb.getValidationMessage()); // 'Trop �lev�'
+     * @example <caption>Exemple 2 : Après erreur personnalisée</caption>
+     * nb.setCustomValidity('Trop élevé');
+     * console.log(nb.getValidationMessage()); // 'Trop élevé'
      */
     getValidationMessage() {
         return this.element?.validationMessage || '';
@@ -518,7 +523,7 @@ export class NEditNumber extends NTag {
      * @example <caption>Exemple 1 : Vider</caption>
      * nb.clear();
      *
-     * @example <caption>Exemple 2 : V�rifier apr�s vidage</caption>
+     * @example <caption>Exemple 2 : Vérifier après vidage</caption>
      * nb.clear();
      * console.log(nb.getValueAsNumber()); // null
      */

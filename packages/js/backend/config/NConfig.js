@@ -4,11 +4,13 @@
  * @description Classe autonome de gestion de la configuration applicative (paramètres hiérarchiques par chemin
  * `a.b.c`, variables `.env`, `process.env`, valeurs par défaut, verrouillage `freeze` et accesseurs typés)
  * dans l'écosystème NLib.
- * Exposée sous forme d'instance partagée à initialisation paresseuse via `NUtil.config`.
+ * Exposée sous forme d'instance partagée à initialisation paresseuse via `NConfig.instance()`.
  */
 
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NJson } from '../utils/NJson.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * @class NConfig
@@ -17,19 +19,19 @@ import { NUtil } from '../utils/NUtil.js';
  * Conçu avec allocation mémoire à la demande (*Lazy Initialization*) : `#data` et `#defaults`
  * restent à `null` tant qu'aucune configuration n'est chargée.
  *
- * @example <caption>Exemple 1 : Utiliser via NUtil.config avec accesseurs typés</caption>
- * NUtil.config.merge({
+ * @example <caption>Exemple 1 : Utiliser via NConfig.instance() avec accesseurs typés</caption>
+ * NConfig.instance().merge({
  *     app: { name: 'NLib', env: 'development', debug: true },
  *     server: { host: '127.0.0.1', port: '8080' }
  * });
- * console.log(NUtil.config.getString('app.name'));   // 'NLib'
- * console.log(NUtil.config.getInt('server.port'));   // 8080
- * console.log(NUtil.config.getBoolean('app.debug')); // true
+ * console.log(NConfig.instance().getString('app.name'));   // 'NLib'
+ * console.log(NConfig.instance().getInt('server.port'));   // 8080
+ * console.log(NConfig.instance().getBoolean('app.debug')); // true
  *
  * @example <caption>Exemple 2 : Charger un contenu .env et lire les clés</caption>
- * NUtil.config.loadFromDotEnv('DB_NAME="nlib.db"\nAPP_PORT=3000');
- * console.log(NUtil.config.getString('DB_NAME')); // 'nlib.db'
- * console.log(NUtil.config.getInt('APP_PORT'));   // 3000
+ * NConfig.instance().loadFromDotEnv('DB_NAME="nlib.db"\nAPP_PORT=3000');
+ * console.log(NConfig.instance().getString('DB_NAME')); // 'nlib.db'
+ * console.log(NConfig.instance().getInt('APP_PORT'));   // 3000
  *
  * @example <caption>Exemple 3 : Valeurs par défaut, validation (require) et verrouillage (freeze)</caption>
  * const cfg = new NConfig({
@@ -40,6 +42,17 @@ import { NUtil } from '../utils/NUtil.js';
  * cfg.freeze(); // Empêche toute modification ultérieure
  */
 export class NConfig extends NObject {
+
+    // =========================================================================
+    // Propriétés statiques privées (Instance partagée)
+    // =========================================================================
+
+    /**
+     * Instance statique partagée de `NConfig`.
+     * @type {NConfig|null}
+     * @private
+     */
+    static #instance = null;
 
     // =========================================================================
     // Propriétés privées (Allocation paresseuse : null par défaut)
@@ -94,16 +107,16 @@ export class NConfig extends NObject {
      */
     constructor(options = {}) {
         super(options);
-        if (options?.defaults && NUtil.json.isPlainObject(options.defaults) && !NUtil.json.isEmpty(options.defaults)) {
-            this.#defaults = NUtil.json.clone(options.defaults);
-            this.#data = NUtil.json.clone(options.defaults);
+        if (options?.defaults && NJson.isPlainObject(options.defaults) && !NJson.isEmpty(options.defaults)) {
+            this.#defaults = NJson.clone(options.defaults);
+            this.#data = NJson.clone(options.defaults);
         }
 
         if (options?.loadProcessEnv === true) {
             this.loadFromProcess(false);
         }
 
-        if (options?.data && NUtil.json.isPlainObject(options.data) && !NUtil.json.isEmpty(options.data)) {
+        if (options?.data && NJson.isPlainObject(options.data) && !NJson.isEmpty(options.data)) {
             this.merge(options.data);
         }
 
@@ -117,6 +130,39 @@ export class NConfig extends NObject {
     }
 
     // =========================================================================
+    // Instance statique partagée
+    // =========================================================================
+
+    /**
+     * Retourne l'instance statique partagée de `NConfig`, en l'initialisant avec `options` lors du premier appel.
+     *
+     * @param {Object} [options={}] - Options transmises au constructeur lors de la première initialisation.
+     * @param {Object<string, any>} [options.defaults] - Configuration par défaut initiale.
+     * @param {Object<string, any>} [options.data] - Données de configuration initiales.
+     * @param {string} [options.dotEnv] - Contenu texte `.env` optionnel à charger.
+     * @param {boolean} [options.loadProcessEnv=false] - Si `true` (sous Node.js), importe `process.env`.
+     * @param {boolean} [options.freeze=false] - Si `true`, verrouille immédiatement la configuration après chargement.
+     * @returns {NConfig} Instance partagée de `NConfig`.
+     *
+     * @example <caption>Exemple 1 : Initialisation au premier appel avec options</caption>
+     * const cfg = NConfig.instance({
+     *     defaults: { app: { locale: 'fr', timeout: 3000 } },
+     *     data: { app: { name: 'NLib' } }
+     * });
+     * console.log(cfg.getString('app.name')); // 'NLib'
+     *
+     * @example <caption>Exemple 2 : Réutilisation de l'instance partagée lors des appels suivants</caption>
+     * const sameCfg = NConfig.instance();
+     * console.log(sameCfg.getInt('app.timeout')); // 3000
+     */
+    static instance(options = {}) {
+        if (!NConfig.#instance) {
+            NConfig.#instance = new NConfig(options);
+        }
+        return NConfig.#instance;
+    }
+
+    // =========================================================================
     // Getters d'état de la configuration
     // =========================================================================
 
@@ -126,7 +172,7 @@ export class NConfig extends NObject {
      * @returns {boolean} `true` si verrouillée, sinon `false`.
      *
      * @example <caption>Exemple 1 : Vérifier si la configuration est gelée</caption>
-     * console.log(NUtil.config.isFrozen); // false
+     * console.log(NConfig.instance().isFrozen); // false
      *
      * @example <caption>Exemple 2 : Après appel à freeze()</caption>
      * const cfg = new NConfig().freeze();
@@ -150,7 +196,7 @@ export class NConfig extends NObject {
      * console.log(cfg.isEmpty); // false
      */
     get isEmpty() {
-        return this.#data === null || NUtil.json.isEmpty(this.#data);
+        return this.#data === null || NJson.isEmpty(this.#data);
     }
 
     // =========================================================================
@@ -159,7 +205,7 @@ export class NConfig extends NObject {
 
     /**
      * Vérifie si l'instance est verrouillée (`#frozen`) avant une opération d'écriture.
-     * Consigne un avertissement via `NUtil.log.warn` si la configuration est gelée.
+     * Consigne un avertissement via `NLog.warn` si la configuration est gelée.
      *
      * @param {string} [operation='modifier'] - Nom de l'opération tentée.
      * @returns {boolean} `true` si l'écriture est autorisée, `false` si l'instance est verrouillée.
@@ -168,11 +214,11 @@ export class NConfig extends NObject {
      * // Interne : this.#ensureNotFrozen('modifier') -> true
      *
      * @example <caption>Exemple 2 : Configuration gelée</caption>
-     * // Interne : this.#ensureNotFrozen('modifier') -> false (avec avertissement NUtil.log.warn)
+     * // Interne : this.#ensureNotFrozen('modifier') -> false (avec avertissement NLog.warn)
      */
     #ensureNotFrozen(operation = 'modifier') {
         if (this.#frozen) {
-            NUtil.log.warn(`NConfig: Impossible de ${operation} la configuration, cette instance est verrouillée (frozen).`, {
+            NLog.warn(`NConfig: Impossible de ${operation} la configuration, cette instance est verrouillée (frozen).`, {
                 code: 'WARN_CONFIG_FROZEN',
                 operation
             });
@@ -203,7 +249,7 @@ export class NConfig extends NObject {
         if (!this.#data) {
             return false;
         }
-        return NUtil.json.has(this.#data, path);
+        return NJson.has(this.#data, path);
     }
 
     /**
@@ -219,13 +265,13 @@ export class NConfig extends NObject {
      * console.log(cfg.get('api.url')); // 'https://api.nlib.dev'
      *
      * @example <caption>Exemple 2 : Lire avec une valeur par défaut</caption>
-     * console.log(NUtil.config.get('api.timeout', 5000)); // 5000
+     * console.log(NConfig.instance().get('api.timeout', 5000)); // 5000
      */
     get(path, fallback = undefined) {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.get(this.#data, path, fallback);
+        return NJson.get(this.#data, path, fallback);
     }
 
     /**
@@ -240,13 +286,13 @@ export class NConfig extends NObject {
      * console.log(cfg.getString('app.title')); // 'NLib App'
      *
      * @example <caption>Exemple 2 : Chaîne par défaut</caption>
-     * console.log(NUtil.config.getString('app.locale', 'fr')); // 'fr'
+     * console.log(NConfig.instance().getString('app.locale', 'fr')); // 'fr'
      */
     getString(path, fallback = '') {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.getString(this.#data, path, fallback);
+        return NJson.getString(this.#data, path, fallback);
     }
 
     /**
@@ -261,13 +307,13 @@ export class NConfig extends NObject {
      * console.log(cfg.getNumber('tax')); // 18.5
      *
      * @example <caption>Exemple 2 : Fallback</caption>
-     * console.log(NUtil.config.getNumber('tax', 20)); // 20
+     * console.log(NConfig.instance().getNumber('tax', 20)); // 20
      */
     getNumber(path, fallback = 0) {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.getNumber(this.#data, path, fallback);
+        return NJson.getNumber(this.#data, path, fallback);
     }
 
     /**
@@ -282,13 +328,13 @@ export class NConfig extends NObject {
      * console.log(cfg.getInt('server.port')); // 8080
      *
      * @example <caption>Exemple 2 : Fallback</caption>
-     * console.log(NUtil.config.getInt('server.port', 3000)); // 3000
+     * console.log(NConfig.instance().getInt('server.port', 3000)); // 3000
      */
     getInt(path, fallback = 0) {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.getInt(this.#data, path, fallback);
+        return NJson.getInt(this.#data, path, fallback);
     }
 
     /**
@@ -303,13 +349,13 @@ export class NConfig extends NObject {
      * console.log(cfg.getFloat('ratio')); // 1.75
      *
      * @example <caption>Exemple 2 : Fallback</caption>
-     * console.log(NUtil.config.getFloat('ratio', 1.0)); // 1.0
+     * console.log(NConfig.instance().getFloat('ratio', 1.0)); // 1.0
      */
     getFloat(path, fallback = 0.0) {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.getFloat(this.#data, path, fallback);
+        return NJson.getFloat(this.#data, path, fallback);
     }
 
     /**
@@ -324,7 +370,7 @@ export class NConfig extends NObject {
      * console.log(cfg.getBoolean('app.debug')); // true
      *
      * @example <caption>Exemple 2 : Fallback</caption>
-     * console.log(NUtil.config.getBoolean('app.debug', false)); // false
+     * console.log(NConfig.instance().getBoolean('app.debug', false)); // false
      */
     getBoolean(path, fallback = false) {
         const val = this.get(path, undefined);
@@ -346,13 +392,13 @@ export class NConfig extends NObject {
      * console.log(cfg.getArray('cors.origins')); // ['https://a.com']
      *
      * @example <caption>Exemple 2 : Fallback</caption>
-     * console.log(NUtil.config.getArray('cors.origins')); // []
+     * console.log(NConfig.instance().getArray('cors.origins')); // []
      */
     getArray(path, fallback = []) {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.getArray(this.#data, path, fallback);
+        return NJson.getArray(this.#data, path, fallback);
     }
 
     /**
@@ -367,13 +413,13 @@ export class NConfig extends NObject {
      * console.log(cfg.getObject('db')); // { host: 'localhost', port: 3306 }
      *
      * @example <caption>Exemple 2 : Section absente retourne {}</caption>
-     * console.log(NUtil.config.getObject('db')); // {}
+     * console.log(NConfig.instance().getObject('db')); // {}
      */
     getObject(path, fallback = {}) {
         if (!this.#data) {
             return fallback;
         }
-        return NUtil.json.getObject(this.#data, path, fallback);
+        return NJson.getObject(this.#data, path, fallback);
     }
 
     // =========================================================================
@@ -388,11 +434,11 @@ export class NConfig extends NObject {
      * @returns {this} L'instance courante pour chaînage.
      *
      * @example <caption>Exemple 1 : Définir une clé imbriquée</caption>
-     * NUtil.config.set(['server', 'port'], 8080);
-     * console.log(NUtil.config.getInt(['server', 'port'])); // 8080
+     * NConfig.instance().set(['server', 'port'], 8080);
+     * console.log(NConfig.instance().getInt(['server', 'port'])); // 8080
      *
      * @example <caption>Exemple 2 : Chaîner plusieurs appels</caption>
-     * NUtil.config.set('app.name', 'NLib').set('app.version', '1.0.0');
+     * NConfig.instance().set('app.name', 'NLib').set('app.version', '1.0.0');
      */
     set(path, value) {
         if (!this.#ensureNotFrozen('modifier')) {
@@ -401,7 +447,7 @@ export class NConfig extends NObject {
         if (!this.#data) {
             this.#data = {};
         }
-        NUtil.json.set(this.#data, path, value);
+        NJson.set(this.#data, path, value);
         return this;
     }
 
@@ -412,7 +458,7 @@ export class NConfig extends NObject {
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Définir des valeurs par défaut</caption>
-     * NUtil.config.setDefaults({ app: { locale: 'fr', timeout: 3000 } });
+     * NConfig.instance().setDefaults({ app: { locale: 'fr', timeout: 3000 } });
      *
      * @example <caption>Exemple 2 : Chaîner avec merge</caption>
      * const cfg = new NConfig().setDefaults({ port: 3000 }).merge({ port: 8080 });
@@ -421,15 +467,15 @@ export class NConfig extends NObject {
         if (!this.#ensureNotFrozen('définir les valeurs par défaut de')) {
             return this;
         }
-        if (!NUtil.json.isPlainObject(defaultsObject)) {
+        if (!NJson.isPlainObject(defaultsObject)) {
             return this;
         }
         this.#defaults = this.#defaults
-            ? NUtil.json.merge(this.#defaults, defaultsObject)
-            : NUtil.json.clone(defaultsObject);
+            ? NJson.merge(this.#defaults, defaultsObject)
+            : NJson.clone(defaultsObject);
         this.#data = this.#data
-            ? NUtil.json.merge(this.#defaults, this.#data)
-            : NUtil.json.clone(this.#defaults);
+            ? NJson.merge(this.#defaults, this.#data)
+            : NJson.clone(this.#defaults);
         return this;
     }
 
@@ -444,19 +490,19 @@ export class NConfig extends NObject {
      * cfg.merge({ db: { port: 5432, name: 'nlib' } });
      * console.log(cfg.getObject('db')); // { host: 'localhost', port: 5432, name: 'nlib' }
      *
-     * @example <caption>Exemple 2 : Charger une configuration globale dans NUtil.config</caption>
-     * NUtil.config.merge({ env: 'production' });
+     * @example <caption>Exemple 2 : Charger une configuration globale dans NConfig.instance()</caption>
+     * NConfig.instance().merge({ env: 'production' });
      */
     merge(configObject) {
         if (!this.#ensureNotFrozen('fusionner')) {
             return this;
         }
-        if (!NUtil.json.isPlainObject(configObject)) {
+        if (!NJson.isPlainObject(configObject)) {
             return this;
         }
         this.#data = this.#data
-            ? NUtil.json.merge(this.#data, configObject)
-            : NUtil.json.clone(configObject);
+            ? NJson.merge(this.#data, configObject)
+            : NJson.clone(configObject);
         return this;
     }
 
@@ -472,7 +518,7 @@ export class NConfig extends NObject {
      * console.log(cfg.has(['db', 'password']));    // false
      *
      * @example <caption>Exemple 2 : Clé inexistante</caption>
-     * console.log(NUtil.config.remove('inconnu')); // false
+     * console.log(NConfig.instance().remove('inconnu')); // false
      */
     remove(path) {
         if (!this.#ensureNotFrozen('supprimer une clé dans')) {
@@ -481,8 +527,8 @@ export class NConfig extends NObject {
         if (!this.#data) {
             return false;
         }
-        const removed = NUtil.json.remove(this.#data, path);
-        if (NUtil.json.isEmpty(this.#data)) {
+        const removed = NJson.remove(this.#data, path);
+        if (NJson.isEmpty(this.#data)) {
             this.#data = null;
         }
         return removed;
@@ -508,7 +554,7 @@ export class NConfig extends NObject {
         if (!this.#ensureNotFrozen('réinitialiser')) {
             return this;
         }
-        this.#data = this.#defaults ? NUtil.json.clone(this.#defaults) : null;
+        this.#data = this.#defaults ? NJson.clone(this.#defaults) : null;
         return this;
     }
 
@@ -571,9 +617,9 @@ export class NConfig extends NObject {
             return {};
         }
         if (typeof sectionPath === 'string' && sectionPath.trim().length > 0) {
-            return NUtil.json.clone(this.getObject(sectionPath.trim(), {}));
+            return NJson.clone(this.getObject(sectionPath.trim(), {}));
         }
-        return NUtil.json.clone(this.#data);
+        return NJson.clone(this.#data);
     }
 
     // =========================================================================
@@ -653,10 +699,10 @@ export class NConfig extends NObject {
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Importer process.env</caption>
-     * NUtil.config.loadFromProcess();
+     * NConfig.instance().loadFromProcess();
      *
      * @example <caption>Exemple 2 : Importer uniquement les variables préfixées par NLIB_</caption>
-     * NUtil.config.loadFromProcess(true, 'NLIB_');
+     * NConfig.instance().loadFromProcess(true, 'NLIB_');
      */
     loadFromProcess(overwrite = false, prefix = '') {
         if (!this.#ensureNotFrozen('charger process.env dans')) {
@@ -679,7 +725,7 @@ export class NConfig extends NObject {
 
     /**
      * Vérifie que toutes les clés ou chemins listés dans `requiredPaths` sont présents dans la configuration.
-     * Consigne une erreur via `NUtil.log.error` (`ENV_OR_CONFIG_MISSING`) et retourne `false` si au moins une clé manque.
+     * Consigne une erreur via `NLog.error` (`ENV_OR_CONFIG_MISSING`) et retourne `false` si au moins une clé manque.
      *
      * @param {Array<string|number|Array<string|number>>} requiredPaths - Liste des chemins de configuration obligatoires.
      * @returns {boolean} `true` si tous les chemins sont présents, sinon `false`.
@@ -698,7 +744,7 @@ export class NConfig extends NObject {
         }
         const missing = requiredPaths.filter((p) => !this.has(p));
         if (missing.length > 0) {
-            NUtil.log.error(`NConfig.require: Clés de configuration obligatoires manquantes : ${missing.join(', ')}`, {
+            NLog.error(`NConfig.require: Clés de configuration obligatoires manquantes : ${missing.join(', ')}`, {
                 code: 'ENV_OR_CONFIG_MISSING',
                 missing
             });
@@ -745,8 +791,13 @@ export class NConfig extends NObject {
         this.#data = null;
         this.#defaults = null;
         this.#frozen = false;
+        if (NConfig.#instance === this) {
+            NConfig.#instance = null;
+        }
         super.destroy();
     }
 }
+
+NObject.registerConfig(NConfig);
 
 export default NConfig;

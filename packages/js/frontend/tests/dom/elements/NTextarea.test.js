@@ -28,7 +28,7 @@ describe('NTextarea (dom/elements/NTextarea.js)', () => {
         assert.equal(ta.isReadOnly(), true);
         assert.equal(ta.isDisabled(), true);
 
-        ta.setDisabled(false).setRequired(true).clear();
+        ta.setReadOnly(false).setDisabled(false).setRequired(true).clear();
         assert.equal(ta.getValue(), '');
         assert.equal(ta.isValid(), false);
 

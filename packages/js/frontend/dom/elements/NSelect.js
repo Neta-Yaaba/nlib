@@ -118,19 +118,25 @@ export class NSelect extends NTag {
     }
 
     /**
-     * Définit la valeur sélectionnée.
+     * Définit la ou les valeurs sélectionnées (accepte une valeur simple ou un tableau en mode `multiple`).
      *
-     * @param {*} value - Valeur de l'option à sélectionner.
+     * @param {*|Array<*>} value - Valeur ou tableau de valeurs des options à sélectionner.
      * @returns {this} L'instance courante.
      *
-     * @example <caption>Exemple 1 : Sélectionner par valeur</caption>
+     * @example <caption>Exemple 1 : Sélectionner une valeur simple</caption>
      * sel.setValue('fr');
      *
-     * @example <caption>Exemple 2 : Désélectionner</caption>
-     * sel.setValue('');
+     * @example <caption>Exemple 2 : Sélectionner plusieurs valeurs en mode multiple</caption>
+     * sel.setMultiple(true).setValue(['fr', 'sn']);
      */
     setValue(value) {
-        if (this.element) {
+        if (!this.element) return this;
+        if (Array.isArray(value)) {
+            const selected = new Set(value.map((v) => (v === null || v === undefined ? '' : String(v))));
+            for (const opt of Array.from(this.element.options)) {
+                opt.selected = selected.has(opt.value);
+            }
+        } else {
             this.element.value = value === null || value === undefined ? '' : String(value);
         }
         return this;

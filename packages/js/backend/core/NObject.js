@@ -55,6 +55,41 @@ export class NObject {
      */
     static #util = null;
 
+    /**
+     * Référence vers la classe `NIndexedDB` enregistrée par `NObject.registerIdb()`.
+     * @type {any}
+     * @private
+     */
+    static #idb = null;
+
+    /**
+     * Référence vers la classe `NConfig` enregistrée par `NObject.registerConfig()`.
+     * @type {any}
+     * @private
+     */
+    static #config = null;
+
+    /**
+     * Référence vers la classe `NSql` enregistrée par `NObject.registerSql()`.
+     * @type {any}
+     * @private
+     */
+    static #sql = null;
+
+    /**
+     * Référence vers la classe `NStorage` enregistrée par `NObject.registerStorage()`.
+     * @type {any}
+     * @private
+     */
+    static #storage = null;
+
+    /**
+     * Référence vers la classe `NLang` enregistrée par `NObject.registerLang()`.
+     * @type {any}
+     * @private
+     */
+    static #lang = null;
+
     // =========================================================================
     // Propriétés privées (Variables internes à initialisation paresseuse)
     // =========================================================================
@@ -132,6 +167,96 @@ export class NObject {
     // =========================================================================
     // Getters (Accesseurs en lecture)
     // =========================================================================
+
+    /**
+     * Retourne l'instance statique partagée de `NIndexedDB` enregistrée via `NObject.registerIdb()`,
+     * ou `null` si `NIndexedDB` n'a pas encore été enregistré.
+     *
+     * @returns {any|null} Instance partagée de `NIndexedDB` ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire une entrée depuis l'instance IndexedDB partagée</caption>
+     * const obj = new NObject();
+     * const res = await obj.idb?.get('ntable', 'cfg_1');
+     *
+     * @example <caption>Exemple 2 : Enregistrer une donnée depuis un composant héritant de NObject</caption>
+     * const obj = new NObject();
+     * await obj.idb?.put('ntable', { id: 'session_1', active: true });
+     */
+    get idb() {
+        return NObject.#idb?.instance ?? null;
+    }
+
+    /**
+     * Retourne l'instance statique partagée de `NConfig` enregistrée via `NObject.registerConfig()`,
+     * ou `null` si `NConfig` n'a pas encore été enregistré.
+     *
+     * @returns {any|null} Instance partagée de `NConfig` ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire une valeur de configuration depuis un composant</caption>
+     * const obj = new NObject();
+     * const port = obj.config?.getInt('app.port', 8080);
+     *
+     * @example <caption>Exemple 2 : Définir un paramètre sur la configuration partagée</caption>
+     * const obj = new NObject();
+     * obj.config?.set('app.locale', 'fr');
+     */
+    get config() {
+        return NObject.#config?.instance() ?? null;
+    }
+
+    /**
+     * Retourne l'instance statique partagée de `NSql` enregistrée via `NObject.registerSql()`,
+     * ou `null` si `NSql` n'a pas encore été enregistré.
+     *
+     * @returns {any|null} Instance partagée de `NSql` ou `null`.
+     *
+     * @example <caption>Exemple 1 : Exécuter une requête depuis un composant héritant de NObject</caption>
+     * const obj = new NObject();
+     * const rows = await obj.sql?.select('SELECT 1');
+     *
+     * @example <caption>Exemple 2 : Insérer une ligne sur l'instance SQL partagée</caption>
+     * const obj = new NObject();
+     * await obj.sql?.insert('logs', { message: 'Action effectuée' });
+     */
+    get sql() {
+        return NObject.#sql?.instance() ?? null;
+    }
+
+    /**
+     * Retourne la classe statique `NStorage` enregistrée via `NObject.registerStorage()`,
+     * ou `null` si `NStorage` n'a pas encore été enregistré.
+     *
+     * @returns {any|null} Classe statique `NStorage` ou `null`.
+     *
+     * @example <caption>Exemple 1 : Lire une valeur depuis le stockage partagé</caption>
+     * const obj = new NObject();
+     * const theme = obj.storage?.getString('theme', 'light');
+     *
+     * @example <caption>Exemple 2 : Enregistrer une donnée sur le stockage partagé</caption>
+     * const obj = new NObject();
+     * obj.storage?.set('theme', 'dark');
+     */
+    get storage() {
+        return NObject.#storage;
+    }
+
+    /**
+     * Retourne la classe statique `NLang` enregistrée via `NObject.registerLang()`,
+     * ou `null` si `NLang` n'a pas encore été enregistré.
+     *
+     * @returns {any|null} Classe statique `NLang` ou `null`.
+     *
+     * @example <caption>Exemple 1 : Traduire une clé depuis un composant héritant de NObject</caption>
+     * const obj = new NObject();
+     * const label = obj.lang?.get('save');
+     *
+     * @example <caption>Exemple 2 : Consulter la langue active</caption>
+     * const obj = new NObject();
+     * console.log(obj.lang?.getLanguage());
+     */
+    get lang() {
+        return NObject.#lang;
+    }
 
     /**
      * Retourne l'instance `NEvent` associée à cet objet.
@@ -783,6 +908,116 @@ export class NObject {
     static registerUtil(util) {
         if (util) {
             NObject.#util = util;
+        }
+        return NObject;
+    }
+
+    /**
+     * Enregistre la classe `NIndexedDB` auprès de `NObject` pour permettre l'accès
+     * à son instance statique partagée via `this.idb`.
+     *
+     * @param {any} idb - Classe `NIndexedDB` à associer.
+     * @returns {typeof NObject} La classe `NObject` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NIndexedDB auprès de NObject</caption>
+     * NObject.registerIdb(NIndexedDB);
+     * const obj = new NObject();
+     * console.log(obj.idb === NIndexedDB.instance); // true
+     *
+     * @example <caption>Exemple 2 : Chaîner les enregistrements sur NObject</caption>
+     * NObject.registerUtil(NUtil).registerIdb(NIndexedDB);
+     */
+    static registerIdb(idb) {
+        if (idb) {
+            NObject.#idb = idb;
+        }
+        return NObject;
+    }
+
+    /**
+     * Enregistre la classe `NConfig` auprès de `NObject` pour permettre l'accès
+     * à son instance statique partagée via `this.config`.
+     *
+     * @param {any} config - Classe `NConfig` à associer.
+     * @returns {typeof NObject} La classe `NObject` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NConfig auprès de NObject</caption>
+     * NObject.registerConfig(NConfig);
+     * const obj = new NObject();
+     * console.log(obj.config === NConfig.instance()); // true
+     *
+     * @example <caption>Exemple 2 : Chaîner les enregistrements sur NObject</caption>
+     * NObject.registerUtil(NUtil).registerIdb(NIndexedDB).registerConfig(NConfig);
+     */
+    static registerConfig(config) {
+        if (config) {
+            NObject.#config = config;
+        }
+        return NObject;
+    }
+
+    /**
+     * Enregistre la classe `NSql` auprès de `NObject` pour permettre l'accès
+     * à son instance statique partagée via `this.sql`.
+     *
+     * @param {any} sql - Classe `NSql` à associer.
+     * @returns {typeof NObject} La classe `NObject` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NSql auprès de NObject</caption>
+     * NObject.registerSql(NSql);
+     * const obj = new NObject();
+     * console.log(obj.sql === NSql.instance()); // true
+     *
+     * @example <caption>Exemple 2 : Chaîner les enregistrements sur NObject</caption>
+     * NObject.registerUtil(NUtil).registerIdb(NIndexedDB).registerConfig(NConfig).registerSql(NSql);
+     */
+    static registerSql(sql) {
+        if (sql) {
+            NObject.#sql = sql;
+        }
+        return NObject;
+    }
+
+    /**
+     * Enregistre la classe `NStorage` auprès de `NObject` pour permettre l'accès
+     * via `this.storage`.
+     *
+     * @param {any} storage - Classe `NStorage` à associer.
+     * @returns {typeof NObject} La classe `NObject` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NStorage auprès de NObject</caption>
+     * NObject.registerStorage(NStorage);
+     * const obj = new NObject();
+     * console.log(obj.storage === NStorage); // true
+     *
+     * @example <caption>Exemple 2 : Chaîner les enregistrements sur NObject</caption>
+     * NObject.registerUtil(NUtil).registerSql(NSql).registerStorage(NStorage);
+     */
+    static registerStorage(storage) {
+        if (storage) {
+            NObject.#storage = storage;
+        }
+        return NObject;
+    }
+
+    /**
+     * Enregistre la classe `NLang` auprès de `NObject` pour permettre l'accès
+     * via `this.lang`.
+     *
+     * @param {any} lang - Classe `NLang` à associer.
+     * @returns {typeof NObject} La classe `NObject` pour permettre le chaînage.
+     *
+     * @example <caption>Exemple 1 : Enregistrer NLang auprès de NObject</caption>
+     * NObject.registerLang(NLang);
+     * const obj = new NObject();
+     * console.log(obj.lang === NLang); // true
+     *
+     * @example <caption>Exemple 2 : Chaîner les enregistrements sur NObject</caption>
+     * NObject.registerUtil(NUtil).registerStorage(NStorage).registerLang(NLang);
+     */
+    static registerLang(lang) {
+        if (lang) {
+            NObject.#lang = lang;
         }
         return NObject;
     }

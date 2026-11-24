@@ -1,48 +1,61 @@
-﻿import { describe, it, assert } from '../index.js';
-import { NStorage } from '../../index.js';
+import { describe, it, assert } from '../index.js';
+import { NStorage, NObject } from '../../index.js';
 
 describe('NStorage (database/NStorage.js)', () => {
     it('stocke, lit, gère les contextes et manipule les clés sans chiffrement', () => {
-        const store = new NStorage({
+        NStorage.configure({
             prefix: 'test_store_',
             context: 'app'
         });
 
-        assert.equal(typeof store.isAvailable, 'boolean');
-        assert.equal(store.prefix, 'test_store_');
-        assert.equal(store.context, 'app');
+        assert.equal(typeof NStorage.isAvailable, 'boolean');
+        assert.equal(NStorage.prefix, 'test_store_');
+        assert.equal(NStorage.context, 'app');
 
-        if (!store.isAvailable) {
+        if (!NStorage.isAvailable) {
+            NStorage.destroy();
             return;
         }
 
-        store.clear();
-        store.set('profile', { name: 'Alice', level: 3 });
-        store.set('counter', 42);
+        NStorage.clear();
+        NStorage.set('profile', { name: 'Alice', level: 3 });
+        NStorage.set('counter', 42);
 
-        assert.equal(store.has('profile'), true);
-        assert.deepEqual(store.getJson('profile'), { name: 'Alice', level: 3 });
-        assert.equal(store.getNumber('counter'), 42);
+        assert.equal(NStorage.has('profile'), true);
+        assert.deepEqual(NStorage.getJson('profile'), { name: 'Alice', level: 3 });
+        assert.equal(NStorage.getNumber('counter'), 42);
 
-        const keys = store.keys();
+        const keys = NStorage.keys();
         assert.equal(keys.includes('profile'), true);
         assert.equal(keys.includes('counter'), true);
 
-        const adminStore = store.withContext('admin');
+        const adminStore = NStorage.withContext('admin');
         adminStore.set('theme', 'dark');
         assert.equal(adminStore.getString('theme'), 'dark');
-        assert.equal(store.has('theme'), false);
+        assert.equal(NStorage.has('theme'), false);
         adminStore.clear();
 
-        store.remove('counter');
-        assert.equal(store.has('counter'), false);
-        assert.equal(store.getBoolean('missing_bool', true), true);
-        assert.deepEqual(store.getArray('missing_arr', [1, 2]), [1, 2]);
-        assert.deepEqual(store.toObject(), { profile: { name: 'Alice', level: 3 } });
-        store.clear();
-        assert.equal(store.length, 0);
+        NStorage.remove('counter');
+        assert.equal(NStorage.has('counter'), false);
+        assert.equal(NStorage.getBoolean('missing_bool', true), true);
+        assert.deepEqual(NStorage.getArray('missing_arr', [1, 2]), [1, 2]);
+        assert.deepEqual(NStorage.toObject(), { profile: { name: 'Alice', level: 3 } });
+        NStorage.clear();
+        assert.equal(NStorage.length, 0);
 
-        store.destroy();
-        assert.equal(store.isDestroyed, true);
+        NStorage.destroy();
+    });
+
+    it('enregistre la classe statique NStorage sur NObject via registerStorage', () => {
+        NStorage.configure({ prefix: 'shared_', context: 'app' });
+        assert.equal(NStorage.prefix, 'shared_');
+        assert.equal(NStorage.context, 'app');
+
+        const obj = new NObject();
+        assert.equal(obj.storage, NStorage);
+
+        NStorage.destroy();
+        assert.equal(NStorage.prefix, '');
+        assert.equal(NStorage.context, '');
     });
 });

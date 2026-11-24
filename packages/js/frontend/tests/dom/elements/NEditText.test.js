@@ -2,7 +2,7 @@ import { describe, it, assert } from '../../index.js';
 import { NEditText, NTag } from '../../../index.js';
 
 describe('NEditText (dom/elements/NEditText.js)', () => {
-    it('h�rite de NTag, g�re les types textuels, pattern, longueur et validation', () => {
+    it('hérite de NTag, gère les types textuels, pattern, longueur et validation', () => {
         const tb = new NEditText({
             type: 'email',
             name: 'email',

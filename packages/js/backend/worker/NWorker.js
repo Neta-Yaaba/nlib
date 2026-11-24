@@ -25,6 +25,8 @@
 
 import { NObject } from '../core/NObject.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NEnv } from '../environment/NEnv.js';
+import { NLog } from '../log/NLog.js';
 
 /**
  * @class NWorker
@@ -152,8 +154,8 @@ export class NWorker extends NObject {
             this.#name = options.name.trim();
         }
 
-        if (NUtil.env.isWorker && typeof self !== 'undefined') {
-            this.util.log.error('NWorker: Les Web Workers ne sont pas supportés au sein d\'un Web Worker.', {
+        if (NEnv.isWorker && typeof self !== 'undefined') {
+            NLog.error('NWorker: Les Web Workers ne sont pas supportés au sein d\'un Web Worker.', {
                 code: 'WORKER_UNSUPPORTED_IN_WORKER',
                 name: this.#name
             });
@@ -191,7 +193,7 @@ export class NWorker extends NObject {
                 };
 
                 this.#worker.onerror = (err) => {
-                    this.util.log.error(`NWorker [${this.#name}]: Erreur interceptée sur le worker natif.`, {
+                    NLog.error(`NWorker [${this.#name}]: Erreur interceptée sur le worker natif.`, {
                         code: 'ERR_WORKER_EXECUTION',
                         name: this.#name,
                         cause: err
@@ -207,7 +209,7 @@ export class NWorker extends NObject {
                 });
             } catch (err) {
                 // Repli local en cas d'échec de création du Worker natif (ex: CSP, sandbox)
-                this.util.log.warn(`NWorker [${this.#name}]: Impossible d'instancier le Worker natif, bascule en mode repli.`, {
+                NLog.warn(`NWorker [${this.#name}]: Impossible d'instancier le Worker natif, bascule en mode repli.`, {
                     code: 'WARN_WORKER_FALLBACK',
                     name: this.#name,
                     cause: err
@@ -392,7 +394,7 @@ export class NWorker extends NObject {
 
             const actionInstance = NWorker.getActionInstance(action);
             if (!actionInstance || typeof actionInstance.request !== 'function') {
-                this.util.log.warn(`NWorker [${this.#name}]: Action "${action}" non enregistrée ou méthode request() absente.`);
+                NLog.warn(`NWorker [${this.#name}]: Action "${action}" non enregistrée ou méthode request() absente.`);
                 return {
                     success: false,
                     code: 'WORKER_ACTION_ERROR',
@@ -429,7 +431,7 @@ export class NWorker extends NObject {
                 };
             } catch (err) {
                 if (err?.message === 'TIMEOUT') {
-                    this.util.log.warn(`NWorker [${this.#name}]: Délai d'attente dépassé (${timeoutMs}ms) pour l'action locale "${action}".`, {
+                    NLog.warn(`NWorker [${this.#name}]: Délai d'attente dépassé (${timeoutMs}ms) pour l'action locale "${action}".`, {
                         code: 'ERR_TIMEOUT',
                         action,
                         timeout: timeoutMs
@@ -447,7 +449,7 @@ export class NWorker extends NObject {
                         }
                     };
                 }
-                this.util.log.error(`NWorker [${this.#name}]: Erreur lors de l'exécution locale de l'action "${action}".`, {
+                NLog.error(`NWorker [${this.#name}]: Erreur lors de l'exécution locale de l'action "${action}".`, {
                     code: 'WORKER_REQUEST_ERROR',
                     cause: err
                 });
@@ -512,7 +514,7 @@ export class NWorker extends NObject {
 
             const triggerTimeout = () => {
                 this.#removeRequest(id);
-                this.util.log.warn(`NWorker [${this.#name}]: Délai d'attente dépassé (${timeoutMs}ms) pour l'action "${action}".`, {
+                NLog.warn(`NWorker [${this.#name}]: Délai d'attente dépassé (${timeoutMs}ms) pour l'action "${action}".`, {
                     code: 'ERR_TIMEOUT',
                     id,
                     action,
@@ -563,7 +565,7 @@ export class NWorker extends NObject {
                 });
             } catch (err) {
                 this.#removeRequest(id);
-                this.util.log.error(`NWorker [${this.#name}]: Échec de postMessage pour l'action "${action}".`, {
+                NLog.error(`NWorker [${this.#name}]: Échec de postMessage pour l'action "${action}".`, {
                     code: 'WORKER_POST_ERROR',
                     cause: err
                 });
@@ -631,7 +633,7 @@ export class NWorker extends NObject {
             this.#worker.onmessage = null;
             this.#worker.onerror = null;
 
-            if (NUtil.env.isBrowser && typeof this.#worker.terminate === 'function') {
+            if (NEnv.isBrowser && typeof this.#worker.terminate === 'function') {
                 this.#worker.terminate();
             }
             this.#worker = null;
@@ -946,7 +948,7 @@ export class NWorker extends NObject {
 
                     const triggerTimeout = () => {
                         reverseRequests.delete(id);
-                        NUtil.log.warn(`NWorker [WorkerContext]: Délai d'attente dépassé (${timeoutMs}ms) pour requestMain("${action}").`, {
+                        NLog.warn(`NWorker [WorkerContext]: Délai d'attente dépassé (${timeoutMs}ms) pour requestMain("${action}").`, {
                             code: 'ERR_TIMEOUT',
                             id,
                             action,
@@ -997,7 +999,7 @@ export class NWorker extends NObject {
                             timer = null;
                         }
                         reverseRequests.delete(id);
-                        NUtil.log.error(`NWorker [WorkerContext]: Échec postMessage pour requestMain("${action}").`, {
+                        NLog.error(`NWorker [WorkerContext]: Échec postMessage pour requestMain("${action}").`, {
                             code: 'WORKER_POST_ERROR',
                             cause: err
                         });
@@ -1065,7 +1067,7 @@ export class NWorker extends NObject {
 
                 const actionInstance = NWorker.getActionInstance(action);
                 if (!actionInstance || typeof actionInstance.request !== 'function') {
-                    NUtil.log.warn(`NWorker [WorkerContext]: Action "${action}" non enregistrée ou méthode request() absente.`);
+                    NLog.warn(`NWorker [WorkerContext]: Action "${action}" non enregistrée ou méthode request() absente.`);
                     self.postMessage({
                         id, action, params: cleanParams,
                         result: {
@@ -1081,7 +1083,7 @@ export class NWorker extends NObject {
                     const result = await actionInstance.request(rawParams);
                     self.postMessage({ id, action, params: cleanParams, result, keep: false });
                 } catch (err) {
-                    NUtil.log.error(`NWorker [WorkerContext]: Erreur lors de l'exécution de l'action "${action}".`, {
+                    NLog.error(`NWorker [WorkerContext]: Erreur lors de l'exécution de l'action "${action}".`, {
                         code: 'WORKER_REQUEST_ERROR',
                         cause: err
                     });

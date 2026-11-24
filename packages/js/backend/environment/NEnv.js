@@ -1,7 +1,7 @@
 /**
- * @file NEnvironment.js
+ * @file NEnv.js
  * @package @nlib/js-backend
- * @description Classe utilitaire d'inspection et de détection de l'environnement d'exécution matériel
+ * @description Classe utilitaire statique d'inspection et de détection de l'environnement d'exécution matériel
  * et logiciel dans l'écosystème NLib :
  * - Type d'environnement (`browser`, `node`, `worker`, `unknown`)
  * - Système d'exploitation (`android`, `harmonyos`, `ios`, `windows`, `macos`, `linux`, `unknown`)
@@ -11,34 +11,29 @@
  * - État réseau et préférences système (`isOnline`, `isOffline`, `isSecureContext`, `isDarkMode`, `language`, `timezone`).
  */
 
-import { NObject } from '../core/NObject.js';
-
 /**
- * @class NEnvironment
- * @extends NObject
- * @description Utilitaire fournissant toutes les informations sur l'environnement d'exécution
+ * @class NEnv
+ * @description Utilitaire statique fournissant toutes les informations sur l'environnement d'exécution
  * (plateforme, OS, navigateur, WebView, appareil mobile, connexion Internet).
  *
  * @example <caption>Exemple 1 : Détecter le type d'environnement, l'OS et le navigateur</caption>
- * const env = new NEnvironment();
- * console.log(env.type);    // 'browser' | 'node' | 'worker' | 'unknown'
- * console.log(env.os);      // 'windows' | 'android' | 'ios' | 'macos' | 'linux' | 'harmonyos'
- * console.log(env.browser); // 'chrome' | 'edge' | 'firefox' | 'safari' | 'opera' | 'unknown'
+ * console.log(NEnv.type);    // 'browser' | 'node' | 'worker' | 'unknown'
+ * console.log(NEnv.os);      // 'windows' | 'android' | 'ios' | 'macos' | 'linux' | 'harmonyos'
+ * console.log(NEnv.browser); // 'chrome' | 'edge' | 'firefox' | 'safari' | 'opera' | 'unknown'
  *
  * @example <caption>Exemple 2 : Vérifier le type d'appareil, WebView et l'état de la connexion</caption>
- * const env = new NEnvironment();
- * console.log(env.isMobile);  // true / false
- * console.log(env.isWebView); // true si exécuté dans le conteneur OS natif NLib
- * console.log(env.isOnline);  // true si connecté au réseau
+ * console.log(NEnv.isMobile);  // true / false
+ * console.log(NEnv.isWebView); // true si exécuté dans le conteneur OS natif NLib
+ * console.log(NEnv.isOnline);  // true si connecté au réseau
  *
- * @example <caption>Exemple 3 : Utilisation directe via NUtil.env</caption>
- * console.log(NUtil.env.os);
- * console.log(NUtil.env.info);
+ * @example <caption>Exemple 3 : Utilisation directe Accès direct via NEnv</caption>
+ * console.log(NEnv.os);
+ * console.log(NEnv.info);
  */
-export class NEnvironment extends NObject {
+export class NEnv {
 
     // =========================================================================
-    // Getters d'instance — Type d'Environnement (Runtime)
+    // Getters statiques — Type d'Environnement (Runtime)
     // =========================================================================
 
     /**
@@ -48,13 +43,12 @@ export class NEnvironment extends NObject {
      * @returns {'browser'|'node'|'worker'|'unknown'} Type d'environnement.
      *
      * @example <caption>Exemple 1 : Lire le type d'environnement</caption>
-     * const env = new NEnvironment();
-     * console.log(env.type); // 'browser' ou 'node'
+     * console.log(NEnv.type); // 'browser' ou 'node'
      *
-     * @example <caption>Exemple 2 : Via NUtil.env</caption>
-     * console.log(NUtil.env.type !== 'unknown');
+     * @example <caption>Exemple 2 : Accès direct via NEnv</caption>
+     * console.log(NEnv.type !== 'unknown');
      */
-    get type() {
+    static get type() {
         if (typeof window !== 'undefined' && typeof document !== 'undefined') {
             return 'browser';
         }
@@ -73,14 +67,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si exécuté dans un navigateur.
      *
      * @example <caption>Exemple 1 : Vérifier si l'environnement est un navigateur</caption>
-     * const env = new NEnvironment();
-     * if (env.isBrowser) { console.log('DOM disponible'); }
+     * if (NEnv.isBrowser) { console.log('DOM disponible'); }
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof new NEnvironment().isBrowser); // 'boolean'
+     * console.log(typeof NEnv.isBrowser); // 'boolean'
      */
-    get isBrowser() {
-        return this.type === 'browser';
+    static get isBrowser() {
+        return NEnv.type === 'browser';
     }
 
     /**
@@ -89,14 +82,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si exécuté sous Node.js.
      *
      * @example <caption>Exemple 1 : Vérifier si l'environnement est Node.js</caption>
-     * const env = new NEnvironment();
-     * if (env.isNode) { console.log('Serveur Node.js'); }
+     * if (NEnv.isNode) { console.log('Serveur Node.js'); }
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof new NEnvironment().isNode); // 'boolean'
+     * console.log(typeof NEnv.isNode); // 'boolean'
      */
-    get isNode() {
-        return this.type === 'node';
+    static get isNode() {
+        return NEnv.type === 'node';
     }
 
     /**
@@ -105,18 +97,17 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si exécuté dans un Worker.
      *
      * @example <caption>Exemple 1 : Vérifier si l'environnement est un Worker</caption>
-     * const env = new NEnvironment();
-     * if (env.isWorker) { console.log('Web Worker actif'); }
+     * if (NEnv.isWorker) { console.log('Web Worker actif'); }
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof new NEnvironment().isWorker); // 'boolean'
+     * console.log(typeof NEnv.isWorker); // 'boolean'
      */
-    get isWorker() {
-        return this.type === 'worker';
+    static get isWorker() {
+        return NEnv.type === 'worker';
     }
 
     // =========================================================================
-    // Getters d'instance — Système d'Exploitation (OS)
+    // Getters statiques — Système d'Exploitation (OS)
     // =========================================================================
 
     /**
@@ -127,14 +118,12 @@ export class NEnvironment extends NObject {
      * @returns {'android'|'harmonyos'|'ios'|'windows'|'macos'|'linux'|'unknown'} Nom de l'OS.
      *
      * @example <caption>Exemple 1 : Obtenir le système d'exploitation</caption>
-     * const env = new NEnvironment();
-     * console.log(env.os); // ex: 'windows', 'android', 'ios', etc.
+     * console.log(NEnv.os); // ex: 'windows', 'android', 'ios', etc.
      *
      * @example <caption>Exemple 2 : Adapter un comportement selon l'OS</caption>
-     * const env = new NEnvironment();
-     * const isApple = env.os === 'ios' || env.os === 'macos';
+     * const isApple = NEnv.os === 'ios' || NEnv.os === 'macos';
      */
-    get os() {
+    static get os() {
         if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string') {
             const ua = navigator.userAgent.toLowerCase();
 
@@ -178,14 +167,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` sur Android.
      *
      * @example <caption>Exemple 1 : Tester Android</caption>
-     * console.log(new NEnvironment().isAndroid);
+     * console.log(NEnv.isAndroid);
      *
      * @example <caption>Exemple 2 : Comparaison avec os</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isAndroid === (env.os === 'android')); // true
+     * console.log(NEnv.isAndroid === (NEnv.os === 'android')); // true
      */
-    get isAndroid() {
-        return this.os === 'android';
+    static get isAndroid() {
+        return NEnv.os === 'android';
     }
 
     /**
@@ -194,14 +182,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` sur HarmonyOS.
      *
      * @example <caption>Exemple 1 : Tester HarmonyOS</caption>
-     * console.log(new NEnvironment().isHarmonyOS);
+     * console.log(NEnv.isHarmonyOS);
      *
      * @example <caption>Exemple 2 : Comparaison avec os</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isHarmonyOS === (env.os === 'harmonyos')); // true
+     * console.log(NEnv.isHarmonyOS === (NEnv.os === 'harmonyos')); // true
      */
-    get isHarmonyOS() {
-        return this.os === 'harmonyos';
+    static get isHarmonyOS() {
+        return NEnv.os === 'harmonyos';
     }
 
     /**
@@ -210,14 +197,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` sur iOS / iPadOS.
      *
      * @example <caption>Exemple 1 : Tester iOS</caption>
-     * console.log(new NEnvironment().isIOS);
+     * console.log(NEnv.isIOS);
      *
      * @example <caption>Exemple 2 : Comparaison avec os</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isIOS === (env.os === 'ios')); // true
+     * console.log(NEnv.isIOS === (NEnv.os === 'ios')); // true
      */
-    get isIOS() {
-        return this.os === 'ios';
+    static get isIOS() {
+        return NEnv.os === 'ios';
     }
 
     /**
@@ -226,14 +212,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` sur Windows.
      *
      * @example <caption>Exemple 1 : Tester Windows</caption>
-     * console.log(new NEnvironment().isWindows);
+     * console.log(NEnv.isWindows);
      *
      * @example <caption>Exemple 2 : Comparaison avec os</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isWindows === (env.os === 'windows')); // true
+     * console.log(NEnv.isWindows === (NEnv.os === 'windows')); // true
      */
-    get isWindows() {
-        return this.os === 'windows';
+    static get isWindows() {
+        return NEnv.os === 'windows';
     }
 
     /**
@@ -242,14 +227,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` sur macOS.
      *
      * @example <caption>Exemple 1 : Tester macOS</caption>
-     * console.log(new NEnvironment().isMacOS);
+     * console.log(NEnv.isMacOS);
      *
      * @example <caption>Exemple 2 : Comparaison avec os</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isMacOS === (env.os === 'macos')); // true
+     * console.log(NEnv.isMacOS === (NEnv.os === 'macos')); // true
      */
-    get isMacOS() {
-        return this.os === 'macos';
+    static get isMacOS() {
+        return NEnv.os === 'macos';
     }
 
     /**
@@ -258,18 +242,17 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` sur Linux.
      *
      * @example <caption>Exemple 1 : Tester Linux</caption>
-     * console.log(new NEnvironment().isLinux);
+     * console.log(NEnv.isLinux);
      *
      * @example <caption>Exemple 2 : Comparaison avec os</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isLinux === (env.os === 'linux')); // true
+     * console.log(NEnv.isLinux === (NEnv.os === 'linux')); // true
      */
-    get isLinux() {
-        return this.os === 'linux';
+    static get isLinux() {
+        return NEnv.os === 'linux';
     }
 
     // =========================================================================
-    // Getters d'instance — Navigateur, WebView & Type d'Appareil
+    // Getters statiques — Navigateur, WebView & Type d'Appareil
     // =========================================================================
 
     /**
@@ -278,14 +261,12 @@ export class NEnvironment extends NObject {
      * @returns {'edge'|'opera'|'firefox'|'chrome'|'safari'|'unknown'} Nom du navigateur.
      *
      * @example <caption>Exemple 1 : Obtenir le nom du navigateur</caption>
-     * const env = new NEnvironment();
-     * console.log(env.browser); // ex: 'chrome', 'edge', 'firefox', 'safari'
+     * console.log(NEnv.browser); // ex: 'chrome', 'edge', 'firefox', 'safari'
      *
      * @example <caption>Exemple 2 : Sous Node.js retourne 'unknown'</caption>
-     * const env = new NEnvironment();
-     * if (env.isNode) { console.log(env.browser); } // 'unknown'
+     * if (NEnv.isNode) { console.log(NEnv.browser); } // 'unknown'
      */
-    get browser() {
+    static get browser() {
         if (typeof navigator === 'undefined' || typeof navigator.userAgent !== 'string') {
             return 'unknown';
         }
@@ -307,12 +288,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si l'appareil est mobile.
      *
      * @example <caption>Exemple 1 : Vérifier si l'appareil est mobile</caption>
-     * console.log(new NEnvironment().isMobile); // true ou false
+     * console.log(NEnv.isMobile); // true ou false
      *
      * @example <caption>Exemple 2 : Adapter l'interface</caption>
-     * const layout = new NEnvironment().isMobile ? 'compact' : 'wide';
+     * const layout = NEnv.isMobile ? 'compact' : 'wide';
      */
-    get isMobile() {
+    static get isMobile() {
         return (
             typeof navigator !== 'undefined' &&
             typeof navigator.userAgent === 'string' &&
@@ -326,13 +307,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si l'appareil est une tablette.
      *
      * @example <caption>Exemple 1 : Vérifier si l'appareil est une tablette</caption>
-     * console.log(new NEnvironment().isTablet);
+     * console.log(NEnv.isTablet);
      *
      * @example <caption>Exemple 2 : Tester mobile ou tablette</caption>
-     * const env = new NEnvironment();
-     * const isHandheld = env.isMobile || env.isTablet;
+     * const isHandheld = NEnv.isMobile || NEnv.isTablet;
      */
-    get isTablet() {
+    static get isTablet() {
         if (typeof navigator === 'undefined' || typeof navigator.userAgent !== 'string') {
             return false;
         }
@@ -348,14 +328,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si l'appareil est un ordinateur de bureau.
      *
      * @example <caption>Exemple 1 : Vérifier le mode Desktop</caption>
-     * console.log(new NEnvironment().isDesktop);
+     * console.log(NEnv.isDesktop);
      *
      * @example <caption>Exemple 2 : Exclusif avec mobile et tablette</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isDesktop === (!env.isMobile && !env.isTablet)); // true
+     * console.log(NEnv.isDesktop === (!NEnv.isMobile && !NEnv.isTablet)); // true
      */
-    get isDesktop() {
-        return !this.isMobile && !this.isTablet;
+    static get isDesktop() {
+        return !NEnv.isMobile && !NEnv.isTablet;
     }
 
     /**
@@ -364,12 +343,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si l'appareil possède un écran tactile.
      *
      * @example <caption>Exemple 1 : Détecter le support tactile</caption>
-     * console.log(new NEnvironment().isTouch);
+     * console.log(NEnv.isTouch);
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof new NEnvironment().isTouch); // 'boolean'
+     * console.log(typeof NEnv.isTouch); // 'boolean'
      */
-    get isTouch() {
+    static get isTouch() {
         if (typeof window === 'undefined' && typeof navigator === 'undefined') {
             return false;
         }
@@ -386,13 +365,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si exécuté dans une WebView.
      *
      * @example <caption>Exemple 1 : Détecter l'exécution dans une WebView</caption>
-     * console.log(new NEnvironment().isWebView);
+     * console.log(NEnv.isWebView);
      *
      * @example <caption>Exemple 2 : Activer la passerelle native si WebView</caption>
-     * const env = new NEnvironment();
-     * if (env.isWebView) { console.log('Conteneur natif détecté'); }
+     * if (NEnv.isWebView) { console.log('Conteneur natif détecté'); }
      */
-    get isWebView() {
+    static get isWebView() {
         if (typeof navigator === 'undefined' || typeof navigator.userAgent !== 'string') {
             return false;
         }
@@ -413,7 +391,7 @@ export class NEnvironment extends NObject {
     }
 
     // =========================================================================
-    // Getters d'instance — Connexion Réseau, Sécurité & Préférences Système
+    // Getters statiques — Connexion Réseau, Sécurité & Préférences Système
     // =========================================================================
 
     /**
@@ -423,12 +401,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si en ligne, `false` si hors-ligne.
      *
      * @example <caption>Exemple 1 : Vérifier si l'appareil est en ligne</caption>
-     * console.log(new NEnvironment().isOnline); // true
+     * console.log(NEnv.isOnline); // true
      *
      * @example <caption>Exemple 2 : Basculer entre SQL local et serveur</caption>
-     * const target = new NEnvironment().isOnline ? 'remote' : 'local';
+     * const target = NEnv.isOnline ? 'remote' : 'local';
      */
-    get isOnline() {
+    static get isOnline() {
         return typeof navigator === 'undefined' || typeof navigator.onLine !== 'boolean'
             ? true
             : navigator.onLine;
@@ -440,14 +418,13 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si hors-ligne.
      *
      * @example <caption>Exemple 1 : Vérifier le mode hors-ligne</caption>
-     * console.log(new NEnvironment().isOffline);
+     * console.log(NEnv.isOffline);
      *
      * @example <caption>Exemple 2 : Opposé de isOnline</caption>
-     * const env = new NEnvironment();
-     * console.log(env.isOffline === !env.isOnline); // true
+     * console.log(NEnv.isOffline === !NEnv.isOnline); // true
      */
-    get isOffline() {
-        return !this.isOnline;
+    static get isOffline() {
+        return !NEnv.isOnline;
     }
 
     /**
@@ -456,12 +433,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si le contexte est sécurisé.
      *
      * @example <caption>Exemple 1 : Vérifier le contexte sécurisé</caption>
-     * console.log(new NEnvironment().isSecureContext);
+     * console.log(NEnv.isSecureContext);
      *
      * @example <caption>Exemple 2 : Retourne un booléen</caption>
-     * console.log(typeof new NEnvironment().isSecureContext); // 'boolean'
+     * console.log(typeof NEnv.isSecureContext); // 'boolean'
      */
-    get isSecureContext() {
+    static get isSecureContext() {
         if (typeof window !== 'undefined' && typeof window.isSecureContext === 'boolean') {
             return window.isSecureContext;
         }
@@ -474,12 +451,12 @@ export class NEnvironment extends NObject {
      * @returns {boolean} `true` si le mode sombre est activé sur le système.
      *
      * @example <caption>Exemple 1 : Détecter le thème sombre du système</caption>
-     * console.log(new NEnvironment().isDarkMode);
+     * console.log(NEnv.isDarkMode);
      *
      * @example <caption>Exemple 2 : Choisir le thème par défaut</caption>
-     * const theme = new NEnvironment().isDarkMode ? 'dark' : 'light';
+     * const theme = NEnv.isDarkMode ? 'dark' : 'light';
      */
-    get isDarkMode() {
+    static get isDarkMode() {
         if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
             return window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
@@ -492,12 +469,12 @@ export class NEnvironment extends NObject {
      * @returns {string} Code de langue (par défaut `'fr'`).
      *
      * @example <caption>Exemple 1 : Lire la langue de l'environnement</caption>
-     * console.log(new NEnvironment().language); // ex: 'fr-FR'
+     * console.log(NEnv.language); // ex: 'fr-FR'
      *
      * @example <caption>Exemple 2 : Toujours une chaîne non vide</caption>
-     * console.log(new NEnvironment().language.length > 0); // true
+     * console.log(NEnv.language.length > 0); // true
      */
-    get language() {
+    static get language() {
         if (typeof navigator !== 'undefined' && typeof navigator.language === 'string' && navigator.language.length > 0) {
             return navigator.language;
         }
@@ -514,12 +491,12 @@ export class NEnvironment extends NObject {
      * @returns {string} Fuseau horaire IANA.
      *
      * @example <caption>Exemple 1 : Obtenir le fuseau horaire</caption>
-     * console.log(new NEnvironment().timezone); // ex: 'Africa/Ouagadougou'
+     * console.log(NEnv.timezone); // ex: 'Africa/Ouagadougou'
      *
      * @example <caption>Exemple 2 : Toujours une chaîne non vide</caption>
-     * console.log(typeof new NEnvironment().timezone); // 'string'
+     * console.log(typeof NEnv.timezone); // 'string'
      */
-    get timezone() {
+    static get timezone() {
         try {
             return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         } catch {
@@ -533,12 +510,12 @@ export class NEnvironment extends NObject {
      * @returns {string} Chaîne User-Agent.
      *
      * @example <caption>Exemple 1 : Lire le User-Agent</caption>
-     * console.log(typeof new NEnvironment().userAgent); // 'string'
+     * console.log(typeof NEnv.userAgent); // 'string'
      *
      * @example <caption>Exemple 2 : Vérifier un mot-clé</caption>
-     * console.log(new NEnvironment().userAgent.includes('Mozilla'));
+     * console.log(NEnv.userAgent.includes('Mozilla'));
      */
-    get userAgent() {
+    static get userAgent() {
         if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string') {
             return navigator.userAgent;
         }
@@ -565,28 +542,28 @@ export class NEnvironment extends NObject {
      * }} Informations complètes sur l'environnement.
      *
      * @example <caption>Exemple 1 : Inspecter tout l'environnement en un appel</caption>
-     * console.log(new NEnvironment().info);
+     * console.log(NEnv.info);
      *
      * @example <caption>Exemple 2 : Sérialiser pour un rapport de diagnostic</caption>
-     * console.log(JSON.stringify(new NEnvironment().info));
+     * console.log(JSON.stringify(NEnv.info));
      */
-    get info() {
+    static get info() {
         return {
-            type: this.type,
-            os: this.os,
-            browser: this.browser,
-            isMobile: this.isMobile,
-            isTablet: this.isTablet,
-            isDesktop: this.isDesktop,
-            isTouch: this.isTouch,
-            isOnline: this.isOnline,
-            isWebView: this.isWebView,
-            isSecureContext: this.isSecureContext,
-            isDarkMode: this.isDarkMode,
-            language: this.language,
-            timezone: this.timezone
+            type: NEnv.type,
+            os: NEnv.os,
+            browser: NEnv.browser,
+            isMobile: NEnv.isMobile,
+            isTablet: NEnv.isTablet,
+            isDesktop: NEnv.isDesktop,
+            isTouch: NEnv.isTouch,
+            isOnline: NEnv.isOnline,
+            isWebView: NEnv.isWebView,
+            isSecureContext: NEnv.isSecureContext,
+            isDarkMode: NEnv.isDarkMode,
+            language: NEnv.language,
+            timezone: NEnv.timezone
         };
     }
 }
 
-export default NEnvironment;
+export default NEnv;

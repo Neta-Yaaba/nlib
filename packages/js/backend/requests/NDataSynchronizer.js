@@ -2,7 +2,7 @@
  * @file NDataSynchronizer.js
  * @package @nlib/js-backend
  * @description Moteur générique de synchronisation bidirectionnelle offline-first entre le client
- * et un serveur distant via `NNetwork` dans l'écosystème NLib :
+ * et un serveur distant via `NNet` dans l'écosystème NLib :
  * - Enregistrement multi-collections avec configuration indépendante (`register`, `unregister`).
  * - File d'attente persistante des modifications locales (`trackChange` : `create`, `update`, `delete`).
  * - Synchronisation Push par lots avec identifiants d'opération uniques, confirmations individuelles et reprise après interruption.
@@ -14,6 +14,8 @@
 import { NObject } from '../core/NObject.js';
 import { NIndexedDB } from '../database/NIndexedDB.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NLog } from '../log/NLog.js';
+import { NNet } from './NNet.js';
 
 /**
  * @class NDataSynchronizer
@@ -48,7 +50,7 @@ export class NDataSynchronizer extends NObject {
     // =========================================================================
 
     /**
-     * Instance `NNetwork` utilisée pour les échanges HTTP/HTTPS avec le serveur.
+     * Instance `NNet` utilisée pour les échanges HTTP/HTTPS avec le serveur.
      * @type {any}
      * @private
      */
@@ -199,7 +201,7 @@ export class NDataSynchronizer extends NObject {
      *
      * @constructor
      * @param {Object} [options={}] - Options de configuration du moteur de synchronisation.
-     * @param {any} [options.network] - Instance `NNetwork` (par défaut `NUtil.network`).
+     * @param {any} [options.network] - Instance `NNet` (par défaut `NNet`).
      * @param {NIndexedDB} [options.metaDb] - Base `NIndexedDB` dédiée aux métadonnées de synchronisation.
      * @param {string} [options.metaDbName='nlib_sync_meta'] - Nom de la base de métadonnées créée automatiquement si `metaDb` est omis.
      * @param {Object} [options.retry] - Politique de tentatives (`{ maxAttempts, baseDelayMs, maxDelayMs }`).
@@ -220,7 +222,7 @@ export class NDataSynchronizer extends NObject {
         super(options);
         const opts = (options && typeof options === 'object') ? options : {};
 
-        this.#network = opts.network || NUtil.network || null;
+        this.#network = opts.network || NNet || null;
 
         if (opts.metaDb) {
             this.#metaDb = opts.metaDb;
@@ -383,7 +385,7 @@ export class NDataSynchronizer extends NObject {
      */
     register(collectionId, config = {}) {
         if (typeof collectionId !== 'string' || !collectionId.trim()) {
-            NUtil.log?.warn?.('NDataSynchronizer.register: Identifiant de collection invalide.', { collectionId });
+            NLog?.warn?.('NDataSynchronizer.register: Identifiant de collection invalide.', { collectionId });
             return false;
         }
 
@@ -391,19 +393,19 @@ export class NDataSynchronizer extends NObject {
         const cfg = (config && typeof config === 'object') ? config : {};
 
         if (typeof cfg.endpoint !== 'string' || !cfg.endpoint.trim()) {
-            NUtil.log?.warn?.(`NDataSynchronizer.register: Endpoint requis pour la collection "${id}".`);
+            NLog?.warn?.(`NDataSynchronizer.register: Endpoint requis pour la collection "${id}".`);
             return false;
         }
 
         const endpoint = cfg.endpoint.trim();
         if (endpoint.startsWith('http://') && !endpoint.startsWith('http://localhost') && !endpoint.startsWith('http://127.0.0.1')) {
-            NUtil.log?.warn?.(`NDataSynchronizer.register: Il est recommandé d'utiliser HTTPS pour "${id}".`, { endpoint });
+            NLog?.warn?.(`NDataSynchronizer.register: Il est recommandé d'utiliser HTTPS pour "${id}".`, { endpoint });
         }
 
         const allowedStrategies = ['serverWins', 'clientWins', 'manual', 'merge'];
         const conflictStrategy = cfg.conflictStrategy || 'serverWins';
         if (!allowedStrategies.includes(conflictStrategy)) {
-            NUtil.log?.warn?.(`NDataSynchronizer.register: Stratégie de conflit invalide "${conflictStrategy}" pour "${id}".`);
+            NLog?.warn?.(`NDataSynchronizer.register: Stratégie de conflit invalide "${conflictStrategy}" pour "${id}".`);
             return false;
         }
 
@@ -1152,7 +1154,7 @@ export class NDataSynchronizer extends NObject {
 
             if (ignoredConfirmations.length > 0) {
                 st.ignoredCount = (st.ignoredCount || 0) + ignoredConfirmations.length;
-                NUtil.log?.warn?.(`NDataSynchronizer: ${ignoredConfirmations.length} confirmation(s) ignorée(s) sur "${col.id}".`, {
+                NLog?.warn?.(`NDataSynchronizer: ${ignoredConfirmations.length} confirmation(s) ignorée(s) sur "${col.id}".`, {
                     ignoredConfirmations
                 });
             }
@@ -1269,7 +1271,7 @@ export class NDataSynchronizer extends NObject {
      */
     async #processRemoteChange(col, st, change) {
         if (!change || typeof change !== 'object') {
-            NUtil.log?.warn?.(`NDataSynchronizer: Modification distante invalide sur "${col.id}".`, {
+            NLog?.warn?.(`NDataSynchronizer: Modification distante invalide sur "${col.id}".`, {
                 code: 'INVALID_REMOTE_CHANGE',
                 change
             });
@@ -1294,7 +1296,7 @@ export class NDataSynchronizer extends NObject {
             recordId === '' ||
             (action !== 'delete' && (!remoteRecord || typeof remoteRecord !== 'object' || Array.isArray(remoteRecord)))
         ) {
-            NUtil.log?.warn?.(`NDataSynchronizer: Modification distante sans identifiant ou charge valide sur "${col.id}".`, {
+            NLog?.warn?.(`NDataSynchronizer: Modification distante sans identifiant ou charge valide sur "${col.id}".`, {
                 code: 'INVALID_REMOTE_CHANGE',
                 change
             });
@@ -1360,7 +1362,7 @@ export class NDataSynchronizer extends NObject {
             if (this.#allowUnappliedPull) {
                 return true;
             }
-            NUtil.log?.warn?.(`NDataSynchronizer: Aucun écouteur 'apply' enregistré pour appliquer "${col.id}".`, {
+            NLog?.warn?.(`NDataSynchronizer: Aucun écouteur 'apply' enregistré pour appliquer "${col.id}".`, {
                 code: 'NO_APPLY_LISTENER',
                 collection: col.id
             });
@@ -1522,7 +1524,7 @@ export class NDataSynchronizer extends NObject {
                 mergeError = 'INVALID_MERGE_RESULT';
             } catch (err) {
                 mergeError = err?.message || 'MERGE_RESOLVER_ERROR';
-                NUtil.log?.warn?.(`NDataSynchronizer: Échec du mergeResolver sur "${col.id}", bascule en mode manuel.`, err);
+                NLog?.warn?.(`NDataSynchronizer: Échec du mergeResolver sur "${col.id}", bascule en mode manuel.`, err);
             }
         }
 
@@ -1640,7 +1642,7 @@ export class NDataSynchronizer extends NObject {
         this.#usingMemoryFallback = true;
         if (!this.#memoryWarningLogged) {
             this.#memoryWarningLogged = true;
-            NUtil.log?.warn?.('NDataSynchronizer: IndexedDB indisponible, utilisation du stockage mémoire non durable (aucune reprise après rechargement).');
+            NLog?.warn?.('NDataSynchronizer: IndexedDB indisponible, utilisation du stockage mémoire non durable (aucune reprise après rechargement).');
         }
     }
 

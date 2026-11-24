@@ -1,5 +1,5 @@
 /**
- * @file NSystem.js
+ * @file NSys.js
  * @package @nlib/js-backend
  * @description Classe autonome d'inspection et de gestion des ressources système et matérielles
  * dans l'écosystème NLib :
@@ -10,38 +10,39 @@
  * - Performance & Temps d'activité : Temps d'exécution (`uptime`), horloge haute résolution (`hrtime`), mesure d'exécution (`measure`).
  * - Pont OS Natif : Envoi de commandes système à l'hôte natif (`invokeNative`) lorsqu'exécuté dans une WebView NLib.
  *
- * Exposée sous forme d'instance partagée à initialisation paresseuse via `NUtil.sys` (et son alias `NUtil.system`).
+ * Exposée sous forme d'instance partagée à initialisation paresseuse via `NSys` (et son alias `NSys`).
  */
 
-import { NObject } from '../core/NObject.js';
+import { NLog } from '../log/NLog.js';
 import { NUtil } from '../utils/NUtil.js';
+import { NEnv } from '../environment/NEnv.js';
+import { NNum } from '../utils/NNum.js';
 import { NEvent } from '../core/NEvent.js';
 import { NWorker } from '../worker/NWorker.js';
 
 /**
- * @class NSystem
- * @extends NObject
+ * @class NSys
  * @description Gestionnaire et inspecteur des ressources matérielles et système (Navigateur, WebView OS et Node.js).
  *
- * @example <caption>Exemple 1 : Inspecter le matériel (CPU, mémoire, écran, réseau) via NUtil.sys</caption>
- * console.log(NUtil.sys.cpuCores); // ex: 8
- * console.log(NUtil.sys.memory);   // { used: ..., total: ..., formattedUsed: '...', formattedTotal: '...' }
- * console.log(NUtil.sys.screen);   // { width: 1920, height: 1080, pixelRatio: 1, orientation: 'landscape' }
+ * @example <caption>Exemple 1 : Inspecter le matériel (CPU, mémoire, écran, réseau) via NSys</caption>
+ * console.log(NSys.cpuCores); // ex: 8
+ * console.log(NSys.memory);   // { used: ..., total: ..., formattedUsed: '...', formattedTotal: '...' }
+ * console.log(NSys.screen);   // { width: 1920, height: 1080, pixelRatio: 1, orientation: 'landscape' }
  *
  * @example <caption>Exemple 2 : Surveiller la connexion réseau et mesurer une performance</caption>
- * NUtil.sys.watchNetwork(true, {
+ * NSys.watchNetwork(true, {
  *     onOffline: () => console.log('Passage en mode hors-ligne SQLite'),
  *     onOnline: () => console.log('Connexion rétablie')
  * });
- * const report = await NUtil.sys.measure('Calcul', async () => NUtil.sleep(50));
+ * const report = await NSys.measure('Calcul', async () => NUtil.sleep(50));
  * console.log(report.durationMs); // ~50
  *
  * @example <caption>Exemple 3 : Quota de stockage, batterie et rapport complet</caption>
- * const storage = await NUtil.sys.getStorageQuota();
- * const snapshot = await NUtil.sys.getSnapshot();
+ * const storage = await NSys.getStorageQuota();
+ * const snapshot = await NSys.getSnapshot();
  * console.log(snapshot);
  */
-export class NSystem extends NObject {
+export class NSys {
 
     // =========================================================================
     // Propriétés privées
@@ -52,46 +53,14 @@ export class NSystem extends NObject {
      * @type {number}
      * @private
      */
-    #startedAt = Date.now();
+    static #startedAt = Date.now();
 
     /**
      * Références internes aux écouteurs `online` / `offline` du navigateur (allouées uniquement si `watchNetwork` est actif).
      * @type {{ onOnline: Function, onOffline: Function }|null}
      * @private
      */
-    #networkHandlers = null;
-
-    // =========================================================================
-    // Constructeur
-    // =========================================================================
-
-    /**
-     * Crée une nouvelle instance de `NSystem`.
-     *
-     * @param {Object} [options={}] - Options de configuration.
-     * @param {boolean} [options.watchNetwork=false] - Si `true` (en navigateur), écoute `window` `online` et `offline`.
-     * @param {Function} [options.onOnline] - Fonction appelée lors du retour en ligne.
-     * @param {Function} [options.onOffline] - Fonction appelée lors de la perte de connexion.
-     *
-     * @example <caption>Exemple 1 : Création standard</caption>
-     * const sys = new NSystem();
-     * console.log(sys.cpuCores >= 1); // true
-     *
-     * @example <caption>Exemple 2 : Création avec surveillance automatique du réseau</caption>
-     * const sys = new NSystem({
-     *     watchNetwork: true,
-     *     onOnline: () => console.log('Réseau rétabli')
-     * });
-     */
-    constructor(options = {}) {
-        super(options);
-        if (options?.watchNetwork === true) {
-            this.watchNetwork(true, {
-                onOnline: options.onOnline,
-                onOffline: options.onOffline
-            });
-        }
-    }
+    static #networkHandlers = null;
 
     // =========================================================================
     // Getters matériels — CPU, Architecture, Mémoire, Écran & Réseau
@@ -103,12 +72,12 @@ export class NSystem extends NObject {
      * @returns {number} Nombre de cœurs logiques CPU.
      *
      * @example <caption>Exemple 1 : Lire le nombre de cœurs CPU</caption>
-     * console.log(NUtil.sys.cpuCores); // ex: 8
+     * console.log(NSys.cpuCores); // ex: 8
      *
      * @example <caption>Exemple 2 : Toujours supérieur ou égal à 1</caption>
-     * console.log(NUtil.sys.cpuCores >= 1); // true
+     * console.log(NSys.cpuCores >= 1); // true
      */
-    get cpuCores() {
+    static get cpuCores() {
         if (typeof navigator !== 'undefined' && Number.isFinite(navigator.hardwareConcurrency)) {
             return Math.max(1, navigator.hardwareConcurrency);
         }
@@ -121,12 +90,12 @@ export class NSystem extends NObject {
      * @returns {string} Architecture du processeur.
      *
      * @example <caption>Exemple 1 : Obtenir l'architecture</caption>
-     * console.log(NUtil.sys.arch); // ex: 'x64' ou 'arm64'
+     * console.log(NSys.arch); // ex: 'x64' ou 'arm64'
      *
      * @example <caption>Exemple 2 : Toujours une chaîne non vide</caption>
-     * console.log(typeof NUtil.sys.arch); // 'string'
+     * console.log(typeof NSys.arch); // 'string'
      */
-    get arch() {
+    static get arch() {
         if (typeof process !== 'undefined' && typeof process.arch === 'string') {
             return process.arch;
         }
@@ -147,12 +116,12 @@ export class NSystem extends NObject {
      * @returns {number|null} Mémoire RAM en Go (ex: `4`, `8`) ou `null`.
      *
      * @example <caption>Exemple 1 : Lire la RAM de l'appareil</caption>
-     * console.log(NUtil.sys.deviceMemory); // ex: 8 ou null
+     * console.log(NSys.deviceMemory); // ex: 8 ou null
      *
      * @example <caption>Exemple 2 : Adapter le cache selon la RAM</caption>
-     * const maxCache = (NUtil.sys.deviceMemory ?? 4) >= 8 ? 500 : 100;
+     * const maxCache = (NSys.deviceMemory ?? 4) >= 8 ? 500 : 100;
      */
-    get deviceMemory() {
+    static get deviceMemory() {
         if (typeof navigator !== 'undefined' && Number.isFinite(navigator.deviceMemory)) {
             return navigator.deviceMemory;
         }
@@ -173,12 +142,12 @@ export class NSystem extends NObject {
      * }} Statistiques d'utilisation mémoire.
      *
      * @example <caption>Exemple 1 : Inspecter la mémoire utilisée</caption>
-     * console.log(NUtil.sys.memory.formattedUsed); // ex: '14.52 MB'
+     * console.log(NSys.memory.formattedUsed); // ex: '14.52 MB'
      *
      * @example <caption>Exemple 2 : Vérifier le pourcentage d'utilisation</caption>
-     * console.log(NUtil.sys.memory.usagePercent >= 0); // true
+     * console.log(NSys.memory.usagePercent >= 0); // true
      */
-    get memory() {
+    static get memory() {
         let used = 0;
         let total = 0;
         let limit = 0;
@@ -195,15 +164,15 @@ export class NSystem extends NObject {
         }
 
         const base = limit > 0 ? limit : total;
-        const usagePercent = base > 0 ? NUtil.num.percentage(used, base, 2) : 0;
+        const usagePercent = base > 0 ? NNum.percentage(used, base, 2) : 0;
 
         return {
             used,
             total,
             limit,
             usagePercent,
-            formattedUsed: NUtil.num.formatBytes(used),
-            formattedTotal: NUtil.num.formatBytes(total)
+            formattedUsed: NNum.formatBytes(used),
+            formattedTotal: NNum.formatBytes(total)
         };
     }
 
@@ -222,12 +191,12 @@ export class NSystem extends NObject {
      * }} Informations sur l'affichage.
      *
      * @example <caption>Exemple 1 : Obtenir la résolution et l'orientation</caption>
-     * console.log(NUtil.sys.screen.orientation); // 'landscape' ou 'portrait'
+     * console.log(NSys.screen.orientation); // 'landscape' ou 'portrait'
      *
      * @example <caption>Exemple 2 : Vérifier la densité de pixels (Retina / HiDPI)</caption>
-     * console.log(NUtil.sys.screen.pixelRatio >= 1); // true
+     * console.log(NSys.screen.pixelRatio >= 1); // true
      */
-    get screen() {
+    static get screen() {
         if (typeof window === 'undefined') {
             return {
                 width: 0,
@@ -272,13 +241,13 @@ export class NSystem extends NObject {
      * }} État détaillé du réseau.
      *
      * @example <caption>Exemple 1 : Vérifier l'état et le type de réseau</caption>
-     * console.log(NUtil.sys.network.online, NUtil.sys.network.effectiveType);
+     * console.log(NSys.network.online, NSys.network.effectiveType);
      *
      * @example <caption>Exemple 2 : Adapter le chargement si le mode économie de données est actif</caption>
-     * if (NUtil.sys.network.saveData) { console.log('Mode économie de données'); }
+     * if (NSys.network.saveData) { console.log('Mode économie de données'); }
      */
-    get network() {
-        const online = NUtil.env.isOnline;
+    static get network() {
+        const online = NEnv.isOnline;
         const conn = typeof navigator !== 'undefined'
             ? (navigator.connection || navigator.mozConnection || navigator.webkitConnection)
             : null;
@@ -304,19 +273,19 @@ export class NSystem extends NObject {
      * @returns {number} Temps d'activité.
      *
      * @example <caption>Exemple 1 : Uptime en millisecondes</caption>
-     * console.log(NUtil.sys.uptime() >= 0); // true
+     * console.log(NSys.uptime() >= 0); // true
      *
      * @example <caption>Exemple 2 : Uptime en secondes</caption>
-     * console.log(NUtil.sys.uptime(true) >= 0); // true
+     * console.log(NSys.uptime(true) >= 0); // true
      */
-    uptime(inSeconds = false) {
-        let elapsedMs = Date.now() - this.#startedAt;
+    static uptime(inSeconds = false) {
+        let elapsedMs = Date.now() - NSys.#startedAt;
         if (typeof process !== 'undefined' && typeof process.uptime === 'function') {
             elapsedMs = process.uptime() * 1000;
         } else if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
             elapsedMs = performance.now();
         }
-        return inSeconds ? NUtil.num.round(elapsedMs / 1000, 2) : Math.trunc(elapsedMs);
+        return inSeconds ? NNum.round(elapsedMs / 1000, 2) : Math.trunc(elapsedMs);
     }
 
     /**
@@ -325,15 +294,15 @@ export class NSystem extends NObject {
      * @returns {number} Temps haute résolution en millisecondes.
      *
      * @example <caption>Exemple 1 : Obtenir le temps haute résolution</caption>
-     * const t0 = NUtil.sys.hrtime();
+     * const t0 = NSys.hrtime();
      * console.log(typeof t0); // 'number'
      *
      * @example <caption>Exemple 2 : Calculer un delta très précis</caption>
-     * const start = NUtil.sys.hrtime();
-     * const delta = NUtil.sys.hrtime() - start;
+     * const start = NSys.hrtime();
+     * const delta = NSys.hrtime() - start;
      * console.log(delta >= 0); // true
      */
-    hrtime() {
+    static hrtime() {
         if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
             return performance.now();
         }
@@ -350,18 +319,18 @@ export class NSystem extends NObject {
      * @returns {Promise<{ label: string, durationMs: number, result: any, success: boolean, error?: string }>} Rapport d'exécution.
      *
      * @example <caption>Exemple 1 : Mesurer une tâche asynchrone avec succès</caption>
-     * const report = await NUtil.sys.measure('RequeteSQL', async () => 42);
+     * const report = await NSys.measure('RequeteSQL', async () => 42);
      * console.log(report.label, report.result, report.durationMs >= 0); // 'RequeteSQL' 42 true
      *
      * @example <caption>Exemple 2 : Mesurer une opération en échec</caption>
-     * const errReport = await NUtil.sys.measure('TacheErronee', () => { throw new Error('Oups'); });
+     * const errReport = await NSys.measure('TacheErronee', () => { throw new Error('Oups'); });
      * console.log(errReport.success); // false
      */
-    async measure(label, fn) {
-        const start = this.hrtime();
+    static async measure(label, fn) {
+        const start = NSys.hrtime();
         try {
             const result = await fn();
-            const durationMs = NUtil.num.round(this.hrtime() - start, 3);
+            const durationMs = NNum.round(NSys.hrtime() - start, 3);
             return {
                 success: true,
                 label: String(label || 'task'),
@@ -369,8 +338,8 @@ export class NSystem extends NObject {
                 result
             };
         } catch (error) {
-            const durationMs = NUtil.num.round(this.hrtime() - start, 3);
-            NUtil.log.error(`NSystem: Échec lors de la mesure de "${label}".`, {
+            const durationMs = NNum.round(NSys.hrtime() - start, 3);
+            NLog.error(`NSys: Échec lors de la mesure de "${label}".`, {
                 code: 'ERR_MEASURE_EXECUTION',
                 label,
                 cause: error
@@ -397,19 +366,19 @@ export class NSystem extends NObject {
      * @returns {Promise<{ level: number, charging: boolean, chargingTime: number, dischargingTime: number }|null>} État de la batterie ou `null`.
      *
      * @example <caption>Exemple 1 : Lire le niveau de batterie</caption>
-     * const bat = await NUtil.sys.getBattery();
+     * const bat = await NSys.getBattery();
      * if (bat) { console.log(`${bat.level}%`); }
      *
      * @example <caption>Exemple 2 : Retourne null sous Node.js</caption>
-     * const bat = await NUtil.sys.getBattery();
+     * const bat = await NSys.getBattery();
      * console.log(bat === null || typeof bat.level === 'number'); // true
      */
-    async getBattery() {
+    static async getBattery() {
         if (typeof navigator !== 'undefined' && typeof navigator.getBattery === 'function') {
             try {
                 const battery = await navigator.getBattery();
                 return {
-                    level: NUtil.num.round((battery.level ?? 1) * 100, 0),
+                    level: NNum.round((battery.level ?? 1) * 100, 0),
                     charging: Boolean(battery.charging),
                     chargingTime: battery.chargingTime ?? 0,
                     dischargingTime: battery.dischargingTime ?? 0
@@ -433,14 +402,14 @@ export class NSystem extends NObject {
      * }>} Informations sur l'espace de stockage.
      *
      * @example <caption>Exemple 1 : Vérifier l'espace libre pour la base SQLite locale</caption>
-     * const storage = await NUtil.sys.getStorageQuota();
+     * const storage = await NSys.getStorageQuota();
      * console.log(storage.formattedUsage, storage.formattedQuota);
      *
      * @example <caption>Exemple 2 : Pourcentage d'espace utilisé</caption>
-     * const storage = await NUtil.sys.getStorageQuota();
+     * const storage = await NSys.getStorageQuota();
      * console.log(storage.usagePercent >= 0); // true
      */
-    async getStorageQuota() {
+    static async getStorageQuota() {
         if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
             try {
                 const estimate = await navigator.storage.estimate();
@@ -449,9 +418,9 @@ export class NSystem extends NObject {
                 return {
                     usage,
                     quota,
-                    usagePercent: quota > 0 ? NUtil.num.percentage(usage, quota, 2) : 0,
-                    formattedUsage: NUtil.num.formatBytes(usage),
-                    formattedQuota: NUtil.num.formatBytes(quota)
+                    usagePercent: quota > 0 ? NNum.percentage(usage, quota, 2) : 0,
+                    formattedUsage: NNum.formatBytes(usage),
+                    formattedQuota: NNum.formatBytes(quota)
                 };
             } catch {
                 // Repli ci-dessous
@@ -473,12 +442,12 @@ export class NSystem extends NObject {
      * @returns {Promise<boolean>} `true` si la copie a réussi, sinon `false`.
      *
      * @example <caption>Exemple 1 : Copier un texte dans le presse-papiers</caption>
-     * const ok = await NUtil.sys.copyToClipboard('Texte copié');
+     * const ok = await NSys.copyToClipboard('Texte copié');
      *
      * @example <caption>Exemple 2 : Texte vide retourne false</caption>
-     * console.log(await NUtil.sys.copyToClipboard('')); // false
+     * console.log(await NSys.copyToClipboard('')); // false
      */
-    async copyToClipboard(text) {
+    static async copyToClipboard(text) {
         if (typeof text !== 'string' || text.length === 0) {
             return false;
         }
@@ -499,13 +468,13 @@ export class NSystem extends NObject {
      * @returns {Promise<string>} Texte lu depuis le presse-papiers, ou `''` si indisponible/refusé.
      *
      * @example <caption>Exemple 1 : Lire le presse-papiers</caption>
-     * const content = await NUtil.sys.readFromClipboard();
+     * const content = await NSys.readFromClipboard();
      * console.log(typeof content); // 'string'
      *
      * @example <caption>Exemple 2 : Sans permission retourne une chaîne vide</caption>
-     * console.log(await NUtil.sys.readFromClipboard());
+     * console.log(await NSys.readFromClipboard());
      */
-    async readFromClipboard() {
+    static async readFromClipboard() {
         if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
             try {
                 return await navigator.clipboard.readText();
@@ -522,12 +491,12 @@ export class NSystem extends NObject {
      * @returns {string} URL complète courante.
      *
      * @example <caption>Exemple 1 : Lire l'URL courante</caption>
-     * const url = NUtil.sys.getBrowserUrl();
+     * const url = NSys.getBrowserUrl();
      *
      * @example <caption>Exemple 2 : Vérifier un paramètre d'URL</caption>
-     * const hasToken = NUtil.sys.getBrowserUrl().includes('token=');
+     * const hasToken = NSys.getBrowserUrl().includes('token=');
      */
-    getBrowserUrl() {
+    static getBrowserUrl() {
         return typeof window !== 'undefined' && window.location ? window.location.href : '';
     }
 
@@ -538,18 +507,18 @@ export class NSystem extends NObject {
      * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
      *
      * @example <caption>Exemple 1 : Définir le titre applicatif</caption>
-     * NUtil.sys.setBrowserTitle('Tableau de bord');
+     * NSys.setBrowserTitle('Tableau de bord');
      *
      * @example <caption>Exemple 2 : Effacer le titre</caption>
-     * NUtil.sys.setBrowserTitle('');
+     * NSys.setBrowserTitle('');
      */
-    setBrowserTitle(title) {
+    static setBrowserTitle(title) {
         const nextTitle = title ? String(title) : '';
         if (typeof document !== 'undefined') {
             document.title = nextTitle;
         }
-        if (NUtil.env.isWebView) {
-            return this.invokeNative('setBrowserTitle', { title: nextTitle });
+        if (NEnv.isWebView) {
+            return NSys.invokeNative('setBrowserTitle', { title: nextTitle });
         }
     }
 
@@ -561,12 +530,12 @@ export class NSystem extends NObject {
      * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
      *
      * @example <caption>Exemple 1 : Remplacer l'URL courante</caption>
-     * NUtil.sys.setBrowserUrl('/profile?tab=info');
+     * NSys.setBrowserUrl('/profile?tab=info');
      *
      * @example <caption>Exemple 2 : Remplacer l'URL avec un état personnalisé</caption>
-     * NUtil.sys.setBrowserUrl('/items/42', { itemId: 42 });
+     * NSys.setBrowserUrl('/items/42', { itemId: 42 });
      */
-    setBrowserUrl(url, state = null) {
+    static setBrowserUrl(url, state = null) {
         if (typeof window !== 'undefined' && window.history?.replaceState) {
             try {
                 window.history.replaceState(state, '', url);
@@ -574,8 +543,8 @@ export class NSystem extends NObject {
                 // Ignore cross-origin SecurityError
             }
         }
-        if (NUtil.env.isWebView) {
-            return this.invokeNative('setBrowserUrl', { url, state });
+        if (NEnv.isWebView) {
+            return NSys.invokeNative('setBrowserUrl', { url, state });
         }
     }
 
@@ -587,12 +556,12 @@ export class NSystem extends NObject {
      * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
      *
      * @example <caption>Exemple 1 : Empiler une nouvelle route</caption>
-     * NUtil.sys.pushBrowserUrl('/orders/108');
+     * NSys.pushBrowserUrl('/orders/108');
      *
      * @example <caption>Exemple 2 : Empiler une route avec état</caption>
-     * NUtil.sys.pushBrowserUrl('/search?q=nlib', { query: 'nlib' });
+     * NSys.pushBrowserUrl('/search?q=nlib', { query: 'nlib' });
      */
-    pushBrowserUrl(url, state = null) {
+    static pushBrowserUrl(url, state = null) {
         if (typeof window !== 'undefined' && window.history?.pushState) {
             try {
                 window.history.pushState(state, '', url);
@@ -600,8 +569,8 @@ export class NSystem extends NObject {
                 // Ignore cross-origin SecurityError
             }
         }
-        if (NUtil.env.isWebView) {
-            return this.invokeNative('pushBrowserUrl', { url, state });
+        if (NEnv.isWebView) {
+            return NSys.invokeNative('pushBrowserUrl', { url, state });
         }
     }
 
@@ -611,16 +580,16 @@ export class NSystem extends NObject {
      * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
      *
      * @example <caption>Exemple 1 : Revenir à la page précédente du navigateur ou quitter en WebView</caption>
-     * NUtil.sys.browserBack();
+     * NSys.browserBack();
      *
      * @example <caption>Exemple 2 : Repli lorsque l'historique interne de NWindow est vide</caption>
      * if (!win.back()) {
-     *     NUtil.sys.browserBack();
+     *     NSys.browserBack();
      * }
      */
-    browserBack() {
-        if (NUtil.env.isWebView) {
-            return this.invokeNative('finishApp');
+    static browserBack() {
+        if (NEnv.isWebView) {
+            return NSys.invokeNative('finishApp');
         }
         if (typeof window !== 'undefined' && window.history?.back) {
             window.history.back();
@@ -635,14 +604,14 @@ export class NSystem extends NObject {
      * @returns {Promise<any>|Window|null} Réponse native, référence `Window` ou `null`.
      *
      * @example <caption>Exemple 1 : Ouvrir un lien externe</caption>
-     * NUtil.sys.openUrl('https://example.com');
+     * NSys.openUrl('https://example.com');
      *
      * @example <caption>Exemple 2 : Ouvrir dans le même onglet</caption>
-     * NUtil.sys.openUrl('/docs', '_self');
+     * NSys.openUrl('/docs', '_self');
      */
-    openUrl(url, target = '_blank') {
-        if (NUtil.env.isWebView) {
-            return this.invokeNative('openUrl', { url, target });
+    static openUrl(url, target = '_blank') {
+        if (NEnv.isWebView) {
+            return NSys.invokeNative('openUrl', { url, target });
         }
         if (typeof window !== 'undefined' && window.open) {
             return window.open(url, target);
@@ -657,14 +626,14 @@ export class NSystem extends NObject {
      * @returns {Promise<any>|void} Promesse de l'appel natif en WebView, sinon `undefined`.
      *
      * @example <caption>Exemple 1 : Rediriger vers la page de connexion</caption>
-     * NUtil.sys.loadUrl('/login');
+     * NSys.loadUrl('/login');
      *
      * @example <caption>Exemple 2 : Rediriger vers une page externe</caption>
-     * NUtil.sys.loadUrl('https://example.com/auth');
+     * NSys.loadUrl('https://example.com/auth');
      */
-    loadUrl(url) {
-        if (NUtil.env.isWebView) {
-            return this.invokeNative('loadUrl', { url });
+    static loadUrl(url) {
+        if (NEnv.isWebView) {
+            return NSys.invokeNative('loadUrl', { url });
         }
         if (typeof window !== 'undefined' && window.location?.assign) {
             window.location.assign(url);
@@ -678,14 +647,14 @@ export class NSystem extends NObject {
      * @returns {Promise<boolean>} `true` si le partage ou la copie de repli a réussi.
      *
      * @example <caption>Exemple 1 : Partager une page</caption>
-     * await NUtil.sys.share({ title: 'NLib', url: 'https://example.com' });
+     * await NSys.share({ title: 'NLib', url: 'https://example.com' });
      *
      * @example <caption>Exemple 2 : Partager un texte</caption>
-     * await NUtil.sys.share({ title: 'Note', text: 'Contenu partagé' });
+     * await NSys.share({ title: 'Note', text: 'Contenu partagé' });
      */
-    async share(data = {}) {
-        if (NUtil.env.isWebView) {
-            const res = await this.invokeNative('share', data);
+    static async share(data = {}) {
+        if (NEnv.isWebView) {
+            const res = await NSys.invokeNative('share', data);
             return Boolean(res && res.success !== false);
         }
         if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
@@ -700,7 +669,7 @@ export class NSystem extends NObject {
         if (!fallback) {
             return false;
         }
-        return this.copyToClipboard(fallback);
+        return NSys.copyToClipboard(fallback);
     }
 
     // =========================================================================
@@ -717,45 +686,45 @@ export class NSystem extends NObject {
      * @returns {this} L'instance courante.
      *
      * @example <caption>Exemple 1 : Activer la surveillance réseau</caption>
-     * NUtil.sys.watchNetwork(true, {
+     * NSys.watchNetwork(true, {
      *     onOffline: (net) => console.log('Connexion perdue', net),
      *     onOnline: (net) => console.log('Connexion rétablie', net)
      * });
      *
      * @example <caption>Exemple 2 : Désactiver la surveillance réseau</caption>
-     * NUtil.sys.watchNetwork(false);
+     * NSys.watchNetwork(false);
      */
-    watchNetwork(enable = true, callbacks = {}) {
+    static watchNetwork(enable = true, callbacks = {}) {
         if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
-            return this;
+            return NSys;
         }
 
-        if (this.#networkHandlers) {
-            window.removeEventListener('online', this.#networkHandlers.onOnline);
-            window.removeEventListener('offline', this.#networkHandlers.onOffline);
-            this.#networkHandlers = null;
+        if (NSys.#networkHandlers) {
+            window.removeEventListener('online', NSys.#networkHandlers.onOnline);
+            window.removeEventListener('offline', NSys.#networkHandlers.onOffline);
+            NSys.#networkHandlers = null;
         }
 
         if (!enable) {
-            return this;
+            return NSys;
         }
 
         const onOnline = () => {
             if (typeof callbacks?.onOnline === 'function') {
-                callbacks.onOnline(this.network);
+                callbacks.onOnline(NSys.network);
             }
         };
         const onOffline = () => {
             if (typeof callbacks?.onOffline === 'function') {
-                callbacks.onOffline(this.network);
+                callbacks.onOffline(NSys.network);
             }
         };
 
         window.addEventListener('online', onOnline);
         window.addEventListener('offline', onOffline);
-        this.#networkHandlers = { onOnline, onOffline };
+        NSys.#networkHandlers = { onOnline, onOffline };
 
-        return this;
+        return NSys;
     }
 
     /**
@@ -776,14 +745,14 @@ export class NSystem extends NObject {
      * @returns {Promise<any>} Réponse renvoyée par le conteneur natif ou objet résultat standardisé.
      *
      * @example <caption>Exemple 1 : Demander une action système avec paramètres</caption>
-     * const res = await NUtil.sys.invokeNative('vibrate', { duration: 150 });
+     * const res = await NSys.invokeNative('vibrate', { duration: 150 });
      * console.log(res);
      *
      * @example <caption>Exemple 2 : Requête native structurée avec gestion de délai</caption>
-     * const info = await NUtil.sys.invokeNative('getDeviceInfo', { timeout: 5000 });
+     * const info = await NSys.invokeNative('getDeviceInfo', { timeout: 5000 });
      * console.log(info);
      */
-    async invokeNative(actionOrParams, payloadOrOptions = {}) {
+    static async invokeNative(actionOrParams, payloadOrOptions = {}) {
         try {
             let action;
             let payload;
@@ -795,7 +764,7 @@ export class NSystem extends NObject {
                 action = actionOrParams.action || (Array.isArray(actionOrParams.type) ? actionOrParams.type.join('.') : (actionOrParams.type || 'default'));
                 payload = actionOrParams.payload !== undefined ? actionOrParams.payload : actionOrParams;
             } else {
-                NUtil.log.warn("invokeNative: Paramètres d'appel invalides.", { actionOrParams });
+                NLog.warn("invokeNative: Paramètres d'appel invalides.", { actionOrParams });
                 return {
                     success: false,
                     code: 'INVALID_PARAMS',
@@ -805,7 +774,7 @@ export class NSystem extends NObject {
             }
 
             if (!action) {
-                NUtil.log.warn("invokeNative: Le nom de l'action ne peut pas être vide.");
+                NLog.warn("invokeNative: Le nom de l'action ne peut pas être vide.");
                 return {
                     success: false,
                     code: 'INVALID_ACTION',
@@ -815,14 +784,14 @@ export class NSystem extends NObject {
             }
 
             // 1. Relai automatique si exécuté au sein d'un Web Worker
-            if (NUtil.env.isWorker) {
+            if (NEnv.isWorker) {
                 const response = await NWorker.requestMain('invokeNative', { action, payload });
                 return response?.result ?? response;
             }
 
             // 2. Vérification de l'environnement WebView / Conteneur hôte
-            if (!NUtil.env.isWebView) {
-                NUtil.log.warn("invokeNative: L'application ne s'exécute pas dans un conteneur WebView hôte.", {
+            if (!NEnv.isWebView) {
+                NLog.warn("invokeNative: L'application ne s'exécute pas dans un conteneur WebView hôte.", {
                     action,
                     payload
                 });
@@ -835,7 +804,7 @@ export class NSystem extends NObject {
             }
 
             if (typeof window === 'undefined' || !window.NLibNativeBridge || typeof window.NLibNativeBridge.invoke !== 'function') {
-                NUtil.log.warn('invokeNative: Le pont natif window.NLibNativeBridge.invoke est introuvable.', {
+                NLog.warn('invokeNative: Le pont natif window.NLibNativeBridge.invoke est introuvable.', {
                     action,
                     payload
                 });
@@ -850,7 +819,7 @@ export class NSystem extends NObject {
             // 3. Exécution exclusive auprès de window.NLibNativeBridge.invoke
             const result = await window.NLibNativeBridge.invoke(action, payload);
             if (result === undefined || result === null) {
-                NUtil.log.warn('invokeNative: Aucun résultat retourné par window.NLibNativeBridge.invoke.', {
+                NLog.warn('invokeNative: Aucun résultat retourné par window.NLibNativeBridge.invoke.', {
                     action,
                     payload
                 });
@@ -890,7 +859,7 @@ export class NSystem extends NObject {
                     timer = setTimeout(() => {
                         window.NLibNativeBridgeEvent.off('invokenative', func);
                         window.NLibNativeBridgeEvent.off('requestapp', func);
-                        NUtil.log.warn(`invokeNative: Délai d'attente dépassé (${timeoutMs}ms) pour la requête id: ${result.requestId}.`, {
+                        NLog.warn(`invokeNative: Délai d'attente dépassé (${timeoutMs}ms) pour la requête id: ${result.requestId}.`, {
                             requestId: result.requestId,
                             action,
                             payload
@@ -910,7 +879,7 @@ export class NSystem extends NObject {
 
             return result;
         } catch (error) {
-            NUtil.log.error("invokeNative: Erreur inattendue lors de l'exécution de la commande native.", {
+            NLog.error("invokeNative: Erreur inattendue lors de l'exécution de la commande native.", {
                 code: 'ERR_NATIVE_INVOKE',
                 params: actionOrParams,
                 cause: error
@@ -932,75 +901,56 @@ export class NSystem extends NObject {
      * @returns {Promise<Object>} Photographie complète de l'état système.
      *
      * @example <caption>Exemple 1 : Obtenir un diagnostic complet</caption>
-     * const snap = await NUtil.sys.getSnapshot();
+     * const snap = await NSys.getSnapshot();
      * console.log(snap.cpuCores, snap.environment.os);
      *
      * @example <caption>Exemple 2 : Exporter en JSON</caption>
-     * console.log(typeof JSON.stringify(await NUtil.sys.getSnapshot())); // 'string'
+     * console.log(typeof JSON.stringify(await NSys.getSnapshot())); // 'string'
      */
-    async getSnapshot() {
+    static async getSnapshot() {
         const [battery, storage] = await Promise.all([
-            this.getBattery(),
-            this.getStorageQuota()
+            NSys.getBattery(),
+            NSys.getStorageQuota()
         ]);
 
         return {
-            uptimeSeconds: this.uptime(true),
-            cpuCores: this.cpuCores,
-            arch: this.arch,
-            deviceMemoryGb: this.deviceMemory,
-            environment: NUtil.env.info,
-            memory: this.memory,
-            screen: this.screen,
-            network: this.network,
+            uptimeSeconds: NSys.uptime(true),
+            cpuCores: NSys.cpuCores,
+            arch: NSys.arch,
+            deviceMemoryGb: NSys.deviceMemory,
+            environment: NEnv.info,
+            memory: NSys.memory,
+            screen: NSys.screen,
+            network: NSys.network,
             storage,
             battery
         };
     }
 
     /**
-     * Sérialise l'état synchrone de `NSystem` en objet JSON.
+     * Sérialise l'état synchrone de `NSys` en objet JSON.
      *
      * @returns {Object} Représentation JSON du système.
      *
      * @example <caption>Exemple 1 : Convertir en JSON</caption>
-     * console.log(NUtil.sys.toJSON().cpuCores >= 1); // true
+     * console.log(NSys.toJSON().cpuCores >= 1); // true
      *
      * @example <caption>Exemple 2 : Inclut l'environnement et la mémoire</caption>
-     * console.log(typeof NUtil.sys.toJSON().memory); // 'object'
+     * console.log(typeof NSys.toJSON().memory); // 'object'
      */
-    toJSON() {
+    static toJSON() {
         return {
-            uptimeSeconds: this.uptime(true),
-            cpuCores: this.cpuCores,
-            arch: this.arch,
-            deviceMemoryGb: this.deviceMemory,
-            environment: NUtil.env.info,
-            memory: this.memory,
-            screen: this.screen,
-            network: this.network
+            uptimeSeconds: NSys.uptime(true),
+            cpuCores: NSys.cpuCores,
+            arch: NSys.arch,
+            deviceMemoryGb: NSys.deviceMemory,
+            environment: NEnv.info,
+            memory: NSys.memory,
+            screen: NSys.screen,
+            network: NSys.network
         };
     }
 
-    /**
-     * Arrête la surveillance réseau active et libère les ressources de l'instance.
-     *
-     * @returns {void}
-     *
-     * @example <caption>Exemple 1 : Détruire l'instance NSystem</caption>
-     * const sys = new NSystem();
-     * sys.destroy();
-     * console.log(sys.isDestroyed); // true
-     *
-     * @example <caption>Exemple 2 : Nettoyage avant fermeture</caption>
-     * if (!sys.isDestroyed) {
-     *     sys.destroy();
-     * }
-     */
-    destroy() {
-        this.watchNetwork?.(false);
-        super.destroy();
-    }
 }
 
-export default NSystem;
+export default NSys;

@@ -1,5 +1,5 @@
 /**
- * @file NArray.js
+ * @file NArr.js
  * @package @nlib/js-backend
  * @description Classe utilitaire pure pour la validation, l'accès sécurisé (avec index positifs
  * ou négatifs et conversion de types), le filtrage, le dédoublonnage, le tri multi-critères,
@@ -7,37 +7,32 @@
  * `difference`, `union`) et la manipulation de tableaux dans l'écosystème NLib.
  */
 
-import { NObject } from '../core/NObject.js';
-import { NUtil } from './NUtil.js';
+import { NLog } from '../log/NLog.js';
 
 /**
- * @class NArray
- * @extends NObject
+ * @class NArr
  * @description Utilitaire de gestion, transformation et requêtage de tableaux.
  *
  * @example <caption>Exemple 1 : Accès sécurisé, dédoublonnage et nettoyage</caption>
- * const arrUtil = new NArray();
- * console.log(arrUtil.get(['a', 'b', 'c'], -1));          // 'c' (dernier élément)
- * console.log(arrUtil.unique([1, 2, 2, 3, 1]));           // [1, 2, 3]
- * console.log(arrUtil.compact([0, 1, null, '', 'NLib'])); // [0, 1, 'NLib']
+ * console.log(NArr.get(['a', 'b', 'c'], -1));          // 'c' (dernier élément)
+ * console.log(NArr.unique([1, 2, 2, 3, 1]));           // [1, 2, 3]
+ * console.log(NArr.compact([0, 1, null, '', 'NLib'])); // [0, 1, 'NLib']
  *
  * @example <caption>Exemple 2 : Regroupement (groupBy), extraction (pluck) et tri d'objets</caption>
- * const arrUtil = new NArray();
  * const users = [
  *     { id: 1, name: 'Neta', role: 'admin' },
  *     { id: 2, name: 'Ali', role: 'user' },
  *     { id: 3, name: 'Sara', role: 'admin' }
  * ];
- * console.log(arrUtil.pluck(users, 'name'));      // ['Neta', 'Ali', 'Sara']
- * console.log(arrUtil.sortBy(users, 'name'));     // [{ name: 'Ali'... }, { name: 'Neta'... }, { name: 'Sara'... }]
+ * console.log(NArr.pluck(users, 'name'));      // ['Neta', 'Ali', 'Sara']
+ * console.log(NArr.sortBy(users, 'name'));     // [{ name: 'Ali'... }, { name: 'Neta'... }, { name: 'Sara'... }]
  *
  * @example <caption>Exemple 3 : Découpage par lots (chunk) et pagination</caption>
- * const arrUtil = new NArray();
- * console.log(arrUtil.chunk([1, 2, 3, 4, 5], 2)); // [[1, 2], [3, 4], [5]]
- * console.log(arrUtil.paginate([10, 20, 30, 40, 50], 2, 2));
+ * console.log(NArr.chunk([1, 2, 3, 4, 5], 2)); // [[1, 2], [3, 4], [5]]
+ * console.log(NArr.paginate([10, 20, 30, 40, 50], 2, 2));
  * // { data: [30, 40], page: 2, perPage: 2, total: 5, totalPages: 3, hasNext: true, hasPrev: true }
  */
-export class NArray extends NObject {
+export class NArr {
 
     // =========================================================================
     // Méthodes publiques — Validation & Vérifications
@@ -50,15 +45,13 @@ export class NArray extends NObject {
      * @returns {boolean} `true` si `value` est un tableau, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tableau valide</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.isArray([1, 2, 3])); // true
+         * console.log(NArr.isArray([1, 2, 3])); // true
      *
      * @example <caption>Exemple 2 : Objet ou chaîne</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.isArray({ a: 1 }));  // false
-     * console.log(arrUtil.isArray('texte'));   // false
+         * console.log(NArr.isArray({ a: 1 }));  // false
+     * console.log(NArr.isArray('texte'));   // false
      */
-    isArray(value) {
+    static isArray(value) {
         return Array.isArray(value);
     }
 
@@ -69,15 +62,13 @@ export class NArray extends NObject {
      * @returns {boolean} `true` si le tableau est vide ou invalide, sinon `false`.
      *
      * @example <caption>Exemple 1 : Tableau vide ou null</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.isEmpty([]));   // true
-     * console.log(arrUtil.isEmpty(null)); // true
+         * console.log(NArr.isEmpty([]));   // true
+     * console.log(NArr.isEmpty(null)); // true
      *
      * @example <caption>Exemple 2 : Tableau contenant des éléments</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.isEmpty([1]));  // false
+         * console.log(NArr.isEmpty([1]));  // false
      */
-    isEmpty(list) {
+    static isEmpty(list) {
         return !Array.isArray(list) || list.length === 0;
     }
 
@@ -91,15 +82,13 @@ export class NArray extends NObject {
      * @returns {number} Nombre d'éléments (`0` si invalide ou vide).
      *
      * @example <caption>Exemple 1 : Obtenir la taille d'un tableau</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.size(['a', 'b', 'c'])); // 3
-     * console.log(arrUtil.size(null));            // 0
+         * console.log(NArr.size(['a', 'b', 'c'])); // 3
+     * console.log(NArr.size(null));            // 0
      *
      * @example <caption>Exemple 2 : Compter avec une condition</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.size([10, 25, 30, 5], (n) => n >= 20)); // 2
+         * console.log(NArr.size([10, 25, 30, 5], (n) => n >= 20)); // 2
      */
-    size(list, predicate = undefined) {
+    static size(list, predicate = undefined) {
         if (!Array.isArray(list)) {
             return 0;
         }
@@ -124,15 +113,13 @@ export class NArray extends NObject {
      * @returns {number} Nombre d'éléments.
      *
      * @example <caption>Exemple 1 : Compter tous les éléments</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.count([1, 2, 3, 4])); // 4
+         * console.log(NArr.count([1, 2, 3, 4])); // 4
      *
      * @example <caption>Exemple 2 : Compter les utilisateurs actifs</caption>
-     * const arrUtil = new NArray();
-     * const users = [{ active: true }, { active: false }, { active: true }];
-     * console.log(arrUtil.count(users, (u) => u.active)); // 2
+         * const users = [{ active: true }, { active: false }, { active: true }];
+     * console.log(NArr.count(users, (u) => u.active)); // 2
      */
-    count(list, predicate = undefined) {
+    static count(list, predicate = undefined) {
         return this.size(list, predicate);
     }
 
@@ -147,16 +134,14 @@ export class NArray extends NObject {
      * @returns {Array} Tableau résultant.
      *
      * @example <caption>Exemple 1 : Envelopper une valeur simple ou copier un tableau</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.toArray('NLib'));     // ['NLib']
-     * console.log(arrUtil.toArray([1, 2]));     // [1, 2]
+         * console.log(NArr.toArray('NLib'));     // ['NLib']
+     * console.log(NArr.toArray([1, 2]));     // [1, 2]
      *
      * @example <caption>Exemple 2 : Convertir null ou un Set</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.toArray(null));                 // []
-     * console.log(arrUtil.toArray(new Set(['a', 'b'])));  // ['a', 'b']
+         * console.log(NArr.toArray(null));                 // []
+     * console.log(NArr.toArray(new Set(['a', 'b'])));  // ['a', 'b']
      */
-    toArray(value) {
+    static toArray(value) {
         if (value === null || value === undefined) {
             return [];
         }
@@ -178,15 +163,13 @@ export class NArray extends NObject {
      * @returns {boolean} `true` si les deux tableaux sont égaux, sinon `false`.
      *
      * @example <caption>Exemple 1 : Comparaison dans l'ordre</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.equals([1, 2, 3], [1, 2, 3])); // true
-     * console.log(arrUtil.equals([1, 2, 3], [3, 2, 1])); // false
+         * console.log(NArr.equals([1, 2, 3], [1, 2, 3])); // true
+     * console.log(NArr.equals([1, 2, 3], [3, 2, 1])); // false
      *
      * @example <caption>Exemple 2 : Comparaison sans tenir compte de l'ordre</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.equals([1, 2, 3], [3, 2, 1], true)); // true
+         * console.log(NArr.equals([1, 2, 3], [3, 2, 1], true)); // true
      */
-    equals(listA, listB, ignoreOrder = false) {
+    static equals(listA, listB, ignoreOrder = false) {
         if (!Array.isArray(listA) || !Array.isArray(listB) || listA.length !== listB.length) {
             return false;
         }
@@ -213,15 +196,13 @@ export class NArray extends NObject {
      * @returns {boolean} `true` si l'élément est présent, sinon `false`.
      *
      * @example <caption>Exemple 1 : Rechercher une valeur primitive</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.contains(['js', 'php', 'node'], 'php')); // true
+         * console.log(NArr.contains(['js', 'php', 'node'], 'php')); // true
      *
      * @example <caption>Exemple 2 : Rechercher par clé dans un tableau d'objets</caption>
-     * const arrUtil = new NArray();
-     * const users = [{ id: 1, name: 'Neta' }, { id: 2, name: 'Ali' }];
-     * console.log(arrUtil.contains(users, 'Neta', 'name')); // true
+         * const users = [{ id: 1, name: 'Neta' }, { id: 2, name: 'Ali' }];
+     * console.log(NArr.contains(users, 'Neta', 'name')); // true
      */
-    contains(list, target, key = undefined) {
+    static contains(list, target, key = undefined) {
         if (!Array.isArray(list)) {
             return false;
         }
@@ -245,15 +226,13 @@ export class NArray extends NObject {
      * @returns {any} Élément trouvé ou `fallback`.
      *
      * @example <caption>Exemple 1 : Index positif et négatif</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.get(['a', 'b', 'c'], 0));  // 'a'
-     * console.log(arrUtil.get(['a', 'b', 'c'], -1)); // 'c'
+         * console.log(NArr.get(['a', 'b', 'c'], 0));  // 'a'
+     * console.log(NArr.get(['a', 'b', 'c'], -1)); // 'c'
      *
      * @example <caption>Exemple 2 : Index hors limites avec fallback</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.get(['a', 'b'], 10, 'aucun')); // 'aucun'
+         * console.log(NArr.get(['a', 'b'], 10, 'aucun')); // 'aucun'
      */
-    get(list, index, fallback = undefined) {
+    static get(list, index, fallback = undefined) {
         if (!Array.isArray(list) || list.length === 0) {
             return fallback;
         }
@@ -276,14 +255,12 @@ export class NArray extends NObject {
      * @returns {any|Array} Le premier élément si `count === 1`, sinon un tableau des `count` premiers éléments.
      *
      * @example <caption>Exemple 1 : Obtenir le premier élément</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.first([10, 20, 30])); // 10
+         * console.log(NArr.first([10, 20, 30])); // 10
      *
      * @example <caption>Exemple 2 : Obtenir les 2 premiers éléments</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.first([10, 20, 30], 2)); // [10, 20]
+         * console.log(NArr.first([10, 20, 30], 2)); // [10, 20]
      */
-    first(list, count = 1) {
+    static first(list, count = 1) {
         if (!Array.isArray(list) || list.length === 0) {
             return count === 1 ? undefined : [];
         }
@@ -301,14 +278,12 @@ export class NArray extends NObject {
      * @returns {any|Array} Le dernier élément si `count === 1`, sinon un tableau des `count` derniers éléments.
      *
      * @example <caption>Exemple 1 : Obtenir le dernier élément</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.last([10, 20, 30])); // 30
+         * console.log(NArr.last([10, 20, 30])); // 30
      *
      * @example <caption>Exemple 2 : Obtenir les 2 derniers éléments</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.last([10, 20, 30], 2)); // [20, 30]
+         * console.log(NArr.last([10, 20, 30], 2)); // [20, 30]
      */
-    last(list, count = 1) {
+    static last(list, count = 1) {
         if (!Array.isArray(list) || list.length === 0) {
             return count === 1 ? undefined : [];
         }
@@ -332,14 +307,12 @@ export class NArray extends NObject {
      * @returns {Array} Nouveau tableau avec les éléments insérés.
      *
      * @example <caption>Exemple 1 : Insérer au milieu d'un tableau</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.insertAt(['a', 'c'], 1, 'b')); // ['a', 'b', 'c']
+         * console.log(NArr.insertAt(['a', 'c'], 1, 'b')); // ['a', 'b', 'c']
      *
      * @example <caption>Exemple 2 : Insérer plusieurs éléments</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.insertAt([1, 4], 1, 2, 3)); // [1, 2, 3, 4]
+         * console.log(NArr.insertAt([1, 4], 1, 2, 3)); // [1, 2, 3, 4]
      */
-    insertAt(list, index, ...items) {
+    static insertAt(list, index, ...items) {
         if (!Array.isArray(list)) {
             return [...items];
         }
@@ -357,14 +330,12 @@ export class NArray extends NObject {
      * @returns {Array} Nouveau tableau sans l'élément.
      *
      * @example <caption>Exemple 1 : Supprimer à l'index 1</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.removeAt(['a', 'b', 'c'], 1)); // ['a', 'c']
+         * console.log(NArr.removeAt(['a', 'b', 'c'], 1)); // ['a', 'c']
      *
      * @example <caption>Exemple 2 : Supprimer le dernier élément avec -1</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.removeAt(['a', 'b', 'c'], -1)); // ['a', 'b']
+         * console.log(NArr.removeAt(['a', 'b', 'c'], -1)); // ['a', 'b']
      */
-    removeAt(list, index) {
+    static removeAt(list, index) {
         if (!Array.isArray(list) || list.length === 0) {
             return [];
         }
@@ -389,15 +360,13 @@ export class NArray extends NObject {
      * @returns {Array} Nouveau tableau filtré.
      *
      * @example <caption>Exemple 1 : Supprimer une valeur primitive</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.removeValue([1, 2, 3, 2], 2)); // [1, 3]
+         * console.log(NArr.removeValue([1, 2, 3, 2], 2)); // [1, 3]
      *
      * @example <caption>Exemple 2 : Supprimer un objet par clé</caption>
-     * const arrUtil = new NArray();
-     * const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
-     * console.log(arrUtil.removeValue(items, 2, 'id')); // [{ id: 1 }, { id: 3 }]
+         * const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
+     * console.log(NArr.removeValue(items, 2, 'id')); // [{ id: 1 }, { id: 3 }]
      */
-    removeValue(list, valueToRemove, key = undefined) {
+    static removeValue(list, valueToRemove, key = undefined) {
         if (!Array.isArray(list)) {
             return [];
         }
@@ -420,16 +389,14 @@ export class NArray extends NObject {
      * @returns {Array} Tableau nettoyé.
      *
      * @example <caption>Exemple 1 : Retirer null, undefined et chaînes vides (en gardant 0 et false)</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.compact([0, false, null, undefined, '', 'NLib']));
+         * console.log(NArr.compact([0, false, null, undefined, '', 'NLib']));
      * // [0, false, 'NLib']
      *
      * @example <caption>Exemple 2 : Retirer toutes les valeurs falsy</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.compact([0, false, null, 'NLib'], true));
+         * console.log(NArr.compact([0, false, null, 'NLib'], true));
      * // ['NLib']
      */
-    compact(list, removeFalsy = false) {
+    static compact(list, removeFalsy = false) {
         if (!Array.isArray(list)) {
             return [];
         }
@@ -448,15 +415,13 @@ export class NArray extends NObject {
      * @returns {Array} Nouveau tableau sans doublons.
      *
      * @example <caption>Exemple 1 : Dédoublonner des valeurs primitives</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.unique([1, 2, 2, 3, 1, 4])); // [1, 2, 3, 4]
+         * console.log(NArr.unique([1, 2, 2, 3, 1, 4])); // [1, 2, 3, 4]
      *
      * @example <caption>Exemple 2 : Dédoublonner un tableau d'objets par clé 'id'</caption>
-     * const arrUtil = new NArray();
-     * const users = [{ id: 1, name: 'A' }, { id: 1, name: 'A bis' }, { id: 2, name: 'B' }];
-     * console.log(arrUtil.unique(users, 'id')); // [{ id: 1, name: 'A' }, { id: 2, name: 'B' }]
+         * const users = [{ id: 1, name: 'A' }, { id: 1, name: 'A bis' }, { id: 2, name: 'B' }];
+     * console.log(NArr.unique(users, 'id')); // [{ id: 1, name: 'A' }, { id: 2, name: 'B' }]
      */
-    unique(list, key = undefined) {
+    static unique(list, key = undefined) {
         if (!Array.isArray(list)) {
             return [];
         }
@@ -486,14 +451,12 @@ export class NArray extends NObject {
      * @returns {Array} Tableau aplati.
      *
      * @example <caption>Exemple 1 : Aplatissement complet</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.flatten([1, [2, [3, [4]]]])); // [1, 2, 3, 4]
+         * console.log(NArr.flatten([1, [2, [3, [4]]]])); // [1, 2, 3, 4]
      *
      * @example <caption>Exemple 2 : Aplatissement sur 1 seul niveau</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.flatten([1, [2, [3]]], 1)); // [1, 2, [3]]
+         * console.log(NArr.flatten([1, [2, [3]]], 1)); // [1, 2, [3]]
      */
-    flatten(list, depth = Infinity) {
+    static flatten(list, depth = Infinity) {
         if (!Array.isArray(list)) {
             return [];
         }
@@ -512,15 +475,13 @@ export class NArray extends NObject {
      * @returns {Array} Tableau des valeurs extraites.
      *
      * @example <caption>Exemple 1 : Extraire tous les IDs</caption>
-     * const arrUtil = new NArray();
-     * const rows = [{ id: 10, code: 'A' }, { id: 20, code: 'B' }];
-     * console.log(arrUtil.pluck(rows, 'id')); // [10, 20]
+         * const rows = [{ id: 10, code: 'A' }, { id: 20, code: 'B' }];
+     * console.log(NArr.pluck(rows, 'id')); // [10, 20]
      *
      * @example <caption>Exemple 2 : Tableau vide</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.pluck([], 'id')); // []
+         * console.log(NArr.pluck([], 'id')); // []
      */
-    pluck(list, key) {
+    static pluck(list, key) {
         if (!Array.isArray(list) || typeof key !== 'string' || key.length === 0) {
             return [];
         }
@@ -542,17 +503,15 @@ export class NArray extends NObject {
      * @returns {Object<string, Array>} Dictionnaire des groupes.
      *
      * @example <caption>Exemple 1 : Regrouper par rôle</caption>
-     * const arrUtil = new NArray();
-     * const users = [{ name: 'Neta', role: 'admin' }, { name: 'Ali', role: 'user' }, { name: 'Sara', role: 'admin' }];
-     * console.log(arrUtil.groupBy(users, 'role'));
+         * const users = [{ name: 'Neta', role: 'admin' }, { name: 'Ali', role: 'user' }, { name: 'Sara', role: 'admin' }];
+     * console.log(NArr.groupBy(users, 'role'));
      * // { admin: [{ name: 'Neta', role: 'admin' }, { name: 'Sara', role: 'admin' }], user: [{ name: 'Ali', role: 'user' }] }
      *
      * @example <caption>Exemple 2 : Regrouper avec une fonction</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.groupBy([1, 2, 3, 4], (n) => (n % 2 === 0 ? 'even' : 'odd')));
+         * console.log(NArr.groupBy([1, 2, 3, 4], (n) => (n % 2 === 0 ? 'even' : 'odd')));
      * // { odd: [1, 3], even: [2, 4] }
      */
-    groupBy(list, keyOrFn) {
+    static groupBy(list, keyOrFn) {
         if (!Array.isArray(list)) {
             return {};
         }
@@ -578,16 +537,14 @@ export class NArray extends NObject {
      * @returns {Object<string, Object>} Dictionnaire indexé par `key`.
      *
      * @example <caption>Exemple 1 : Indexer une liste d'utilisateurs par ID</caption>
-     * const arrUtil = new NArray();
-     * const users = [{ id: 10, name: 'Neta' }, { id: 20, name: 'Ali' }];
-     * console.log(arrUtil.keyBy(users, 'id'));
+         * const users = [{ id: 10, name: 'Neta' }, { id: 20, name: 'Ali' }];
+     * console.log(NArr.keyBy(users, 'id'));
      * // { '10': { id: 10, name: 'Neta' }, '20': { id: 20, name: 'Ali' } }
      *
      * @example <caption>Exemple 2 : Tableau vide retourne {}</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.keyBy([], 'id')); // {}
+         * console.log(NArr.keyBy([], 'id')); // {}
      */
-    keyBy(list, key) {
+    static keyBy(list, key) {
         if (!Array.isArray(list) || typeof key !== 'string' || key.length === 0) {
             return {};
         }
@@ -610,17 +567,15 @@ export class NArray extends NObject {
      * @returns {Array} Nouveau tableau trié.
      *
      * @example <caption>Exemple 1 : Trier des nombres ou des chaînes</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.sortBy([30, 10, 20]));             // [10, 20, 30]
-     * console.log(arrUtil.sortBy([30, 10, 20], null, 'desc')); // [30, 20, 10]
+         * console.log(NArr.sortBy([30, 10, 20]));             // [10, 20, 30]
+     * console.log(NArr.sortBy([30, 10, 20], null, 'desc')); // [30, 20, 10]
      *
      * @example <caption>Exemple 2 : Trier un tableau d'objets par propriété</caption>
-     * const arrUtil = new NArray();
-     * const items = [{ price: 50 }, { price: 10 }, { price: 30 }];
-     * console.log(arrUtil.sortBy(items, 'price', 'asc'));
+         * const items = [{ price: 50 }, { price: 10 }, { price: 30 }];
+     * console.log(NArr.sortBy(items, 'price', 'asc'));
      * // [{ price: 10 }, { price: 30 }, { price: 50 }]
      */
-    sortBy(list, keyOrFn = null, order = 'asc') {
+    static sortBy(list, keyOrFn = null, order = 'asc') {
         if (!Array.isArray(list)) {
             return [];
         }
@@ -658,14 +613,12 @@ export class NArray extends NObject {
      * @returns {Array<Array>} Tableau de lots.
      *
      * @example <caption>Exemple 1 : Découper par lots de 2</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.chunk([1, 2, 3, 4, 5], 2)); // [[1, 2], [3, 4], [5]]
+         * console.log(NArr.chunk([1, 2, 3, 4, 5], 2)); // [[1, 2], [3, 4], [5]]
      *
      * @example <caption>Exemple 2 : Découper par lots de 3</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.chunk(['a', 'b', 'c', 'd'], 3)); // [['a', 'b', 'c'], ['d']]
+         * console.log(NArr.chunk(['a', 'b', 'c', 'd'], 3)); // [['a', 'b', 'c'], ['d']]
      */
-    chunk(list, size = 2) {
+    static chunk(list, size = 2) {
         if (!Array.isArray(list) || list.length === 0) {
             return [];
         }
@@ -694,15 +647,13 @@ export class NArray extends NObject {
      * }} Objet de pagination complet.
      *
      * @example <caption>Exemple 1 : Paginer une liste d'éléments</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.paginate([1, 2, 3, 4, 5], 2, 2));
+         * console.log(NArr.paginate([1, 2, 3, 4, 5], 2, 2));
      * // { data: [3, 4], page: 2, perPage: 2, total: 5, totalPages: 3, hasNext: true, hasPrev: true }
      *
      * @example <caption>Exemple 2 : Tableau vide</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.paginate([], 1, 10).totalPages); // 0
+         * console.log(NArr.paginate([], 1, 10).totalPages); // 0
      */
-    paginate(list, page = 1, perPage = 10) {
+    static paginate(list, page = 1, perPage = 10) {
         const items = Array.isArray(list) ? list : [];
         const limit = Math.max(1, Math.trunc(Number(perPage) || 10));
         const total = items.length;
@@ -729,17 +680,15 @@ export class NArray extends NObject {
      * @returns {Array} Nouveau tableau mélangé.
      *
      * @example <caption>Exemple 1 : Mélanger une liste</caption>
-     * const arrUtil = new NArray();
-     * const shuffled = arrUtil.shuffle([1, 2, 3, 4, 5]);
+         * const shuffled = NArr.shuffle([1, 2, 3, 4, 5]);
      * console.log(shuffled.length); // 5
      *
      * @example <caption>Exemple 2 : L'original n'est pas modifié</caption>
-     * const arrUtil = new NArray();
-     * const orig = [1, 2, 3];
-     * arrUtil.shuffle(orig);
+         * const orig = [1, 2, 3];
+     * NArr.shuffle(orig);
      * console.log(orig); // [1, 2, 3]
      */
-    shuffle(list) {
+    static shuffle(list) {
         if (!Array.isArray(list)) {
             return [];
         }
@@ -761,14 +710,12 @@ export class NArray extends NObject {
      * @returns {any|Array} Un élément si `count === 1`, sinon un tableau de `count` éléments aléatoires.
      *
      * @example <caption>Exemple 1 : Tirer 1 élément au hasard</caption>
-     * const arrUtil = new NArray();
-     * console.log(['pile', 'face'].includes(arrUtil.sample(['pile', 'face']))); // true
+         * console.log(['pile', 'face'].includes(NArr.sample(['pile', 'face']))); // true
      *
      * @example <caption>Exemple 2 : Tirer 2 éléments au hasard</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.sample([10, 20, 30, 40], 2).length); // 2
+         * console.log(NArr.sample([10, 20, 30, 40], 2).length); // 2
      */
-    sample(list, count = 1) {
+    static sample(list, count = 1) {
         if (!Array.isArray(list) || list.length === 0) {
             return count === 1 ? undefined : [];
         }
@@ -790,14 +737,12 @@ export class NArray extends NObject {
      * @returns {Array} Éléments communs uniques.
      *
      * @example <caption>Exemple 1 : Intersection de deux tableaux</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.intersection([1, 2, 3, 4], [3, 4, 5, 6])); // [3, 4]
+         * console.log(NArr.intersection([1, 2, 3, 4], [3, 4, 5, 6])); // [3, 4]
      *
      * @example <caption>Exemple 2 : Aucun élément commun</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.intersection([1, 2], [3, 4])); // []
+         * console.log(NArr.intersection([1, 2], [3, 4])); // []
      */
-    intersection(listA, listB) {
+    static intersection(listA, listB) {
         if (!Array.isArray(listA) || !Array.isArray(listB)) {
             return [];
         }
@@ -813,14 +758,12 @@ export class NArray extends NObject {
      * @returns {Array} Éléments de `listA` non présents dans `listB`.
      *
      * @example <caption>Exemple 1 : Différence entre deux listes</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.difference([1, 2, 3, 4], [2, 4])); // [1, 3]
+         * console.log(NArr.difference([1, 2, 3, 4], [2, 4])); // [1, 3]
      *
      * @example <caption>Exemple 2 : Avec des chaînes</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.difference(['read', 'write', 'delete'], ['delete'])); // ['read', 'write']
+         * console.log(NArr.difference(['read', 'write', 'delete'], ['delete'])); // ['read', 'write']
      */
-    difference(listA, listB) {
+    static difference(listA, listB) {
         if (!Array.isArray(listA)) {
             return [];
         }
@@ -838,14 +781,12 @@ export class NArray extends NObject {
      * @returns {Array} Tableau contenant l'union sans doublons.
      *
      * @example <caption>Exemple 1 : Union de deux tableaux</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.union([1, 2], [2, 3], [3, 4])); // [1, 2, 3, 4]
+         * console.log(NArr.union([1, 2], [2, 3], [3, 4])); // [1, 2, 3, 4]
      *
      * @example <caption>Exemple 2 : Union de rôles</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.union(['user'], ['editor', 'user'])); // ['user', 'editor']
+         * console.log(NArr.union(['user'], ['editor', 'user'])); // ['user', 'editor']
      */
-    union(...lists) {
+    static union(...lists) {
         const merged = [];
         for (let i = 0; i < lists.length; i++) {
             if (Array.isArray(lists[i])) {
@@ -864,20 +805,18 @@ export class NArray extends NObject {
      * @returns {number[]} Tableau de la séquence générée.
      *
      * @example <caption>Exemple 1 : Séquence croissante de 1 à 5</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.range(1, 5)); // [1, 2, 3, 4, 5]
+         * console.log(NArr.range(1, 5)); // [1, 2, 3, 4, 5]
      *
      * @example <caption>Exemple 2 : Séquence avec un pas de 2 ou décroissante</caption>
-     * const arrUtil = new NArray();
-     * console.log(arrUtil.range(0, 10, 2)); // [0, 2, 4, 6, 8, 10]
-     * console.log(arrUtil.range(5, 1, -1)); // [5, 4, 3, 2, 1]
+         * console.log(NArr.range(0, 10, 2)); // [0, 2, 4, 6, 8, 10]
+     * console.log(NArr.range(5, 1, -1)); // [5, 4, 3, 2, 1]
      */
-    range(start, end, step = 1) {
+    static range(start, end, step = 1) {
         const s = Number(start);
         const e = Number(end);
         let st = Number(step);
         if (!Number.isFinite(s) || !Number.isFinite(e) || !Number.isFinite(st) || st === 0) {
-            NUtil.log.warn('NArray.range: Paramètres de plage invalides.', {
+            NLog.warn('NArr.range: Paramètres de plage invalides.', {
                 code: 'WARN_ARRAY_RANGE_INVALID',
                 start,
                 end,
@@ -890,7 +829,7 @@ export class NArray extends NObject {
         }
         const count = Math.floor(Math.abs(e - s) / Math.abs(st)) + 1;
         if (count > 100000) {
-            NUtil.log.warn('NArray.range: Plage trop volumineuse (maximum 100 000 éléments).', {
+            NLog.warn('NArr.range: Plage trop volumineuse (maximum 100 000 éléments).', {
                 code: 'WARN_ARRAY_RANGE_OVERFLOW',
                 start,
                 end,
@@ -913,5 +852,5 @@ export class NArray extends NObject {
     }
 }
 
-export default NArray;
+export default NArr;
 
